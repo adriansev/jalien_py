@@ -2,15 +2,12 @@
 
 import os
 import ssl
-import pathlib
-import socket
 import asyncio
-import enum
-import json
-from enum import Enum
-
-# websocket component for python
+import socket
 import websockets
+# import websocket
+import pathlib
+from enum import Enum
 
 
 class CatalogType(Enum):
@@ -29,18 +26,30 @@ class OutType(Enum):
 
 # let's just use the same names as in TJAlien.h
 
-default_server = 'alice-jcentral.cern.ch'
-local_server = 'localhost'
-
-fPort = 8098
 fWSPort = 8097  # websocket port
-fHost = 'wss://' + local_server + ':' + fWSPort
+
+server_central = 'alice-jcentral.cern.ch'
+server_local = 'localhost'
+default_server = ''
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+result = sock.connect_ex(('127.0.0.1',fWSPort))
+if result == 0:
+    default_server = server_local
+else:
+    default_server = server_central
+
+ws_path = "/websocket/json"
+fHost = 'wss://' + default_server + ':' + fWSPort
+fHostUrl = fHost + ws_path
+
+
+
+
+
 sUsercert = ''  # location of user certificate
 sUserkey = ''   # location of user private key
-ws_path = "/websocket/json"
 
-
-# Certificats and authentication
 # Load certificate
 homedir = os.getenv('HOME', '~')      # local home directory
 tmpdir = os.getenv('TMPDIR', '/tmp')  # tmp directory
@@ -48,28 +57,16 @@ tmpdir = os.getenv('TMPDIR', '/tmp')  # tmp directory
 tokencert = tmpdir + "/tokencert.pem"
 tokenkey = tmpdir + "/tokenkey.pem"
 
-# if JALIEN_TOKEN_CERT is not defined then use the generic tmp one
-tokencertpath = os.getenv('JALIEN_TOKEN_CERT', tokencert)
-# if JALIEN_TOKEN_KEY is not defined then use the generic tmp one
-tokenkeypath = os.getenv('JALIEN_TOKEN_KEY', tokenkey)
-
-#        std::string usercert = sUsercert.Data()[0] != '\0' ? sUsercert.Data() : homedir + "/.globus/usercert.pem";
-#        std::string userkey = sUserkey.Data()[0] != '\0' ? sUserkey.Data() : homedir + "/.globus/userkey.pem";
-#        std::string usercertpath = std::getenv("X509_USER_CERT") ? : usercert.c_str();
-#        std::string userkeypath = std::getenv("X509_USER_KEY") ? : userkey.c_str();
+tokencertpath = os.getenv('JALIEN_TOKEN_CERT', tokencert)  # if JALIEN_TOKEN_CERT is not defined then use the generic tmp one
+tokenkeypath = os.getenv('JALIEN_TOKEN_KEY', tokenkey)     # if JALIEN_TOKEN_KEY is not defined then use the generic tmp one
 
 
-
-
-
-# Define SSL options and context
 ssl = ssl.create_default_context()
 ssl.check_hostname = False
 ssl.verify_mode = ssl.CERT_REQUIRED
 # ssl.verify_mode = ssl.CERT_OPTIONAL
 # ssl.verify_mode = ssl.CERT_NONE
 ssl.load_cert_chain(tokencertpath, tokenkeypath)
-
 
 # ______________________________________________________________________________
 @asyncio.coroutine
