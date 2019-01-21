@@ -131,7 +131,7 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
-    print(str(message))
+    print("Received< ", str(message))
 
 
 async def Command(cmd, args=[]):
@@ -152,8 +152,36 @@ async def Command(cmd, args=[]):
         if ssl_context is not None: ssl.get_ca_certs()
         await websocket.send(json_cmd)
         print(f"Sent> {json_cmd}")
+        # result = await websocket.recv()
+        # print("Received< ", result)
+
+
+async def Shell():
+    global websocket, fHostWS, fHostWSUrl, ws_path
+    ws_endpoint_detect()
+    # fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
+    fHostWS = 'ws://' + default_server
+    fHostWSUrl = fHostWS + ws_path
+    print("Prepare to connect : ", fHostWSUrl)
+    if str(fHostWSUrl).startswith("wss://"):
+        ssl_context = create_ssl_context()
+    else:
+        ssl_context = None
+    async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
+        websocket.keep_running = True
+        INPUT = input("JalienShPy Cmd: ")
+        input_json = CreateJsonCommand(INPUT)
+        await websocket.send(input_json)
+        if ssl_context is not None: ssl.get_ca_certs()
+        await websocket.send(input_json)
         result = await websocket.recv()
-        print("Received< ", result)
+        print("JalienShPy Ans: ", result)
+
+
+async def ProcessMessages():
+    global websocket
+    async for message in websocket:
+        await ProcessReceivedMessage(message)
 
 
 if __name__ == '__main__':
@@ -162,8 +190,9 @@ if __name__ == '__main__':
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler())
 
-    asyncio.get_event_loop().run_until_complete(Command(cmd='pwd'))
-
+    # ProcessMessages()
+    # asyncio.get_event_loop().run_until_complete(Command(cmd='pwd'))
+    asyncio.get_event_loop().run_until_complete(Shell())
 
 
 
