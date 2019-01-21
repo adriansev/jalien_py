@@ -2,6 +2,7 @@
 
 import os
 import sys
+import signal
 import ssl
 import socket
 import pathlib
@@ -72,6 +73,11 @@ fHostWSUrl = ''
 server_central = 'demos.kaazing.com'
 server_local = '127.0.0.1'
 default_server = server_local
+
+
+def signal_handler(sig, frame):
+    print('\nYou pressed Ctrl+C!')
+    sys.exit(0)
 
 
 def token_parse(token_file):
@@ -168,14 +174,15 @@ async def Shell():
     else:
         ssl_context = None
     async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
-        websocket.keep_running = True
-        INPUT = input("JalienShPy Cmd: ")
-        input_json = CreateJsonCommand(INPUT)
-        await websocket.send(input_json)
-        if ssl_context is not None: ssl.get_ca_certs()
-        await websocket.send(input_json)
-        result = await websocket.recv()
-        print("JalienShPy Ans: ", result)
+        while True:
+            signal.signal(signal.SIGINT, signal_handler)
+            INPUT = input("JalienShPy Cmd: ")
+            input_json = CreateJsonCommand(INPUT)
+            await websocket.send(input_json)
+            if ssl_context is not None: ssl.get_ca_certs()
+            await websocket.send(input_json)
+            result = await websocket.recv()
+            print("JalienShPy Ans: ", result)
 
 
 async def ProcessMessages():
