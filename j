@@ -61,16 +61,17 @@ key = None
 
 # Web socket static variables
 # websocket = None  # global websocket name
-# ws_path = '/websocket/json'
-ws_path = '/echo'
 fHostWS = ''
 fHostWSUrl = ''
 
 # Websocket endpoint to be used
 # server_central = 'alice-jcentral.cern.ch'
-# server_central = '137.138.99.145'
-# server_central = 'echo.websocket.org'
-server_central = 'demos.kaazing.com'
+server_central = '137.138.99.145'
+ws_path = '/websocket/json'
+
+# server_central = 'demos.kaazing.com'
+# ws_path = '/echo'
+
 server_local = '127.0.0.1'
 default_server = server_local
 
@@ -155,7 +156,6 @@ async def Command(cmd, args=[]):
         json_cmd = CreateJsonCommand(cmd, args)
         # pp.pprint(fHostWSUrl)
         # pp.pprint(json_cmd)
-        if ssl_context is not None: ssl.get_ca_certs()
         await websocket.send(json_cmd)
         print(f"Sent> {json_cmd}")
         # result = await websocket.recv()
@@ -165,21 +165,19 @@ async def Command(cmd, args=[]):
 async def Shell():
     global websocket, fHostWS, fHostWSUrl, ws_path
     ws_endpoint_detect()
-    # fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
-    fHostWS = 'ws://' + default_server
+    fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
+    # fHostWS = 'wss://' + default_server
     fHostWSUrl = fHostWS + ws_path
     print("Prepare to connect : ", fHostWSUrl)
     if str(fHostWSUrl).startswith("wss://"):
         ssl_context = create_ssl_context()
     else:
         ssl_context = None
-    async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
+    async with websockets.connect(fHostWSUrl, ssl=ssl_context, legacy_recv=True) as websocket:
         while True:
             signal.signal(signal.SIGINT, signal_handler)
             INPUT = input("JalienShPy Cmd: ")
             input_json = CreateJsonCommand(INPUT)
-            await websocket.send(input_json)
-            if ssl_context is not None: ssl.get_ca_certs()
             await websocket.send(input_json)
             result = await websocket.recv()
             print("JalienShPy Ans: ", result)
