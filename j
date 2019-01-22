@@ -13,6 +13,7 @@ from enum import Enum
 from optparse import OptionParser
 import asyncio
 import websockets
+import inspect
 
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -173,12 +174,13 @@ async def Shell():
         ssl_context = create_ssl_context()
     else:
         ssl_context = None
-    async with websockets.connect(fHostWSUrl, ssl=ssl_context, legacy_recv=True) as websocket:
+    async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
         while True:
             signal.signal(signal.SIGINT, signal_handler)
             INPUT = input("JalienShPy Cmd: ")
             input_json = CreateJsonCommand(INPUT)
             await websocket.send(input_json)
+            # pp.pprint(websocket.__dict__.keys())
             result = await websocket.recv()
             print("JalienShPy Ans: ", result)
 
@@ -192,7 +194,7 @@ async def ProcessMessages():
 if __name__ == '__main__':
     # Let's start the connection
     logger = logging.getLogger('websockets')
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(logging.StreamHandler())
 
     # ProcessMessages()
