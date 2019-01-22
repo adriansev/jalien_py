@@ -135,7 +135,9 @@ def create_ssl_context():
 
 def CreateJsonCommand(command, options=[]):
     cmd_dict = {"command": command, "options": options}
-    return json.dumps(cmd_dict)
+    jcmd = json.dumps(cmd_dict)
+    jcmd.encode('ascii', 'ignore')
+    return jcmd
 
 
 def ProcessReceivedMessage(message=''):
@@ -182,6 +184,7 @@ async def Shell():
             await websocket.send(input_json)
             # pp.pprint(websocket.__dict__.keys())
             result = await websocket.recv()
+            result.encode('ascii', 'ignore')
             print("JalienShPy Ans: ", result)
 
 
