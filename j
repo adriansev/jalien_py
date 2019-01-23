@@ -9,11 +9,12 @@ import pathlib
 import json
 import logging
 import pprint
+import inspect
 from enum import Enum
 from optparse import OptionParser
 import asyncio
 import websockets
-import inspect
+# import websockets.speedups
 
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -40,10 +41,12 @@ j_capath = os.getenv('X509_CERT_DIR', j_trusts_dir)
 UID = os.getuid()
 token_filename = '/tmp/jclient_token_' + str(UID)
 
+
 # user cert locations
 user_globus = homedir + '/.globus'
 usercert = user_globus + '/usercert.pem'
 userkey = user_globus + '/userkey.pem'
+user_proxy = '/tmp' + '/x509up_u' + str(UID)
 
 usercertpath = os.getenv('X509_USER_CERT', usercert)
 userkeypath = os.getenv('X509_USER_KEY', userkey)
@@ -129,7 +132,9 @@ def create_ssl_context():
     ctx.load_verify_locations(capath=user_globus)
     alienca = user_globus + '/AliEn-CA.pem'
     ctx.load_verify_locations(cafile=alienca)
+    ctx.load_verify_locations(cafile=user_proxy)
     ctx.load_cert_chain(certfile=cert, keyfile=key)
+#    ctx.load_cert_chain(certfile=user_proxy, keyfile=key)
     return ctx
 
 
