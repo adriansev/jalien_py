@@ -5,7 +5,7 @@ import sys
 import signal
 import ssl
 import socket
-import pathlib
+from pathlib import Path
 import json
 import logging
 import pprint
@@ -130,11 +130,13 @@ def create_ssl_context():
     ctx.check_hostname = False
     ctx.load_verify_locations(capath='/etc/grid-security/certificates/')
     ctx.load_verify_locations(capath=user_globus)
-    alienca = user_globus + '/AliEn-CA.pem'
-    ctx.load_verify_locations(cafile=alienca)
-    ctx.load_verify_locations(cafile=user_proxy)
+    proxy_file = Path(user_proxy)
+#    if proxy_file.is_file():
+#        ctx.load_verify_locations(cafile=user_proxy)
+#        ctx.load_cert_chain(certfile=user_proxy)
+#    else:
+
     ctx.load_cert_chain(certfile=cert, keyfile=key)
-#    ctx.load_cert_chain(certfile=user_proxy, keyfile=key)
     return ctx
 
 
@@ -202,7 +204,7 @@ async def ProcessMessages():
 if __name__ == '__main__':
     # Let's start the connection
     logger = logging.getLogger('websockets')
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.ERROR)
     logger.addHandler(logging.StreamHandler())
 
     # ProcessMessages()
