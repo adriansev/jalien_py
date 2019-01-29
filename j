@@ -130,12 +130,6 @@ def create_ssl_context():
     ctx.check_hostname = False
     ctx.load_verify_locations(capath='/etc/grid-security/certificates/')
     ctx.load_verify_locations(capath=user_globus)
-    proxy_file = Path(user_proxy)
-#    if proxy_file.is_file():
-#        ctx.load_verify_locations(cafile=user_proxy)
-#        ctx.load_cert_chain(certfile=user_proxy)
-#    else:
-
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     return ctx
 
@@ -148,31 +142,25 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
-    print("Received< ", str(message))
+    if not message: return
+    message.encode('ascii', 'ignore')
+    #print (message)
+    #json_dict = json.loads(message)
+
+    tokencert_content = ''
+#    try:
+#        tokencert_content = json_dict["results"]
+#        print(type(tokencert_content))
+#    except KeyError:
+#        tokencert_content = ''
+#    pp.pprint(tokencert_content)
+
+#    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
+    if tokencert_content: return
+    print("JalienShPy Ans: ", message)
 
 
-async def Command(cmd, args=[]):
-    global websocket, fHostWS, fHostWSUrl, ws_path
-    ws_endpoint_detect()
-    # fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
-    fHostWS = 'ws://' + default_server
-    fHostWSUrl = fHostWS + ws_path
-    print("Prepare to connect : ", fHostWSUrl)
-    if str(fHostWSUrl).startswith("wss://"):
-        ssl_context = create_ssl_context()
-    else:
-        ssl_context = None
-    async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
-        json_cmd = CreateJsonCommand(cmd, args)
-        # pp.pprint(fHostWSUrl)
-        # pp.pprint(json_cmd)
-        await websocket.send(json_cmd)
-        print(f"Sent> {json_cmd}")
-        # result = await websocket.recv()
-        # print("Received< ", result)
-
-
-async def Shell():
+async def JAlienConnect(cmd='', args=[]):
     global websocket, fHostWS, fHostWSUrl, ws_path
     ws_endpoint_detect()
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
@@ -183,22 +171,27 @@ async def Shell():
         ssl_context = create_ssl_context()
     else:
         ssl_context = None
+
+    jsoncmd=''
+    if cmd:
+        jsoncmd = CreateJsonCommand(cmd, args)
+
     async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
-        while True:
+        if jsoncmd:
             signal.signal(signal.SIGINT, signal_handler)
-            INPUT = input("JalienShPy Cmd: ")
-            input_json = CreateJsonCommand(INPUT)
-            await websocket.send(input_json)
-            # pp.pprint(websocket.__dict__.keys())
+            print(jsoncmd)
+            await websocket.send(jsoncmd)
             result = await websocket.recv()
-            result.encode('ascii', 'ignore')
-            print("JalienShPy Ans: ", result)
-
-
-async def ProcessMessages():
-    global websocket
-    async for message in websocket:
-        await ProcessReceivedMessage(message)
+            ProcessReceivedMessage(result)
+        else:
+            while True:
+                signal.signal(signal.SIGINT, signal_handler)
+                INPUT = input("JalienShPy Cmd: ")
+                if not INPUT: continue
+                input_json = CreateJsonCommand(INPUT)
+                await websocket.send(input_json)
+                result = await websocket.recv()
+                ProcessReceivedMessage(result)
 
 
 if __name__ == '__main__':
@@ -208,8 +201,8 @@ if __name__ == '__main__':
     logger.addHandler(logging.StreamHandler())
 
     # ProcessMessages()
-    # asyncio.get_event_loop().run_until_complete(Command(cmd='pwd'))
-    asyncio.get_event_loop().run_until_complete(Shell())
+    #asyncio.get_event_loop().run_until_complete(JAlienConnect(cmd='ls /'))
+    asyncio.get_event_loop().run_until_complete(JAlienConnect())
 
 
 
