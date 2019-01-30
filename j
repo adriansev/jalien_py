@@ -9,15 +9,12 @@ import socket
 from pathlib import Path
 import json
 import logging
-import pprint
 import inspect
 from enum import Enum
 from optparse import OptionParser
 import asyncio
 import websockets
 # import websockets.speedups
-
-pp = pprint.PrettyPrinter(indent=4)
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
@@ -155,8 +152,9 @@ def CreateJsonCommand(command, options=[]):
 def ProcessReceivedMessage(message=''):
     if not message: return
     message.encode('ascii', 'ignore')
-    if DEBUG: print (message)
+    #if DEBUG: print (message)
     #json_dict = json.loads(message)
+    print(json.dumps(json.loads(message), sort_keys=True, indent=4))
 
     tokencert_content = ''
 #    try:
@@ -164,7 +162,7 @@ def ProcessReceivedMessage(message=''):
 #        print(type(tokencert_content))
 #    except KeyError:
 #        tokencert_content = ''
-#    pp.pprint(tokencert_content)
+#    print(tokencert_content)
 
 #    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
     if tokencert_content: return
@@ -191,7 +189,7 @@ async def JAlienConnect(jsoncmd = ''):
         #    commandlist = json_dict["results"][0]["message"]
         if jsoncmd:
             signal.signal(signal.SIGINT, signal_handler)
-            if DEBUG: print(jsoncmd)
+            # if DEBUG: print(jsoncmd)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
             ProcessReceivedMessage(result)
@@ -216,7 +214,7 @@ async def JAlienConnect(jsoncmd = ''):
 
                 if not INPUT: continue
                 jsoncmd = CreateJsonCommand(INPUT)
-                if DEBUG: print(jsoncmd)
+                # if DEBUG: print(jsoncmd)
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
                 result = result.lstrip()
