@@ -152,7 +152,6 @@ def CreateJsonCommand(command, options=[]):
 def ProcessReceivedMessage(message=''):
     if not message: return
     message.encode('ascii', 'ignore')
-    #if DEBUG: print (message)
     json_dict = json.loads(message)
     if 'metadata' in json_dict:
         del json_dict['metadata']
