@@ -3,15 +3,13 @@
 import os
 import sys
 import signal
+import socket
 import ssl
 import OpenSSL
-import socket
-from pathlib import Path
 import json
 import logging
-import inspect
+from pathlib import Path
 from enum import Enum
-from optparse import OptionParser
 import asyncio
 import websockets
 # import websockets.speedups
