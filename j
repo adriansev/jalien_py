@@ -153,8 +153,10 @@ def ProcessReceivedMessage(message=''):
     if not message: return
     message.encode('ascii', 'ignore')
     #if DEBUG: print (message)
-    #json_dict = json.loads(message)
-    print(json.dumps(json.loads(message), sort_keys=True, indent=4))
+    json_dict = json.loads(message)
+    if 'metadata' in json_dict:
+        del json_dict['metadata']
+    print(json.dumps(json_dict, sort_keys=True, indent=4))
 
     tokencert_content = ''
 #    try:
