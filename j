@@ -4,6 +4,7 @@ import os
 import sys
 import signal
 import ssl
+import OpenSSL
 import socket
 from pathlib import Path
 import json
@@ -16,8 +17,9 @@ import asyncio
 import websockets
 # import websockets.speedups
 
-
 pp = pprint.PrettyPrinter(indent=4)
+
+DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
 # declare the token variables
 fHost = str('')
@@ -79,9 +81,18 @@ ws_path = '/websocket/json'
 server_local = '127.0.0.1'
 default_server = server_local
 
+# jalien_py internal vars
+currentdir = ''
+commandlist = ''
+site = ''
 
 def signal_handler(sig, frame):
-    print('\nYou pressed Ctrl+C!')
+    print('\nExit')
+    sys.exit(0)
+
+
+def exit_message():
+    print('\nExit')
     sys.exit(0)
 
 
@@ -144,7 +155,7 @@ def CreateJsonCommand(command, options=[]):
 def ProcessReceivedMessage(message=''):
     if not message: return
     message.encode('ascii', 'ignore')
-    #print (message)
+    if DEBUG: print (message)
     #json_dict = json.loads(message)
 
     tokencert_content = ''
@@ -157,40 +168,61 @@ def ProcessReceivedMessage(message=''):
 
 #    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
     if tokencert_content: return
-    print("JalienShPy Ans: ", message)
+    #print("JalienShPy Ans: ", message)
 
 
-async def JAlienConnect(cmd='', args=[]):
-    global websocket, fHostWS, fHostWSUrl, ws_path
+async def JAlienConnect(jsoncmd = ''):
+    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist
     ws_endpoint_detect()
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
-    # fHostWS = 'wss://' + default_server
     fHostWSUrl = fHostWS + ws_path
-    print("Prepare to connect : ", fHostWSUrl)
     if str(fHostWSUrl).startswith("wss://"):
         ssl_context = create_ssl_context()
     else:
         ssl_context = None
 
-    jsoncmd=''
-    if cmd:
-        jsoncmd = CreateJsonCommand(cmd, args)
-
+    print("Connecting to : ", fHostWSUrl)
     async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
+        #if not commandlist:
+        #    # get the command list to check validity of commands
+        #    await websocket.send(CreateJsonCommand('commandlist'))
+        #    result = await websocket.recv()
+        #    json_dict = json.loads(result)
+        #    commandlist = json_dict["results"][0]["message"]
         if jsoncmd:
             signal.signal(signal.SIGINT, signal_handler)
-            print(jsoncmd)
+            if DEBUG: print(jsoncmd)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
             ProcessReceivedMessage(result)
         else:
             while True:
                 signal.signal(signal.SIGINT, signal_handler)
-                INPUT = input("JalienShPy Cmd: ")
-                if not INPUT: continue
-                input_json = CreateJsonCommand(INPUT)
-                await websocket.send(input_json)
+                # get the current directory, command list is already present
+                await websocket.send(CreateJsonCommand('commandlist'))
                 result = await websocket.recv()
+                result = result.lstrip()
+                json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+                json_dict = json_dict_list[-1]
+                # json_dict = json.loads(result)
+                currentdir = json_dict["metadata"]["currentdir"]
+                site = json_dict["metadata"]["site"]
+
+                INPUT =''
+                try:
+                    INPUT = input(f"jsh:{site}: {currentdir} > ")
+                except EOFError:
+                    exit_message()
+
+                if not INPUT: continue
+                jsoncmd = CreateJsonCommand(INPUT)
+                if DEBUG: print(jsoncmd)
+                await websocket.send(jsoncmd)
+                result = await websocket.recv()
+                result = result.lstrip()
+                json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+                json_dict = json_dict_list[-1]
+                result = json.dumps(json_dict)
                 ProcessReceivedMessage(result)
 
 
@@ -198,11 +230,23 @@ if __name__ == '__main__':
     # Let's start the connection
     logger = logging.getLogger('websockets')
     logger.setLevel(logging.ERROR)
+    # logger.setLevel(logging.DEBUG)
     logger.addHandler(logging.StreamHandler())
 
-    # ProcessMessages()
-    #asyncio.get_event_loop().run_until_complete(JAlienConnect(cmd='ls /'))
-    asyncio.get_event_loop().run_until_complete(JAlienConnect())
+    cmd=''
+    args=[]
+    if len(sys.argv) > 1 : cmd = sys.argv[1]
+    if len(sys.argv) > 2 :
+        args = sys.argv
+        args.pop(0)  # remove script name from arg list
+        args.pop(1)  # remove command from arg list - remains only command args
+
+    if cmd:
+        jsoncmd = CreateJsonCommand(cmd, args)
+        if DEBUG: print(jsoncmd)
+        asyncio.get_event_loop().run_until_complete(JAlienConnect(jsoncmd))
+    else:
+        asyncio.get_event_loop().run_until_complete(JAlienConnect())
 
 
 
