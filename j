@@ -43,7 +43,7 @@ token_filename = '/tmp/jclient_token_' + str(UID)
 user_globus = homedir + '/.globus'
 usercert = user_globus + '/usercert.pem'
 userkey = user_globus + '/userkey.pem'
-user_proxy = '/tmp' + '/x509up_u' + str(UID)
+userproxy = '/tmp' + '/x509up_u' + str(UID)
 
 usercertpath = os.getenv('X509_USER_CERT', usercert)
 userkeypath = os.getenv('X509_USER_KEY', userkey)
@@ -136,7 +136,10 @@ def create_ssl_context():
     ctx.check_hostname = False
     ctx.load_verify_locations(capath='/etc/grid-security/certificates/')
     ctx.load_verify_locations(capath=user_globus)
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    #ctx.load_cert_chain(certfile=cert, keyfile=key)
+    #ctx.load_cert_chain(certfile=userproxy)
+    ctx.load_cert_chain(certfile=tokencert, keyfile=tokenkey)
+
     return ctx
 
 
@@ -155,17 +158,6 @@ def ProcessReceivedMessage(message=''):
         del json_dict['metadata']
     print(json.dumps(json_dict, sort_keys=True, indent=4))
 
-    tokencert_content = ''
-#    try:
-#        tokencert_content = json_dict["results"]
-#        print(type(tokencert_content))
-#    except KeyError:
-#        tokencert_content = ''
-#    print(tokencert_content)
-
-#    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
-    if tokencert_content: return
-    #print("JalienShPy Ans: ", message)
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -178,19 +170,35 @@ async def JAlienConnect(jsoncmd = ''):
     else:
         ssl_context = None
 
-    print("Connecting to : ", fHostWSUrl)
+    if DEBUG: print("Connecting to : ", fHostWSUrl)
     async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
-        #if not commandlist:
-        #    # get the command list to check validity of commands
-        #    await websocket.send(CreateJsonCommand('commandlist'))
-        #    result = await websocket.recv()
-        #    json_dict = json.loads(result)
-        #    commandlist = json_dict["results"][0]["message"]
+        tokencert_content = ''
+        #    try:
+        #        tokencert_content = json_dict["results"]
+        #        print(type(tokencert_content))
+        #    except KeyError:
+        #        tokencert_content = ''
+        #    print(tokencert_content)
+        #    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
+        #print("JalienShPy Ans: ", message)
+
+        if not commandlist:
+            # get the command list to check validity of commands
+            await websocket.send(CreateJsonCommand('commandlist'))
+            result = await websocket.recv()
+            result = result.lstrip()
+            json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+            json_dict = json_dict_list[-1]
+            commandlist = json_dict["results"][0]["message"]
+
+        # command mode
         if jsoncmd:
             signal.signal(signal.SIGINT, signal_handler)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
             ProcessReceivedMessage(result)
+
+        # interactive/shell mode
         else:
             while True:
                 signal.signal(signal.SIGINT, signal_handler)
@@ -200,7 +208,6 @@ async def JAlienConnect(jsoncmd = ''):
                 result = result.lstrip()
                 json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
                 json_dict = json_dict_list[-1]
-                # json_dict = json.loads(result)
                 currentdir = json_dict["metadata"]["currentdir"]
                 site = json_dict["metadata"]["site"]
 
@@ -235,10 +242,10 @@ if __name__ == '__main__':
     cmd=''
     args=sys.argv
 
-    if len(args) > 1 : cmd = args[1]
-    if len(args) > 2 :
+    if len(args) > 1 :
         args.pop(0)  # remove script name from arg list
-        args.pop(0)  # ALSO remove command from arg list - remains only command args
+        cmd = args[0]
+        args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
     if cmd:
         jsoncmd = CreateJsonCommand(cmd, args)
