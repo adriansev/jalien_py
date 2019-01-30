@@ -188,7 +188,6 @@ async def JAlienConnect(jsoncmd = ''):
         #    commandlist = json_dict["results"][0]["message"]
         if jsoncmd:
             signal.signal(signal.SIGINT, signal_handler)
-            # if DEBUG: print(jsoncmd)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
             ProcessReceivedMessage(result)
@@ -212,8 +211,11 @@ async def JAlienConnect(jsoncmd = ''):
                     exit_message()
 
                 if not INPUT: continue
-                jsoncmd = CreateJsonCommand(INPUT)
-                # if DEBUG: print(jsoncmd)
+                input_list = INPUT.split()
+                cmd = input_list[0]
+                input_list.pop(0)
+                jsoncmd = CreateJsonCommand(cmd, input_list)
+                if DEBUG: print(jsoncmd)
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
                 result = result.lstrip()
@@ -231,12 +233,12 @@ if __name__ == '__main__':
     logger.addHandler(logging.StreamHandler())
 
     cmd=''
-    args=[]
-    if len(sys.argv) > 1 : cmd = sys.argv[1]
-    if len(sys.argv) > 2 :
-        args = sys.argv
+    args=sys.argv
+
+    if len(args) > 1 : cmd = args[1]
+    if len(args) > 2 :
         args.pop(0)  # remove script name from arg list
-        args.pop(1)  # remove command from arg list - remains only command args
+        args.pop(0)  # ALSO remove command from arg list - remains only command args
 
     if cmd:
         jsoncmd = CreateJsonCommand(cmd, args)
