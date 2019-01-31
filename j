@@ -17,51 +17,42 @@ import websockets
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
-# declare the token variables
-fHost = str('')
-fPort = int(0)
-fUser = str('')
-fGridHome = str('')
-fPasswd = str('')
-fDebug = int(0)
-fPID = int(0)
-fWSPort = 8097  # websocket port
+# Steering output
+json_output = bool(False)
+json_meta_output = bool(False)
 
 # other user oriented variables
 homedir = os.getenv('HOME', '~')
 tmpdir = os.getenv('TMPDIR', '/tmp')
 fUser = os.getenv('alien_API_USER', os.getenv('LOGNAME', 'USER'))
 
-j_trusts_dir = homedir + '/.j/trusts/'
-j_capath = os.getenv('X509_CERT_DIR', j_trusts_dir)
-
 # let get the token file name
 UID = os.getuid()
-token_filename = '/tmp/jclient_token_' + str(UID)
 
-
-# user cert locations
-user_globus = homedir + '/.globus'
-usercert = user_globus + '/usercert.pem'
-userkey = user_globus + '/userkey.pem'
-userproxy = '/tmp' + '/x509up_u' + str(UID)
-
-usercertpath = os.getenv('X509_USER_CERT', usercert)
-userkeypath = os.getenv('X509_USER_KEY', userkey)
-
-# token certificate
-tokencert = '/tmp' + "/tokencert.pem"
-tokencertpath = os.getenv('JALIEN_TOKEN_CERT', tokencert)
-
-tokenkey = '/tmp' + "/tokenkey.pem"
-tokenkeypath = os.getenv('JALIEN_TOKEN_KEY', tokenkey)
-
-tokenlock = tmpdir + '/jalien_token.lock'
-
+# SSL SETTINGS
 cert = None
 key = None
+capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
+
+# user cert locations
+userproxy = '/tmp' + '/x509up_u' + str(UID)
+
+user_globus_dir = homedir + '/.globus'
+usercert_default = user_globus_dir + '/usercert.pem'
+userkey_default = user_globus_dir + '/userkey.pem'
+
+usercert = os.getenv('X509_USER_CERT', usercert_default)
+userkey = os.getenv('X509_USER_KEY', userkey_default)
+
+# token certificate
+tokencert_default = '/tmp' + "/tokencert.pem"
+tokenkey_default = '/tmp' + "/tokenkey.pem"
+tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
+tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
+
 
 # Web socket static variables
+fWSPort = 8097  # websocket port
 fHostWS = ''
 fHostWSUrl = ''
 
@@ -72,6 +63,7 @@ ws_path = '/websocket/json'
 default_server = server_central
 
 # jalien_py internal vars
+fGridHome = str('')
 currentdir = ''
 commandlist = ''
 site = ''
@@ -110,18 +102,18 @@ def create_ssl_context():
     global cert, key
     # ssl related options
     if IsValidCert(tokencert):
-        cert = tokencertpath
-        key  = tokenkeypath
+        cert = tokencert
+        key  = tokenkey
     else:
-        cert = usercertpath
-        key = userkeypath
+        cert = usercert
+        key = userkey
 
     ctx = ssl.SSLContext()
     verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
-    ctx.load_verify_locations(capath='/etc/grid-security/certificates/')
-    ctx.load_verify_locations(capath=user_globus)
+    ctx.load_verify_locations(capath=capath_default)
+    ctx.load_verify_locations(capath=user_globus_dir)
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     return ctx
 
@@ -134,12 +126,19 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
+    global json_output, json_meta_output
     if not message: return
     message.encode('ascii', 'ignore')
     json_dict = json.loads(message)
-    if 'metadata' in json_dict:
-        del json_dict['metadata']
-    print(json.dumps(json_dict, sort_keys=True, indent=4))
+    if not json_meta_output:
+        if 'metadata' in json_dict:
+            del json_dict['metadata']
+
+    if json_output:
+        print(json.dumps(json_dict, sort_keys=True, indent=4))
+    else:
+        for item in json_dict['results']:
+            print(item['message'])
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -219,6 +218,10 @@ if __name__ == '__main__':
     logger.setLevel(logging.ERROR)
     # logger.setLevel(logging.DEBUG)
     logger.addHandler(logging.StreamHandler())
+
+    script_name = sys.argv[0]
+    if '_json' in script_name: json_output = bool(True)
+    if '_json_all' in script_name: json_meta_output = bool(True)
 
     cmd=''
     args=sys.argv
