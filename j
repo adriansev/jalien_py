@@ -4,6 +4,7 @@ import os
 import sys
 import signal
 import socket
+from datetime import datetime
 import ssl
 import OpenSSL
 import json
@@ -61,7 +62,6 @@ cert = None
 key = None
 
 # Web socket static variables
-# websocket = None  # global websocket name
 fHostWS = ''
 fHostWSUrl = ''
 
@@ -69,17 +69,13 @@ fHostWSUrl = ''
 # server_central = 'alice-jcentral.cern.ch'
 server_central = '137.138.99.145'
 ws_path = '/websocket/json'
-
-# server_central = 'demos.kaazing.com'
-# ws_path = '/echo'
-
-server_local = '127.0.0.1'
-default_server = server_local
+default_server = server_central
 
 # jalien_py internal vars
 currentdir = ''
 commandlist = ''
 site = ''
+
 
 def signal_handler(sig, frame):
     print('\nExit')
@@ -91,55 +87,42 @@ def exit_message():
     sys.exit(0)
 
 
-def token_parse(token_file):
-    global fHost, fPort, fUser, fGridHome, fPasswd, fDebug, fPID, fWSPort
-    with open(token_file) as myfile:
-        for line in myfile:
-            name, var = line.partition("=")[::2]
-            if (name == "Host"): fHost = str(var.strip())
-            if (name == "Port"): fPort = int(var.strip())
-            if (name == "User"): fUser = str(var.strip())
-            if (name == "Home"): fGridHome = str(var.strip())
-            if (name == "Passwd"): fPasswd = str(var.strip())
-            if (name == "Debug"): fDebug = int(var.strip())
-            if (name == "PID"): fPID = int(var.strip())
-            if (name == "WSPort"): fWSPort = int(var.strip())
+def IsValidCert(fname):
+    try:
+        with open(fname) as f:
+            cert_bytes = f.read()
+    except Exception:
+        return False
 
-
-def ws_endpoint_detect():
-    global fHost, fWSPort, token_filename
-    global default_server, server_local, server_central
-    global cert, key
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect_ex((server_local, fWSPort))
-    if result == 0:
-        default_server = server_local
-        cert = tokencertpath
-        key = tokenkeypath
-        token_parse(token_filename)
+    x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    x509_notafter = x509.get_notAfter()
+    utc_time = datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
+    time_notafter = int((utc_time - datetime(1970, 1, 1)).total_seconds())
+    time_current  = int(datetime.now().timestamp())
+    time_remaining = time_notafter - time_current
+    if (time_remaining > 300):
+        return True
     else:
-        cert = usercertpath
-        key = userkeypath
-        default_server = server_central
-        fHost = default_server
-        fPort = 8098
-        fWSPort = 8097
-        fPasswd = ''
+        return False
 
 
 def create_ssl_context():
     global cert, key
     # ssl related options
+    if IsValidCert(tokencert):
+        cert = tokencertpath
+        key  = tokenkeypath
+    else:
+        cert = usercertpath
+        key = userkeypath
+
     ctx = ssl.SSLContext()
     verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
     ctx.load_verify_locations(capath='/etc/grid-security/certificates/')
     ctx.load_verify_locations(capath=user_globus)
-    #ctx.load_cert_chain(certfile=cert, keyfile=key)
-    #ctx.load_cert_chain(certfile=userproxy)
-    ctx.load_cert_chain(certfile=tokencert, keyfile=tokenkey)
-
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
     return ctx
 
 
@@ -159,10 +142,8 @@ def ProcessReceivedMessage(message=''):
     print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
-
 async def JAlienConnect(jsoncmd = ''):
     global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist
-    ws_endpoint_detect()
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
     fHostWSUrl = fHostWS + ws_path
     if str(fHostWSUrl).startswith("wss://"):
