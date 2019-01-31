@@ -175,7 +175,7 @@ async def JAlienConnect(jsoncmd = ''):
         ssl_context = None
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
-    async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
+    async with websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue = 4, max_size = 16*1024*1024) as websocket:
         if cert == usercert:
             getToken = bool(True)
             await websocket.send(CreateJsonCommand('token'))
