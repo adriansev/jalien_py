@@ -45,6 +45,7 @@ usercert = os.getenv('X509_USER_CERT', usercert_default)
 userkey = os.getenv('X509_USER_KEY', userkey_default)
 
 # token certificate
+getToken = bool(False)
 tokencert_default = '/tmp' + "/tokencert.pem"
 tokenkey_default = '/tmp' + "/tokenkey.pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
@@ -86,7 +87,11 @@ def IsValidCert(fname):
     except Exception:
         return False
 
-    x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    try:
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    except Exception:
+        return False
+
     x509_notafter = x509.get_notAfter()
     utc_time = datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
     time_notafter = int((utc_time - datetime(1970, 1, 1)).total_seconds())
@@ -126,10 +131,29 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
-    global json_output, json_meta_output
+    global json_output, json_meta_output, getToken
     if not message: return
     message.encode('ascii', 'ignore')
     json_dict = json.loads(message)
+
+    # Processing of token command
+    if getToken:
+        tokencert_content = json_dict['results'][0]["tokencert"]
+        if os.path.isfile(tokencert):
+            os.chmod(tokencert, 0o700)
+        with open(tokencert, "w") as tcert:
+            print(f"{tokencert_content}", file=tcert)
+            os.chmod(tokencert, 0o400)
+
+        tokenkey_content = json_dict['results'][0]["tokenkey"]
+        if os.path.isfile(tokenkey):
+            os.chmod(tokenkey, 0o700)
+        with open(tokenkey, "w") as tkey:
+            print(f"{tokenkey_content}", file=tkey)
+            os.chmod(tokenkey, 0o400)
+        getToken = bool(False)
+        return  # after writing the token files we finished with the message
+
     if not json_meta_output:
         if 'metadata' in json_dict:
             del json_dict['metadata']
@@ -142,7 +166,7 @@ def ProcessReceivedMessage(message=''):
 
 
 async def JAlienConnect(jsoncmd = ''):
-    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist
+    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist, getToken
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
     fHostWSUrl = fHostWS + ws_path
     if str(fHostWSUrl).startswith("wss://"):
@@ -152,15 +176,11 @@ async def JAlienConnect(jsoncmd = ''):
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
     async with websockets.connect(fHostWSUrl, ssl=ssl_context) as websocket:
-        tokencert_content = ''
-        #    try:
-        #        tokencert_content = json_dict["results"]
-        #        print(type(tokencert_content))
-        #    except KeyError:
-        #        tokencert_content = ''
-        #    print(tokencert_content)
-        #    json_dict_token = { tokencert: json_dict[tokencert] for tokencert in 'tokencert' }
-        #print("JalienShPy Ans: ", message)
+        if cert == usercert:
+            getToken = bool(True)
+            await websocket.send(CreateJsonCommand('token'))
+            result = await websocket.recv()
+            ProcessReceivedMessage(result)
 
         if not commandlist:
             # get the command list to check validity of commands
@@ -171,15 +191,12 @@ async def JAlienConnect(jsoncmd = ''):
             json_dict = json_dict_list[-1]
             commandlist = json_dict["results"][0]["message"]
 
-        # command mode
-        if jsoncmd:
+        if jsoncmd:  # command mode
             signal.signal(signal.SIGINT, signal_handler)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
             ProcessReceivedMessage(result)
-
-        # interactive/shell mode
-        else:
+        else:        # interactive/shell mode
             while True:
                 signal.signal(signal.SIGINT, signal_handler)
                 # get the current directory, command list is already present
