@@ -58,8 +58,8 @@ fHostWS = ''
 fHostWSUrl = ''
 
 # Websocket endpoint to be used
-# server_central = 'alice-jcentral.cern.ch'
-server_central = '137.138.99.145'
+server_central = 'alice-jcentral.cern.ch'
+#server_central = '137.138.99.145'
 ws_path = '/websocket/json'
 default_server = server_central
 
