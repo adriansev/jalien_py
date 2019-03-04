@@ -51,7 +51,6 @@ tokenkey_default = tmpdir + "/tokenkey.pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
 tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
-
 # Web socket static variables
 fWSPort = 8097  # websocket port
 fHostWS = ''
@@ -59,7 +58,6 @@ fHostWSUrl = ''
 
 # Websocket endpoint to be used
 server_central = 'alice-jcentral.cern.ch'
-#server_central = '137.138.99.145'
 ws_path = '/websocket/json'
 default_server = server_central
 
@@ -68,6 +66,9 @@ fGridHome = str('')
 currentdir = ''
 commandlist = ''
 site = ''
+user = ''
+error = ''
+exitcode = ''
 
 # current command in execution
 ccmd = ''
@@ -137,10 +138,17 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
-    global json_output, json_meta_output, getToken, ccmd
+    global json_output, json_meta_output, getToken, currentdir, site, user, ccmd, error, exitcode
     if not message: return
     message.encode('ascii', 'ignore')
     json_dict = json.loads(message)
+    currentdir = json_dict["metadata"]["currentdir"]
+    site = json_dict["metadata"]["site"]
+    user = json_dict["metadata"]["user"]
+
+    # COMMENTED FOR NOW AS NOT ALL CMDS RETURN error AND exitcode
+    #error = json_dict["metadata"]["error"]
+    #exitcode = json_dict["metadata"]["exitcode"]
 
     # Processing of token command
     if getToken:
@@ -158,6 +166,7 @@ def ProcessReceivedMessage(message=''):
             print(f"{tokenkey_content}", file=tkey)
             os.chmod(tokenkey, 0o400)
         getToken = bool(False)
+        ccmd = ''
         return  # after writing the token files we finished with the message
 
     if not json_meta_output:
@@ -175,7 +184,7 @@ def ProcessReceivedMessage(message=''):
 
 
 async def JAlienConnect(jsoncmd = ''):
-    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist, getToken, ccmd
+    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, site, commandlist, getToken, ccmd
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
     fHostWSUrl = fHostWS + ws_path
     if str(fHostWSUrl).startswith("wss://"):
@@ -198,7 +207,11 @@ async def JAlienConnect(jsoncmd = ''):
             result = result.lstrip()
             json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
             json_dict = json_dict_list[-1]
+            # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
             commandlist = json_dict["results"][0]["message"]
+            currentdir = json_dict["metadata"]["currentdir"]
+            site = json_dict["metadata"]["site"]
+            user = json_dict["metadata"]["user"]
 
         if jsoncmd:  # command mode
             ccmd = jsoncmd
@@ -209,15 +222,6 @@ async def JAlienConnect(jsoncmd = ''):
         else:        # interactive/shell mode
             while True:
                 signal.signal(signal.SIGINT, signal_handler)
-                # get the current directory, command list is already present
-                await websocket.send(CreateJsonCommand('commandlist'))
-                result = await websocket.recv()
-                result = result.lstrip()
-                json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
-                json_dict = json_dict_list[-1]
-                currentdir = json_dict["metadata"]["currentdir"]
-                site = json_dict["metadata"]["site"]
-
                 INPUT = ''
                 try:
                     INPUT = input(f"jsh:{site}: {currentdir} > ")
