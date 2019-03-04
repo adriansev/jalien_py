@@ -46,8 +46,8 @@ userkey = os.getenv('X509_USER_KEY', userkey_default)
 
 # token certificate
 getToken = bool(False)
-tokencert_default = '/tmp' + "/tokencert.pem"
-tokenkey_default = '/tmp' + "/tokenkey.pem"
+tokencert_default = tmpdir + "/tokencert.pem"
+tokenkey_default = tmpdir + "/tokenkey.pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
 tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
@@ -68,6 +68,9 @@ fGridHome = str('')
 currentdir = ''
 commandlist = ''
 site = ''
+
+# current command in execution
+ccmd = ''
 
 
 def signal_handler(sig, frame):
@@ -131,7 +134,7 @@ def CreateJsonCommand(command, options=[]):
 
 
 def ProcessReceivedMessage(message=''):
-    global json_output, json_meta_output, getToken
+    global json_output, json_meta_output, getToken, ccmd
     if not message: return
     message.encode('ascii', 'ignore')
     json_dict = json.loads(message)
@@ -164,9 +167,12 @@ def ProcessReceivedMessage(message=''):
         for item in json_dict['results']:
             print(item['message'])
 
+    # reset the current executed command, the received message was processed
+    ccmd = ''
+
 
 async def JAlienConnect(jsoncmd = ''):
-    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist, getToken
+    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, commandlist, getToken, ccmd
     fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
     fHostWSUrl = fHostWS + ws_path
     if str(fHostWSUrl).startswith("wss://"):
@@ -192,6 +198,7 @@ async def JAlienConnect(jsoncmd = ''):
             commandlist = json_dict["results"][0]["message"]
 
         if jsoncmd:  # command mode
+            ccmd = jsoncmd
             signal.signal(signal.SIGINT, signal_handler)
             await websocket.send(jsoncmd)
             result = await websocket.recv()
@@ -208,7 +215,7 @@ async def JAlienConnect(jsoncmd = ''):
                 currentdir = json_dict["metadata"]["currentdir"]
                 site = json_dict["metadata"]["site"]
 
-                INPUT =''
+                INPUT = ''
                 try:
                     INPUT = input(f"jsh:{site}: {currentdir} > ")
                 except EOFError:
@@ -219,6 +226,7 @@ async def JAlienConnect(jsoncmd = ''):
                 cmd = input_list[0]
                 input_list.pop(0)
                 jsoncmd = CreateJsonCommand(cmd, input_list)
+                ccmd = jsoncmd
                 if DEBUG: print(jsoncmd)
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
@@ -240,10 +248,10 @@ if __name__ == '__main__':
     if '_json' in script_name: json_output = bool(True)
     if '_json_all' in script_name: json_meta_output = bool(True)
 
-    cmd=''
-    args=sys.argv
+    cmd = ''
+    args = sys.argv
 
-    if len(args) > 1 :
+    if len(args) > 1:
         args.pop(0)  # remove script name from arg list
         cmd = args[0]
         args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
