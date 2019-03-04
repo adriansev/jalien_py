@@ -231,6 +231,18 @@ async def JAlienConnect(jsoncmd = ''):
                 if not INPUT: continue
                 input_list = INPUT.split()
                 cmd = input_list[0]
+                if (cmd == "?") or (cmd == "help"):
+                    if len(input_list) > 1:
+                        cmdhelp = input_list[1]
+                        if cmdhelp in commandlist:
+                            input_list.clear()
+                            cmd = cmdhelp
+                            input_list.append(cmd)
+                            input_list.append('-h')
+                    else:
+                        print(commandlist)
+                        continue
+
                 input_list.pop(0)
                 jsoncmd = CreateJsonCommand(cmd, input_list)
                 ccmd = jsoncmd
