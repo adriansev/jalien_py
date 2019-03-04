@@ -72,6 +72,9 @@ site = ''
 # current command in execution
 ccmd = ''
 
+# command history
+cmd_hist = []
+
 
 def signal_handler(sig, frame):
     print('\nExit')
@@ -227,6 +230,7 @@ async def JAlienConnect(jsoncmd = ''):
                 input_list.pop(0)
                 jsoncmd = CreateJsonCommand(cmd, input_list)
                 ccmd = jsoncmd
+                cmd_hist.append(jsoncmd)
                 if DEBUG: print(jsoncmd)
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
