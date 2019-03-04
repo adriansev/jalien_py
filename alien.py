@@ -46,8 +46,8 @@ userkey = os.getenv('X509_USER_KEY', userkey_default)
 
 # token certificate
 getToken = bool(False)
-tokencert_default = tmpdir + "/tokencert.pem"
-tokenkey_default = tmpdir + "/tokenkey.pem"
+tokencert_default = tmpdir + "/tokencert_uid" + str(UID) + ".pem"
+tokenkey_default = tmpdir + "/tokenkey_uid" + str(UID) + ".pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
 tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
