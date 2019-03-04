@@ -1,4 +1,4 @@
-# jalien_py
+# pyJalien
 Python interface to web-socket based interface to ALICE Grid Services
 
 Can be used as command mode and interactive mode :  
