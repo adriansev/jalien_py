@@ -143,7 +143,6 @@ def ProcessReceivedMessage(message=''):
     message.encode('ascii', 'ignore')
     json_dict = json.loads(message)
     currentdir = json_dict["metadata"]["currentdir"]
-    site = json_dict["metadata"]["site"]
     user = json_dict["metadata"]["user"]
 
     # COMMENTED FOR NOW AS NOT ALL CMDS RETURN error AND exitcode
@@ -210,7 +209,6 @@ async def JAlienConnect(jsoncmd = ''):
             # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
             commandlist = json_dict["results"][0]["message"]
             currentdir = json_dict["metadata"]["currentdir"]
-            site = json_dict["metadata"]["site"]
             user = json_dict["metadata"]["user"]
 
         if jsoncmd:  # command mode
@@ -224,7 +222,7 @@ async def JAlienConnect(jsoncmd = ''):
                 signal.signal(signal.SIGINT, signal_handler)
                 INPUT = ''
                 try:
-                    INPUT = input(f"jsh:{site}: {currentdir} > ")
+                    INPUT = input(f"jsh: {currentdir} > ")
                 except EOFError:
                     exit_message()
 
