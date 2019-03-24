@@ -2,6 +2,8 @@
 
 import os
 import sys
+import re
+import subprocess
 import signal
 import socket
 from datetime import datetime
@@ -240,6 +242,15 @@ async def JAlienConnect(jsoncmd = ''):
                     else:
                         print(commandlist)
                         continue
+
+                if re.match("sh:",INPUT):
+                    sh_cmd = re.sub(r'^sh:','',INPUT)
+                    shcmd_list = sh_cmd.split()
+                    shcmd_out = subprocess.Popen(shcmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    stdout,stderr = shcmd_out.communicate()
+                    if stdout: print (stdout.decode())
+                    if stderr: print (stderr.decode())
+                    continue
 
                 input_list.pop(0)
                 jsoncmd = CreateJsonCommand(cmd, input_list)
