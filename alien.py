@@ -181,7 +181,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     if json_output:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
     else:
-        websocket_output = '\n'.join( str(item['message']) for item in json_dict['results'] )
+        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
         if shellcmd:
             shell_run = subprocess.run(shellcmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii')
             if shell_run.stdout: print(shell_run.stdout)
@@ -193,17 +193,6 @@ def ProcessReceivedMessage(message='', shellcmd = None):
 
     # reset the current executed command, the received message was processed
     ccmd = ''
-
- 
- 
- #shcmd_out = subprocess.Popen(shcmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    #stdout,stderr = shcmd_out.communicate()
-    #if stdout: print (stdout.decode())
-    #if stderr: print (stderr.decode())
-
-
-
-
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -253,22 +242,22 @@ async def JAlienConnect(jsoncmd = ''):
                 if not INPUT: continue
 
                 # if shell command, just run it and return
-                if re.match("sh:",INPUT):
-                    sh_cmd = re.sub(r'^sh:','',INPUT)
+                if re.match("sh:", INPUT):
+                    sh_cmd = re.sub(r'^sh:', '', INPUT)
                     shcmd_list = sh_cmd.split()
                     shcmd_out = subprocess.Popen(shcmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    stdout,stderr = shcmd_out.communicate()
-                    if stdout: print (stdout.decode())
-                    if stderr: print (stderr.decode())
+                    stdout, stderr = shcmd_out.communicate()
+                    if stdout: print(stdout.decode())
+                    if stderr: print(stderr.decode())
                     continue
 
                 # process the input and take care of pipe to shell
                 input_list = ''
                 pipe_to_shell_cmd = ''
-                if "|" in str(INPUT): # if we have pipe to shell command
-                    input_split_pipe = INPUT.split('|', maxsplit=1) # split in before pipe (jalien cmd) and after pipe (shell cmd)
-                    input_list = input_split_pipe[0].split() # the list of arguments sent to websocket
-                    pipe_to_shell_cmd = input_split_pipe[1] # the shell command
+                if "|" in str(INPUT):  # if we have pipe to shell command
+                    input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
+                    input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
+                    pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
                 else:
                     input_list = INPUT.split()
 
@@ -286,9 +275,9 @@ async def JAlienConnect(jsoncmd = ''):
                         print(commandlist)
                         continue
 
-                input_list.pop(0) # we have the cmd, so remove from the list
-                jsoncmd = CreateJsonCommand(cmd, input_list) # make json with cmd and the list of arguments
-                ccmd = jsoncmd # keep a global copy of the json command that is run
+                input_list.pop(0)  # we have the cmd, so remove from the list
+                jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
+                ccmd = jsoncmd  # keep a global copy of the json command that is run
                 cmd_hist.append(jsoncmd)
                 if DEBUG: print(jsoncmd)
                 await websocket.send(jsoncmd)
