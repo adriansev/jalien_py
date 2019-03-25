@@ -20,6 +20,7 @@ from enum import Enum
 import asyncio
 import websockets
 # import websockets.speedups
+import delegator
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
@@ -187,9 +188,11 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     else:
         websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
         if shellcmd:
+            #print(websocket_output)
+            #print('end of webs output')
             shell_run = subprocess.run(shellcmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii')
             if shell_run.stdout: print(shell_run.stdout)
-            if shell_run.stderr: print(shell_run.stderr)
+            #if shell_run.stderr: print(shell_run.stderr)
         else:
             for item in json_dict['results']:
                 print(item['message'])
@@ -197,6 +200,10 @@ def ProcessReceivedMessage(message='', shellcmd = None):
 
     # reset the current executed command, the received message was processed
     ccmd = ''
+
+
+def ProcessXrootdCp (xrd_copy_command, wb):
+    print ("not implemented")
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -216,26 +223,30 @@ async def JAlienConnect(jsoncmd = ''):
             result = await websocket.recv()
             ProcessReceivedMessage(result)
 
-        if not commandlist:
-            # get the command list to check validity of commands
-            await websocket.send(CreateJsonCommand('commandlist'))
-            result = await websocket.recv()
-            result = result.lstrip()
-            json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
-            json_dict = json_dict_list[-1]
-            # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-            commandlist = json_dict["results"][0]["message"]
-            currentdir = json_dict["metadata"]["currentdir"]
-            user = json_dict["metadata"]["user"]
-
         if jsoncmd:  # command mode
             ccmd = jsoncmd
             signal.signal(signal.SIGINT, signal_handler)
-            await websocket.send(jsoncmd)
-            result = await websocket.recv()
-            ProcessReceivedMessage(result)
+            json_dict = json.loads(jsoncmd)
+            if re.match("cp", json_dict["command"]):
+                ProcessXrootdCp(json_dict["options"],websocket)
+            else:
+                await websocket.send(jsoncmd)
+                result = await websocket.recv()
+                ProcessReceivedMessage(result)
         else:        # interactive/shell mode
             while True:
+                if not commandlist:
+                    # get the command list to check validity of commands
+                    await websocket.send(CreateJsonCommand('commandlist'))
+                    result = await websocket.recv()
+                    result = result.lstrip()
+                    json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+                    json_dict = json_dict_list[-1]
+                    # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+                    commandlist = json_dict["results"][0]["message"]
+                    currentdir = json_dict["metadata"]["currentdir"]
+                    user = json_dict["metadata"]["user"]
+
                 signal.signal(signal.SIGINT, signal_handler)
                 INPUT = ''
                 try:
@@ -262,6 +273,7 @@ async def JAlienConnect(jsoncmd = ''):
                     input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
                     input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
                     pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
+                    pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
                 else:
                     input_list = INPUT.split()
 
@@ -284,6 +296,12 @@ async def JAlienConnect(jsoncmd = ''):
                 ccmd = jsoncmd  # keep a global copy of the json command that is run
                 cmd_hist.append(jsoncmd)
                 if DEBUG: print(jsoncmd)
+
+                # if cp goto cp function and return
+                if re.match("cp", cmd):
+                    ProcessXrootdCp(input_list,websocket)
+                    continue
+
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
                 result = result.lstrip()
