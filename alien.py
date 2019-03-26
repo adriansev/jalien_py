@@ -208,16 +208,24 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("where src|dst are local files if prefixed with file:// or grid files otherwise")
         return
 
-    print(xrd_copy_command)
+    FirstConnectMaxCnt = 2
+    TransactionTimeout = 60
+    RequestTimeout = 60
+    ReadCacheSize = 0
+    xrdcp_args = f"&FirstConnectMaxCnt='{FirstConnectMaxCnt}'&TransactionTimeout='{TransactionTimeout}'&RequestTimeout='{RequestTimeout}'&ReadCacheSize='{ReadCacheSize}'"
 
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
+    isDownload = bool(True)
 
     if xrd_copy_command[-2].startswith('file://'): isSrcLocal = True
     if xrd_copy_command[-1].startswith('file://'): isDstLocal = True
 
     src = xrd_copy_command[-2].replace("file://", "")
     dst = xrd_copy_command[-1].replace("file://", "")
+
+    src_path = Path(src)
+    dst_path = Path(dst)
 
     if isSrcLocal:
         print("Uploading to grid not implemented at this moment")
@@ -227,33 +235,51 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("src and dst cannot be both of the same type : one must be local and one grid")
         return
 
-    src_str_list = []
-    if not src.startswith('/'):
-        src_str_list.append(currentdir)
-        src_str_list.append("/")
-        src_str_list.append(src)
+    # we must keep the name of the file to be used as dst
+    file_name = ""
+
+    dst_final_path = ""
+    if isSrcLocal:  # WRITE TO GRID
+        file_name = dst_path.name
+        isDownload = False
+        if not dst_path.is_absolute():
+            dst_final_path = currentdir/dst_path
+        else:
+            dst_final_path = dst_path
+
+    src_final_path = ""
+    if isDstLocal:  # DOWNLOAD FROM GRID
+        file_name = src_path.name
+        isDownload = True
+        if not src_path.is_absolute():
+            src_final_path = currentdir/src_path
+        else:
+            src_final_path = src_path
+
+    print(dst_final_path)
+
+
+  #File "./j", line 267, in ProcessXrootdCp
+    #if dst_final_path.is_dir():
+#AttributeError: 'str' object has no attribute 'is_dir'
+
+################TODO
+
+
+    arg_list = []
+    src_final = ""
+    dst_final = ""
+    if isDownload:
+        arg_list.append("read")
+        arg_list.append(src_final_path.as_posix())
+        if dst_final_path.is_dir():
+            dst_final_path.joinpath(file_name)
+            dst_final = dst_final_path.as_posix()
     else:
-        src_str_list.append(src)
+        arg_list.append("write")
+        arg_list.append(dst_final_path.as_posix())
 
-    dst_str_list = []
-    if not dst.startswith('/'):
-        dst_str_list.append(currentdir)
-        dst_str_list.append("/")
-        dst_str_list.append(dst)
-        if not dst.endswith("/"):
-            dst_str_list.append('/')
-    else:
-        dst_str_list.append(dst)
-        if not dst.endswith("/"):
-            dst_str_list.append('/')
-
-    src_final = " ".join(src_str_list)
-    dst_final = " ".join(dst_str_list)
-
-    args = "read" + " " + src
-    args_list = args.split()
-    access_cmd_read_json = CreateJsonCommand('access', args_list)
-
+    access_cmd_read_json = CreateJsonCommand('access', arg_list)
     print(access_cmd_read_json)
     await wb.send(access_cmd_read_json)
     result = await wb.recv()
@@ -261,8 +287,12 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     json_dict = json.loads(result)
 
     for server in json_dict['results']:
-        print(server['url'])
-        print(server['envelope'])
+        #print(server['url'])
+        envelope = server['envelope']
+        #print(repr(envelope))
+        complete_url = server['url'] + "?" + "authz=" + repr(server['envelope']) + xrdcp_args
+        print(repr("xrdcp " + complete_url + " " + dst_final))
+        print("\n\n")
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -276,17 +306,31 @@ async def JAlienConnect(jsoncmd = ''):
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
     async with websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue = 4, max_size = 16*1024*1024) as websocket:
+        # if the certificate used is not the token, then get one
         if cert == usercert:
             getToken = bool(True)
             await websocket.send(CreateJsonCommand('token'))
             result = await websocket.recv()
             ProcessReceivedMessage(result)
 
+        # no matter if command or interactive mode, we need currentdir, user and commandlist
+        if not commandlist:
+            # get the command list to check validity of commands
+            await websocket.send(CreateJsonCommand('commandlist'))
+            result = await websocket.recv()
+            result = result.lstrip()
+            json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+            json_dict = json_dict_list[-1]
+            # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+            commandlist = json_dict["results"][0]["message"]
+            currentdir = json_dict["metadata"]["currentdir"]
+            user = json_dict["metadata"]["user"]
+
         if jsoncmd:  # command mode
             ccmd = jsoncmd
             signal.signal(signal.SIGINT, signal_handler)
             json_dict = json.loads(jsoncmd)
-            if json_dict["command"].startswith("cp"):
+            if json_dict["command"].startswith("cp"):  # defer cp processing to ProcessXrootdCp
                 await ProcessXrootdCp(json_dict["options"], websocket)
             else:
                 await websocket.send(jsoncmd)
@@ -294,18 +338,6 @@ async def JAlienConnect(jsoncmd = ''):
                 ProcessReceivedMessage(result)
         else:        # interactive/shell mode
             while True:
-                if not commandlist:
-                    # get the command list to check validity of commands
-                    await websocket.send(CreateJsonCommand('commandlist'))
-                    result = await websocket.recv()
-                    result = result.lstrip()
-                    json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
-                    json_dict = json_dict_list[-1]
-                    # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-                    commandlist = json_dict["results"][0]["message"]
-                    currentdir = json_dict["metadata"]["currentdir"]
-                    user = json_dict["metadata"]["user"]
-
                 signal.signal(signal.SIGINT, signal_handler)
                 INPUT = ''
                 try:
@@ -314,7 +346,6 @@ async def JAlienConnect(jsoncmd = ''):
                     exit_message()
 
                 if not INPUT: continue
-
                 # if shell command, just run it and return
                 if re.match("sh:", INPUT):
                     sh_cmd = re.sub(r'^sh:', '', INPUT)
