@@ -1,10 +1,6 @@
 #!/bin/env python3
 
 import sys
-if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This script requires a minimum of Python version 3.6")
-    sys.exit(1)
-
 import os
 import re
 import subprocess
@@ -21,6 +17,10 @@ import asyncio
 import websockets
 # import websockets.speedups
 import delegator
+
+if sys.version_info[0] != 3 or sys.version_info[1] < 6:
+    print("This script requires a minimum of Python version 3.6")
+    sys.exit(1)
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
@@ -200,12 +200,12 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     ccmd = ''
 
 
-async def ProcessXrootdCp (xrd_copy_command, wb):
-    if len(xrd_copy_command) < 2 :
-        print ("at least 2 arguments are needed : src dst")
-        print ("the command is of the form of (with the strict order of arguments):")
-        print ("cp args src dst")
-        print ("where src|dst are local files if prefixed with file:// or grid files otherwise")
+async def ProcessXrootdCp(xrd_copy_command, wb):
+    if len(xrd_copy_command) < 2:
+        print("at least 2 arguments are needed : src dst")
+        print("the command is of the form of (with the strict order of arguments):")
+        print("cp args src dst")
+        print("where src|dst are local files if prefixed with file:// or grid files otherwise")
         return
 
     print(xrd_copy_command)
@@ -216,8 +216,8 @@ async def ProcessXrootdCp (xrd_copy_command, wb):
     if xrd_copy_command[-2].startswith('file://'): isSrcLocal = True
     if xrd_copy_command[-1].startswith('file://'): isDstLocal = True
 
-    src = xrd_copy_command[-2].replace("file://","")
-    dst = xrd_copy_command[-1].replace("file://","")
+    src = xrd_copy_command[-2].replace("file://", "")
+    dst = xrd_copy_command[-1].replace("file://", "")
 
     if isSrcLocal:
         print("Uploading to grid not implemented at this moment")
@@ -287,7 +287,7 @@ async def JAlienConnect(jsoncmd = ''):
             signal.signal(signal.SIGINT, signal_handler)
             json_dict = json.loads(jsoncmd)
             if json_dict["command"].startswith("cp"):
-                await ProcessXrootdCp(json_dict["options"],websocket)
+                await ProcessXrootdCp(json_dict["options"], websocket)
             else:
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
@@ -358,7 +358,7 @@ async def JAlienConnect(jsoncmd = ''):
 
                 # if cp goto cp function and return
                 if re.match("cp", cmd):
-                    ProcessXrootdCp(input_list,websocket)
+                    ProcessXrootdCp(input_list, websocket)
                     continue
 
                 await websocket.send(jsoncmd)
