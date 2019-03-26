@@ -188,11 +188,9 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     else:
         websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
         if shellcmd:
-            #print(websocket_output)
-            #print('end of webs output')
             shell_run = subprocess.run(shellcmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii')
             if shell_run.stdout: print(shell_run.stdout)
-            #if shell_run.stderr: print(shell_run.stderr)
+            if shell_run.stderr: print(shell_run.stderr)
         else:
             for item in json_dict['results']:
                 print(item['message'])
@@ -202,8 +200,69 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     ccmd = ''
 
 
-def ProcessXrootdCp (xrd_copy_command, wb):
-    print ("not implemented")
+async def ProcessXrootdCp (xrd_copy_command, wb):
+    if len(xrd_copy_command) < 2 :
+        print ("at least 2 arguments are needed : src dst")
+        print ("the command is of the form of (with the strict order of arguments):")
+        print ("cp args src dst")
+        print ("where src|dst are local files if prefixed with file:// or grid files otherwise")
+        return
+
+    print(xrd_copy_command)
+
+    isSrcLocal = bool(False)
+    isDstLocal = bool(False)
+
+    if xrd_copy_command[-2].startswith('file://'): isSrcLocal = True
+    if xrd_copy_command[-1].startswith('file://'): isDstLocal = True
+
+    src = xrd_copy_command[-2].replace("file://","")
+    dst = xrd_copy_command[-1].replace("file://","")
+
+    if isSrcLocal:
+        print("Uploading to grid not implemented at this moment")
+        return
+
+    if not (isSrcLocal ^ isDstLocal):
+        print("src and dst cannot be both of the same type : one must be local and one grid")
+        return
+
+    src_str_list = []
+    if not src.startswith('/'):
+        src_str_list.append(currentdir)
+        src_str_list.append("/")
+        src_str_list.append(src)
+    else:
+        src_str_list.append(src)
+
+    dst_str_list = []
+    if not dst.startswith('/'):
+        dst_str_list.append(currentdir)
+        dst_str_list.append("/")
+        dst_str_list.append(dst)
+        if not dst.endswith("/"):
+            dst_str_list.append('/')
+    else:
+        dst_str_list.append(dst)
+        if not dst.endswith("/"):
+            dst_str_list.append('/')
+
+    src_final = " ".join(src_str_list)
+    dst_final = " ".join(dst_str_list)
+
+    args = "read" + " " + src
+    args_list = args.split()
+    access_cmd_read_json = CreateJsonCommand('access', args_list)
+
+    print(access_cmd_read_json)
+    await wb.send(access_cmd_read_json)
+    result = await wb.recv()
+    result.encode('ascii', 'ignore')
+    json_dict = json.loads(result)
+
+    for server in json_dict['results']:
+        print(server['url'])
+        print(server['envelope'])
 
 
 async def JAlienConnect(jsoncmd = ''):
@@ -227,8 +286,8 @@ async def JAlienConnect(jsoncmd = ''):
             ccmd = jsoncmd
             signal.signal(signal.SIGINT, signal_handler)
             json_dict = json.loads(jsoncmd)
-            if re.match("cp", json_dict["command"]):
-                ProcessXrootdCp(json_dict["options"],websocket)
+            if json_dict["command"].startswith("cp"):
+                await ProcessXrootdCp(json_dict["options"],websocket)
             else:
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
