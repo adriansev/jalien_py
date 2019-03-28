@@ -33,11 +33,16 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
     def end(self, jobId, results):
         print("jobID : {0} ; results: {1}".format(jobId, results))
 
-    def update(self, processed, total):
-        print("processed: {0}, total: {1}".format(processed, total))
+    def update(self, jobId, processed, total):
+        print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
 
 def XrdCopy(src, dst):
+        #-N | --nopbar       does not print the progress bar
+        #-p | --path         automatically create remote destination path
+        #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
+        #-f | --force        replaces any existing output file
+        #-v | --verbose      produces more information about the copy
         process = client.CopyProcess()
         process.add_job(src, dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
         handler = MyCopyProgressHandler()
@@ -237,20 +242,6 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("where src|dst are local files if prefixed with file:// or grid files otherwise")
         return
 
-    #-N | --nopbar       does not print the progress bar
-    #-p | --path         automatically create remote destination path
-    #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
-    #-f | --force        replaces any existing output file
-    #-v | --verbose      produces more information about the copy
-    xrdcp_cmd = "xrdcp -N -p -P -f -v "
-    xrdcp_cmd_list = []
-    xrdcp_cmd_list.append("xrdcp")
-    xrdcp_cmd_list.append("-N")
-    xrdcp_cmd_list.append("-p")
-    xrdcp_cmd_list.append("-P")
-    xrdcp_cmd_list.append("-f")
-    xrdcp_cmd_list.append("-v")
-
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
     isDownload = bool(True)
@@ -324,20 +315,8 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
     for server in json_dict['results']:
-        envelope = server['envelope']
-        complete_url = "\'" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\'"
+        complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
         XrdCopy(complete_url, dst_final_path_str)
-
-        #xrd_copy_list = []
-        #xrd_copy_list.extend(xrdcp_cmd_list)
-        #xrd_copy_list.append(complete_url)
-        #xrd_copy_list.append(dst_final_path_str)
-        #print (" ".join(xrd_copy_list))
-        #xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #stdout, stderr = xrd_job.communicate()
-        #print(stdout)
-        #print(stderr)
-        #if xrd_job.returncode == 0: break
 
 
 async def JAlienConnect(jsoncmd = ''):
