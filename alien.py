@@ -30,14 +30,14 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         print("source: {}".format(source))
         print("target: {}".format(target))
 
-    def end(self, status):
-        print ("end status: {}".format(status))
+    def end(self, jobId, results):
+        print("jobID : {0} ; results: {1}".format(jobId, results))
 
     def update(self, processed, total):
         print("processed: {0}, total: {1}".format(processed, total))
 
 
-def XrdCopy( src, dst ):
+def XrdCopy(src, dst):
         process = client.CopyProcess()
         process.add_job(src, dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
         handler = MyCopyProgressHandler()
@@ -292,8 +292,6 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
         dst_final_path_str = dst_path.as_posix()
 
-
-
     # process paths for UPLOAD
     src_final_path = ""
     src_final_path_str = ""
@@ -332,14 +330,13 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         xrd_copy_list.append(complete_url)
         xrd_copy_list.append(dst_final_path_str)
         #print (" ".join(xrd_copy_list))
-        XrdCopy( complete_url, dst_final_path_str )
+        XrdCopy(complete_url, dst_final_path_str)
 
         #xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #stdout, stderr = xrd_job.communicate()
         #print(stdout)
         #print(stderr)
         #if xrd_job.returncode == 0: break
-
 
 
 async def JAlienConnect(jsoncmd = ''):
