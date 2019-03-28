@@ -27,8 +27,9 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 class MyCopyProgressHandler(client.utils.CopyProgressHandler):
     def begin(self, id, total, source, target):
         print("id: {0}, total: {1}".format(id, total))
-        print("source: {}".format(source))
-        print("target: {}".format(target))
+        if XRDDEBUG:
+            print("source: {}".format(source))
+            print("target: {}".format(target))
 
     def end(self, jobId, results):
         print("jobID : {0} ; results: {1}".format(jobId, results))
@@ -57,6 +58,7 @@ ReadCacheSize = 0
 xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
+XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
 
 # Steering output
 json_output = bool(False)
