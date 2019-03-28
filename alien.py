@@ -257,21 +257,31 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
 
     # clean up the paths to be used in the xrdcp command
     src = ''
+    src_path = ''
     if xrd_copy_command[-2].startswith('file://'):
         isSrcLocal = True
         src = xrd_copy_command[-2].replace("file://", "")
         src = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), src)
         src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), src)
+    else:
+        src = xrd_copy_command[-2]
 
     dst = ''
+    dst_path = ''
     if xrd_copy_command[-1].startswith('file://'):
         isDstLocal = True
         dst = xrd_copy_command[-1].replace("file://", "")
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), dst)
         dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), dst)
+    else:
+        dst = xrd_copy_command[-2]
 
     src_path = Path(src)
     dst_path = Path(dst)
+    file_name = src_path.name  # no matter the case, the actual proper filename is given by src
+
+    print(src_path)
+    print(dst_path)
 
     if isSrcLocal:
         print("Uploading to grid not implemented at this moment")
@@ -281,15 +291,11 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("src and dst cannot be both of the same type : one must be local and one grid")
         return
 
-    # we must keep the name of the file to be used as dst
-    file_name = ""
-
     # process paths for DOWNLOAD
     get_envelope_arg_list = []  # construct command for getting authz envelope
     src_final_path_str = ''
     dst_final_path_str = ''
     if isDstLocal:  # DOWNLOAD FROM GRID
-        file_name = src_path.name
         isDownload = True
         if not dst_path.is_absolute():
             dst_path = Path.cwd()/dst_path
@@ -300,8 +306,8 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
 
         get_envelope_arg_list.append("read")
         get_envelope_arg_list.append(src_path.as_posix())
+        print(get_envelope_arg_list)
     else:  # WRITE TO GRID
-        file_name = src_path.name
         isDownload = False
         if not dst_path.is_absolute():
             dst_path = Path(currentdir)/dst_path
@@ -318,7 +324,6 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     result = await wb.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
-
     for server in json_dict['results']:
         envelope = server['envelope']
         complete_url = "\'" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\'"
