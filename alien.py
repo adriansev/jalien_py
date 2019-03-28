@@ -212,7 +212,21 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     TransactionTimeout = 60
     RequestTimeout = 60
     ReadCacheSize = 0
-    xrdcp_args = f"&FirstConnectMaxCnt='{FirstConnectMaxCnt}'&TransactionTimeout='{TransactionTimeout}'&RequestTimeout='{RequestTimeout}'&ReadCacheSize='{ReadCacheSize}'"
+    xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
+
+    #-N | --nopbar       does not print the progress bar
+    #-p | --path         automatically create remote destination path
+    #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
+    #-f | --force        replaces any existing output file
+    #-v | --verbose      produces more information about the copy
+    xrdcp_cmd = "xrdcp -N -p -P -f -v "
+    xrdcp_cmd_list = []
+    xrdcp_cmd_list.append("xrdcp")
+    xrdcp_cmd_list.append("-N")
+    xrdcp_cmd_list.append("-p")
+    xrdcp_cmd_list.append("-P")
+    xrdcp_cmd_list.append("-f")
+    xrdcp_cmd_list.append("-v")
 
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
@@ -223,6 +237,10 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
 
     src = xrd_copy_command[-2].replace("file://", "")
     dst = xrd_copy_command[-1].replace("file://", "")
+
+    if isDstLocal:
+        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), dst)
+        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), dst)
 
     src_path = Path(src)
     dst_path = Path(dst)
@@ -238,61 +256,68 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     # we must keep the name of the file to be used as dst
     file_name = ""
 
+    # process paths for DOWNLOAD
     dst_final_path = ""
-    if isSrcLocal:  # WRITE TO GRID
-        file_name = dst_path.name
-        isDownload = False
-        if not dst_path.is_absolute():
-            dst_final_path = currentdir/dst_path
-        else:
-            dst_final_path = dst_path
-
-    src_final_path = ""
+    dst_final_path_str = ""
     if isDstLocal:  # DOWNLOAD FROM GRID
         file_name = src_path.name
         isDownload = True
-        if not src_path.is_absolute():
-            src_final_path = currentdir/src_path
+        if not dst_path.is_absolute():
+            dst_path = Path.cwd()/dst_path
         else:
-            src_final_path = src_path
+            dst_path = dst_path
+        if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
+        dst_final_path_str = dst_path.as_posix()
 
-    print(dst_final_path)
 
 
-  #File "./j", line 267, in ProcessXrootdCp
-    #if dst_final_path.is_dir():
-#AttributeError: 'str' object has no attribute 'is_dir'
-
-################TODO
-
+    # process paths for UPLOAD
+    src_final_path = ""
+    src_final_path_str = ""
+    #if isSrcLocal:  # WRITE TO GRID
+        #file_name = dst_path.name
+        #isDownload = False
+        #if dst_path.is_dir(): dst_path.joinpath(file_name)
+        #print (dst_path)
+        #if not dst_path.is_absolute():
+            #dst_final_path = currentdir/dst_path
+        #else:
+            #dst_final_path = dst_path
+        #dst_final_path_str = dst_final_path.as_posix()
 
     arg_list = []
     src_final = ""
     dst_final = ""
     if isDownload:
         arg_list.append("read")
-        arg_list.append(src_final_path.as_posix())
-        if dst_final_path.is_dir():
-            dst_final_path.joinpath(file_name)
-            dst_final = dst_final_path.as_posix()
+        arg_list.append(src_path.as_posix())
     else:
         arg_list.append("write")
-        arg_list.append(dst_final_path.as_posix())
+        arg_list.append(dst_final_path_str)
 
     access_cmd_read_json = CreateJsonCommand('access', arg_list)
-    print(access_cmd_read_json)
     await wb.send(access_cmd_read_json)
     result = await wb.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
 
     for server in json_dict['results']:
-        #print(server['url'])
         envelope = server['envelope']
-        #print(repr(envelope))
-        complete_url = server['url'] + "?" + "authz=" + repr(server['envelope']) + xrdcp_args
-        print(repr("xrdcp " + complete_url + " " + dst_final))
-        print("\n\n")
+        complete_url = "\"" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\""
+        xrd_copy = xrdcp_cmd + complete_url + " " + dst_final_path_str
+        xrd_copy_list = []
+        xrd_copy_list.extend(xrdcp_cmd_list)
+        xrd_copy_list.append(complete_url)
+        xrd_copy_list.append(dst_final_path_str)
+
+        print(" ".join(xrd_copy_list))
+        print("\n")
+        xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = xrd_job.communicate()
+        print(stdout)
+        print(stderr)
+        if xrd_job.returncode == 0: break
+
 
 
 async def JAlienConnect(jsoncmd = ''):
