@@ -26,13 +26,20 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 class MyCopyProgressHandler(client.utils.CopyProgressHandler):
     def begin(self, id, total, source, target):
-        print("id: {0}, total: {1}".format(id, total))
+        print("jobID: {0}/{1}".format(id, total))
         if XRDDEBUG:
             print("source: {}".format(source))
             print("target: {}".format(target))
 
     def end(self, jobId, results):
-        print("jobID : {0} ; results: {1}".format(jobId, results))
+        results_message = results['status'].message
+        results_status = results['status'].status
+        results_errno = results['status'].errno
+        results_code = results['status'].code
+        results_error = results['status'].error
+        results_fatal = results['status'].fatal
+        results_ok = results['status'].ok
+        print("OK: {0} ; ERROR: {1} ; FATAL: {2} ; ERRNO: {3} ; MESSAGE: {4}".format(results_ok, results_error, results_fatal, results_errno, results_message))
 
     def update(self, jobId, processed, total):
         print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
@@ -45,8 +52,10 @@ def XrdCopy(src, dst):
         #-f | --force        replaces any existing output file
         #-v | --verbose      produces more information about the copy
         process = client.CopyProcess()
-        process.add_job(src, dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
         handler = MyCopyProgressHandler()
+        for url_src in src:
+            for url_dst in dst:
+                process.add_job(url_src, url_dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
         process.prepare()
         process.run(handler)
 
@@ -324,18 +333,24 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     json_dict = json.loads(result)
     #print(json.dumps(json_dict, sort_keys=True, indent=4))
 
-    for server in json_dict['results']:
-        complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-        if isDownload:
-            if XRDDEBUG:
-                print("src: {}".format(complete_url))
-                print("dst: {}".format(dst_final_path_str))
-            XrdCopy(complete_url, dst_final_path_str)
-        else:
-            if XRDDEBUG:
-                print("src: {}".format(src_final_path_str))
-                print("dst: {}".format(complete_url))
-            XrdCopy(src_final_path_str, complete_url)
+    url_list_src = []
+    url_list_dst = []
+    if isDownload:
+        for server in json_dict['results']:
+            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+            url_list_src.append(complete_url)
+        url_list_dst.append(dst_final_path_str)
+    else:
+        for server in json_dict['results']:
+            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+            url_list_dst.append(complete_url)
+        url_list_src.append(src_final_path_str)
+
+    if XRDDEBUG:
+        print("src: {}".format(url_list_src))
+        print("dst: {}".format(url_list_dst))
+
+    XrdCopy(url_list_src, url_list_dst)
 
 
 async def JAlienConnect(jsoncmd = ''):
