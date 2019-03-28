@@ -17,6 +17,7 @@ import asyncio
 import websockets
 # import websockets.speedups
 import delegator
+import pyxrootd
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6")
