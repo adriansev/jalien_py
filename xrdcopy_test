@@ -1,0 +1,14 @@
+#!/bin/bash
+
+FirstConnectMaxCnt=2
+TransactionTimeout=60
+RequestTimeout=60
+ReadCacheSize=0
+xrdcp_args="FirstConnectMaxCnt=${FirstConnectMaxCnt}&TransactionTimeout=${TransactionTimeout}&RequestTimeout=${RequestTimeout}&ReadCacheSize=${ReadCacheSize}"
+xrdcp_cmd="xrdcp -N -p -P -f -v "
+
+SRC="${1}"
+ENVELOPE="${2}"
+DST="${3}"
+
+${xrdcp_cmd} "${SRC}?${xrdcp_args}&authz=$(<${ENVELOPE})" "${DST}"
