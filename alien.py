@@ -306,7 +306,6 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
 
         get_envelope_arg_list.append("read")
         get_envelope_arg_list.append(src_path.as_posix())
-        print(get_envelope_arg_list)
     else:  # WRITE TO GRID
         isDownload = False
         if not dst_path.is_absolute():
