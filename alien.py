@@ -45,6 +45,12 @@ def XrdCopy( src, dst ):
         process.run(handler)
 
 
+FirstConnectMaxCnt = 2
+TransactionTimeout = 60
+RequestTimeout = 60
+ReadCacheSize = 0
+xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
+
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
 # Steering output
@@ -230,12 +236,6 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("cp args src dst")
         print("where src|dst are local files if prefixed with file:// or grid files otherwise")
         return
-
-    FirstConnectMaxCnt = 2
-    TransactionTimeout = 60
-    RequestTimeout = 60
-    ReadCacheSize = 0
-    xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
 
     #-N | --nopbar       does not print the progress bar
     #-p | --path         automatically create remote destination path
