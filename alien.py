@@ -17,11 +17,33 @@ import asyncio
 import websockets
 # import websockets.speedups
 import delegator
-import pyxrootd
+from XRootD import client
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6")
     sys.exit(1)
+
+
+class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+    def begin(self, id, total, source, target):
+        print("id: {0}, total: {1}".format(id, total))
+        print("source: {}".format(source))
+        print("target: {}".format(target))
+
+    def end(self, status):
+        print ("end status: {}".format(status))
+
+    def update(self, processed, total):
+        print("processed: {0}, total: {1}".format(processed, total))
+
+
+def XrdCopy( src, dst ):
+        process = client.CopyProcess()
+        process.add_job(src, dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
+        handler = MyCopyProgressHandler()
+        process.prepare()
+        process.run(handler)
+
 
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 
@@ -304,20 +326,19 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
 
     for server in json_dict['results']:
         envelope = server['envelope']
-        complete_url = "\"" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\""
-        xrd_copy = xrdcp_cmd + complete_url + " " + dst_final_path_str
+        complete_url = "\'" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\'"
         xrd_copy_list = []
         xrd_copy_list.extend(xrdcp_cmd_list)
         xrd_copy_list.append(complete_url)
         xrd_copy_list.append(dst_final_path_str)
+        #print (" ".join(xrd_copy_list))
+        XrdCopy( complete_url, dst_final_path_str )
 
-        print(" ".join(xrd_copy_list))
-        print("\n")
-        xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = xrd_job.communicate()
-        print(stdout)
-        print(stderr)
-        if xrd_job.returncode == 0: break
+        #xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #stdout, stderr = xrd_job.communicate()
+        #print(stdout)
+        #print(stderr)
+        #if xrd_job.returncode == 0: break
 
 
 
