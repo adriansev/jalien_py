@@ -267,18 +267,11 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), dst)
         dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), dst)
     else:
-        dst = xrd_copy_command[-2]
+        dst = xrd_copy_command[-1]
 
     src_path = Path(src)
     dst_path = Path(dst)
     file_name = src_path.name  # no matter the case, the actual proper filename is given by src
-
-    print(src_path)
-    print(dst_path)
-
-    if isSrcLocal:
-        print("Uploading to grid not implemented at this moment")
-        return
 
     if not (isSrcLocal ^ isDstLocal):
         print("src and dst cannot be both of the same type : one must be local and one grid")
@@ -306,19 +299,43 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         else:
             dst_path = dst_path
         if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
+
+        if not src_path.is_absolute():
+            src_path = Path.cwd()/src_path
+        else:
+            src_path = src_path
+
         dst_final_path_str = dst_path.as_posix()
+        src_final_path_str = src_path.as_posix()
 
         get_envelope_arg_list.append("write")
         get_envelope_arg_list.append(dst_path.as_posix())
+
+    if XRDDEBUG:
+        print(src_path.as_posix())
+        print(dst_path.as_posix())
+        print(get_envelope_arg_list)
+        print("\n")
 
     access_cmd_json = CreateJsonCommand('access', get_envelope_arg_list)
     await wb.send(access_cmd_json)
     result = await wb.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
+    #print(json.dumps(json_dict, sort_keys=True, indent=4))
+
     for server in json_dict['results']:
         complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-        XrdCopy(complete_url, dst_final_path_str)
+        if isDownload:
+            if XRDDEBUG:
+                print("src: {}".format(complete_url))
+                print("dst: {}".format(dst_final_path_str))
+            XrdCopy(complete_url, dst_final_path_str)
+        else:
+            if XRDDEBUG:
+                print("src: {}".format(src_final_path_str))
+                print("dst: {}".format(complete_url))
+            XrdCopy(src_final_path_str, complete_url)
 
 
 async def JAlienConnect(jsoncmd = ''):
