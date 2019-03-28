@@ -255,13 +255,18 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     isDstLocal = bool(False)
     isDownload = bool(True)
 
-    if xrd_copy_command[-2].startswith('file://'): isSrcLocal = True
-    if xrd_copy_command[-1].startswith('file://'): isDstLocal = True
+    # clean up the paths to be used in the xrdcp command
+    src = ''
+    if xrd_copy_command[-2].startswith('file://'):
+        isSrcLocal = True
+        src = xrd_copy_command[-2].replace("file://", "")
+        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), src)
+        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), src)
 
-    src = xrd_copy_command[-2].replace("file://", "")
-    dst = xrd_copy_command[-1].replace("file://", "")
-
-    if isDstLocal:
+    dst = ''
+    if xrd_copy_command[-1].startswith('file://'):
+        isDstLocal = True
+        dst = xrd_copy_command[-1].replace("file://", "")
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), dst)
         dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), dst)
 
@@ -280,8 +285,9 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     file_name = ""
 
     # process paths for DOWNLOAD
-    dst_final_path = ""
-    dst_final_path_str = ""
+    get_envelope_arg_list = []  # construct command for getting authz envelope
+    src_final_path_str = ''
+    dst_final_path_str = ''
     if isDstLocal:  # DOWNLOAD FROM GRID
         file_name = src_path.name
         isDownload = True
@@ -292,32 +298,23 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
         dst_final_path_str = dst_path.as_posix()
 
-    # process paths for UPLOAD
-    src_final_path = ""
-    src_final_path_str = ""
-    #if isSrcLocal:  # WRITE TO GRID
-        #file_name = dst_path.name
-        #isDownload = False
-        #if dst_path.is_dir(): dst_path.joinpath(file_name)
-        #print (dst_path)
-        #if not dst_path.is_absolute():
-            #dst_final_path = currentdir/dst_path
-        #else:
-            #dst_final_path = dst_path
-        #dst_final_path_str = dst_final_path.as_posix()
+        get_envelope_arg_list.append("read")
+        get_envelope_arg_list.append(src_path.as_posix())
+    else:  # WRITE TO GRID
+        file_name = src_path.name
+        isDownload = False
+        if not dst_path.is_absolute():
+            dst_path = Path(currentdir)/dst_path
+        else:
+            dst_path = dst_path
+        if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
+        dst_final_path_str = dst_path.as_posix()
 
-    arg_list = []
-    src_final = ""
-    dst_final = ""
-    if isDownload:
-        arg_list.append("read")
-        arg_list.append(src_path.as_posix())
-    else:
-        arg_list.append("write")
-        arg_list.append(dst_final_path_str)
+        get_envelope_arg_list.append("write")
+        get_envelope_arg_list.append(dst_path.as_posix())
 
-    access_cmd_read_json = CreateJsonCommand('access', arg_list)
-    await wb.send(access_cmd_read_json)
+    access_cmd_json = CreateJsonCommand('access', get_envelope_arg_list)
+    await wb.send(access_cmd_json)
     result = await wb.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
@@ -325,13 +322,13 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
     for server in json_dict['results']:
         envelope = server['envelope']
         complete_url = "\'" + server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args + "\'"
-        xrd_copy_list = []
-        xrd_copy_list.extend(xrdcp_cmd_list)
-        xrd_copy_list.append(complete_url)
-        xrd_copy_list.append(dst_final_path_str)
-        #print (" ".join(xrd_copy_list))
         XrdCopy(complete_url, dst_final_path_str)
 
+        #xrd_copy_list = []
+        #xrd_copy_list.extend(xrdcp_cmd_list)
+        #xrd_copy_list.append(complete_url)
+        #xrd_copy_list.append(dst_final_path_str)
+        #print (" ".join(xrd_copy_list))
         #xrd_job = subprocess.Popen(xrd_copy_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #stdout, stderr = xrd_job.communicate()
         #print(stdout)
