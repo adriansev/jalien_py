@@ -6,17 +6,17 @@ import re
 import subprocess
 import signal
 import socket
-from datetime import datetime
-import ssl
-import OpenSSL
 import json
 import logging
+import ssl
+import OpenSSL
+from datetime import datetime
 from pathlib import Path
 from enum import Enum
+from urllib.parse import urlparse
 import asyncio
 import websockets
 # import websockets.speedups
-import delegator
 from XRootD import client
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -25,13 +25,20 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 
 class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+    wb = None
+    isUpload = False
+    src = ''
+    dst = ''
+
     def begin(self, id, total, source, target):
         print("jobID: {0}/{1}".format(id, total))
+        self.src = source
+        self.dst = target
         if XRDDEBUG:
             print("source: {}".format(source))
             print("target: {}".format(target))
 
-    def end(self, jobId, results):
+    async def end(self, jobId, results):
         results_message = results['status'].message
         results_status = results['status'].status
         results_errno = results['status'].errno
@@ -40,24 +47,38 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         results_fatal = results['status'].fatal
         results_ok = results['status'].ok
         print("OK: {0} ; ERROR: {1} ; FATAL: {2} ; ERRNO: {3} ; MESSAGE: {4}".format(results_ok, results_error, results_fatal, results_errno, results_message))
+        if self.isUpload:
+            if results_ok:
+                print("let's do the commit")
+                dst_str = str(self.dst)
+                link = urlparse(dst_str)
+                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')
+                json_commit = CreateJsonCommand('commit', [str(token)])
+                await (self.wb).send(json_commit)
+                wb_results = await (self.wb).recv()
+                json_dict = json.loads(wb_results)
+                print(json.dumps(json_dict, sort_keys=True, indent=4))
 
     def update(self, jobId, processed, total):
         print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
 
-def XrdCopy(src, dst):
-        #-N | --nopbar       does not print the progress bar
-        #-p | --path         automatically create remote destination path
-        #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
-        #-f | --force        replaces any existing output file
-        #-v | --verbose      produces more information about the copy
-        process = client.CopyProcess()
-        handler = MyCopyProgressHandler()
-        for url_src in src:
-            for url_dst in dst:
-                process.add_job(url_src, url_dst, force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
-        process.prepare()
-        process.run(handler)
+async def XrdCopy(src, dst):
+    global websocket
+    #-N | --nopbar       does not print the progress bar
+    #-p | --path         automatically create remote destination path
+    #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
+    #-f | --force        replaces any existing output file
+    #-v | --verbose      produces more information about the copy
+    process = client.CopyProcess()
+    handler = MyCopyProgressHandler()
+    handler.wb = websocket
+    if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
+    for url_src in src:
+        for url_dst in dst:
+            process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
+    process.prepare()
+    process.run(handler)
 
 
 # xrdcp generic parameters (used by ALICE tests)
@@ -340,21 +361,23 @@ async def ProcessXrootdCp(xrd_copy_command):
     url_list_src = []
     url_list_dst = []
     if isDownload:
+        # multiple replicas are downloaded to a single file
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_src.append(complete_url)
-        url_list_dst.append(dst_final_path_str)
+            url_list_src.append({"url": complete_url, "token": server['envelope']})
+        url_list_dst.append({"url": dst_final_path_str, "token": ''})
     else:
+        # single file is uploaded to multiple replicas
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_dst.append(complete_url)
-        url_list_src.append(src_final_path_str)
+            url_list_dst.append({"url": complete_url, "token": server['envelope']})
+        url_list_src.append({"url": src_final_path_str, "token": ''})
 
     if XRDDEBUG:
         print("src: {}".format(url_list_src))
         print("dst: {}".format(url_list_dst))
 
-    XrdCopy(url_list_src, url_list_dst)
+    await XrdCopy(url_list_src, url_list_dst)
 
 
 async def JAlienConnect(jsoncmd = ''):
