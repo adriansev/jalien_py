@@ -393,7 +393,7 @@ async def JAlienConnect(jsoncmd = ''):
             signal.signal(signal.SIGINT, signal_handler)
             json_dict = json.loads(jsoncmd)
             if json_dict["command"].startswith("cp"):  # defer cp processing to ProcessXrootdCp
-                await ProcessXrootdCp(json_dict["options"], websocket)
+                await ProcessXrootdCp(json_dict["options"])
             else:
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
@@ -419,7 +419,7 @@ async def JAlienConnect(jsoncmd = ''):
                     continue
 
                 # process the input and take care of pipe to shell
-                input_list = ''
+                input_list = []
                 pipe_to_shell_cmd = ''
                 if "|" in str(INPUT):  # if we have pipe to shell command
                     input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
@@ -431,9 +431,16 @@ async def JAlienConnect(jsoncmd = ''):
 
                 # process help commands
                 cmd = input_list[0]
+                input_list.pop(0)  # we have the cmd, so remove from the list
+
+                # defer to cp xrootd function
+                if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
+                    await ProcessXrootdCp(input_list)
+                    continue
+
                 if (cmd == "?") or (cmd == "help"):
-                    if len(input_list) > 1:
-                        cmdhelp = input_list[1]
+                    if len(input_list) > 0:
+                        cmdhelp = input_list[0]
                         if cmdhelp in commandlist:
                             input_list.clear()
                             cmd = cmdhelp
@@ -443,23 +450,16 @@ async def JAlienConnect(jsoncmd = ''):
                         print(commandlist)
                         continue
 
-                input_list.pop(0)  # we have the cmd, so remove from the list
                 jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
                 ccmd = jsoncmd  # keep a global copy of the json command that is run
                 cmd_hist.append(jsoncmd)
                 if DEBUG: print(jsoncmd)
 
-                # if cp goto cp function and return
-                if re.match("cp", cmd):
-                    ProcessXrootdCp(input_list, websocket)
-                    continue
-
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
                 result = result.lstrip()
                 json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
-                json_dict = json_dict_list[-1]
-                result = json.dumps(json_dict)
+                result = json.dumps(json_dict_list[-1])
                 ProcessReceivedMessage(result, pipe_to_shell_cmd)
 
 
