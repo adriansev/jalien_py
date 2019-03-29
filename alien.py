@@ -60,12 +60,14 @@ def XrdCopy(src, dst):
         process.run(handler)
 
 
+# xrdcp generic parameters (used by ALICE tests)
 FirstConnectMaxCnt = 2
 TransactionTimeout = 60
 RequestTimeout = 60
 ReadCacheSize = 0
 xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
 
+# environment debug variable
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
 
@@ -104,6 +106,7 @@ tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
 tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
 # Web socket static variables
+websocket = None  # global websocket
 fWSPort = 8097  # websocket port
 fHostWS = ''
 fHostWSUrl = ''
@@ -245,7 +248,8 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     ccmd = ''
 
 
-async def ProcessXrootdCp(xrd_copy_command, wb):
+async def ProcessXrootdCp(xrd_copy_command):
+    global websocket
     if len(xrd_copy_command) < 2:
         print("at least 2 arguments are needed : src dst")
         print("the command is of the form of (with the strict order of arguments):")
@@ -327,8 +331,8 @@ async def ProcessXrootdCp(xrd_copy_command, wb):
         print("\n")
 
     access_cmd_json = CreateJsonCommand('access', get_envelope_arg_list)
-    await wb.send(access_cmd_json)
-    result = await wb.recv()
+    await websocket.send(access_cmd_json)
+    result = await websocket.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
     #print(json.dumps(json_dict, sort_keys=True, indent=4))
