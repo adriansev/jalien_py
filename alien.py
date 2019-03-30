@@ -38,7 +38,7 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
             print("source: {}".format(source))
             print("target: {}".format(target))
 
-    async def end(self, jobId, results):
+    def end(self, jobId, results):
         results_message = results['status'].message
         results_status = results['status'].status
         results_errno = results['status'].errno
@@ -54,16 +54,16 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
                 link = urlparse(dst_str)
                 token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')
                 json_commit = CreateJsonCommand('commit', [str(token)])
-                await (self.wb).send(json_commit)
-                wb_results = await (self.wb).recv()
-                json_dict = json.loads(wb_results)
-                print(json.dumps(json_dict, sort_keys=True, indent=4))
+                #await (self.wb).send(json_commit)
+                #wb_results = await (self.wb).recv()
+                #json_dict = json.loads(wb_results)
+                #print(json.dumps(json_dict, sort_keys=True, indent=4))
 
     def update(self, jobId, processed, total):
         print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
 
-async def XrdCopy(src, dst):
+def XrdCopy(src, dst):
     global websocket
     #-N | --nopbar       does not print the progress bar
     #-p | --path         automatically create remote destination path
@@ -74,6 +74,9 @@ async def XrdCopy(src, dst):
     handler = MyCopyProgressHandler()
     handler.wb = websocket
     if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
+    if handler.isUpload:
+        print("The commit to catalog part is not working, uploads are disabled")
+        return
     for url_src in src:
         for url_dst in dst:
             process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
@@ -184,6 +187,22 @@ def IsValidCert(fname):
         return True
     else:
         return False
+
+
+def create_metafile(meta_filename, local_filename, size, hash_val, replica_list = []):
+    published = str(datetime.now().replace(microsecond=0).isoformat())
+    with open(meta_filename,'w') as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
+        f.write("   <published>{}</published>\n".format(published))
+        f.write("   <file name=\"{}\">\n".format(local_filename))
+        f.write("     <size>{}</size>\n".format(size))
+        f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
+        for url in replica_list:
+            f.write("     <url>{}</url>\n".format(url))
+        f.write('   </file>\n')
+        f.write(' </metalink>\n')
+        f.closed
 
 
 def create_ssl_context():
@@ -362,10 +381,20 @@ async def ProcessXrootdCp(xrd_copy_command):
     url_list_dst = []
     if isDownload:
         # multiple replicas are downloaded to a single file
+        url_list_4meta = []
+        size_4meta = ''
+        md5_4meta = ''
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
             url_list_src.append({"url": complete_url, "token": server['envelope']})
+            url_list_4meta.append(complete_url)
+            size_4meta = server['size']
+            md5_4meta = server['md5']
         url_list_dst.append({"url": dst_final_path_str, "token": ''})
+
+        meta_fn = src_path.as_posix().replace("/","_") + ".meta4"
+        meta_fn = re.sub("^_","",meta_fn)
+        create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
     else:
         # single file is uploaded to multiple replicas
         for server in json_dict['results']:
@@ -377,7 +406,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         print("src: {}".format(url_list_src))
         print("dst: {}".format(url_list_dst))
 
-    await XrdCopy(url_list_src, url_list_dst)
+    XrdCopy(url_list_src, url_list_dst)
 
 
 async def JAlienConnect(jsoncmd = ''):
