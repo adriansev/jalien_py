@@ -1,0 +1,4 @@
+pyOpenSSL
+websockets
+pathlib2
+datetime
