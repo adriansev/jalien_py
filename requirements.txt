@@ -1,4 +1,3 @@
-pyOpenSSL
 websockets
-pathlib2
-datetime
+pyOpenSSL
+## XRootD
