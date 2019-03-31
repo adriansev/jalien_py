@@ -25,10 +25,10 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 
 class MyCopyProgressHandler(client.utils.CopyProgressHandler):
-    wb = None
     isUpload = False
-    src = ''
-    dst = ''
+    src = ''  # pass the source from begin to end
+    dst = ''  # pass the target from begin to end
+    token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
 
     def begin(self, id, total, source, target):
         print("jobID: {0}/{1}".format(id, total))
@@ -49,15 +49,10 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         print("OK: {0} ; ERROR: {1} ; FATAL: {2} ; ERRNO: {3} ; MESSAGE: {4}".format(results_ok, results_error, results_fatal, results_errno, results_message))
         if self.isUpload:
             if results_ok:
-                print("let's do the commit")
                 dst_str = str(self.dst)
                 link = urlparse(dst_str)
                 token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')
-                json_commit = CreateJsonCommand('commit', [str(token)])
-                #await (self.wb).send(json_commit)
-                #wb_results = await (self.wb).recv()
-                #json_dict = json.loads(wb_results)
-                #print(json.dumps(json_dict, sort_keys=True, indent=4))
+                self.token_list_upload_ok.append(str(token))
 
     def update(self, jobId, processed, total):
         print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
@@ -74,14 +69,12 @@ def XrdCopy(src, dst):
     handler = MyCopyProgressHandler()
     handler.wb = websocket
     if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
-    if handler.isUpload:
-        print("The commit to catalog part is not working, uploads are disabled")
-        return
     for url_src in src:
         for url_dst in dst:
             process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
     process.prepare()
     process.run(handler)
+    return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
 # xrdcp generic parameters (used by ALICE tests)
@@ -244,12 +237,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     if 'error' in json_dict["metadata"]:
         error = json_dict["metadata"]["error"]
 
-    #exitcode = ''
-    #if 'exitcode' in json_dict["metadata"]:
-        #exitcode = json_dict["metadata"]["exitcode"]
-
-    # Processing of token command
-    if getToken:
+    if getToken:  # Processing of token command
         tokencert_content = json_dict['results'][0]["tokencert"]
         if os.path.isfile(tokencert):
             os.chmod(tokencert, 0o700)
@@ -406,7 +394,16 @@ async def ProcessXrootdCp(xrd_copy_command):
         print("src: {}".format(url_list_src))
         print("dst: {}".format(url_list_dst))
 
-    XrdCopy(url_list_src, url_list_dst)
+    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst)  # defer the list of url and files to xrootd processing
+
+    if token_list_upload_ok:  # it was an upload job that had succesfull uploads
+        for token in token_list_upload_ok:
+            json_commit = CreateJsonCommand('commit', [str(token)])
+            await websocket.send(json_commit)
+            wb_results = await websocket.recv()
+            json_dict = json.loads(wb_results)
+            if XRDDEBUG:
+                print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
 async def JAlienConnect(jsoncmd = ''):
