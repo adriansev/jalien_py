@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 import signal
-import socket
 import json
 import logging
 import ssl
