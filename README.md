@@ -32,6 +32,7 @@ j_json_all will output the full json answer (including ['metadata'])
   
 There are a few environment variables that influence the mechanics of the script :  
 JALIENPY_DEBUG - if true, will activate some printouts  
+JALIENPY_XRDDEBUG - if set will activate printout in XRootD commands and functions  
 JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - full path file descriptions of certificate,key token files  
    
 X509 locations:  
