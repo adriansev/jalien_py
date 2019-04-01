@@ -31,6 +31,8 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
     token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
 
     def begin(self, id, total, source, target):
+        print(source)
+        print(target)
         print("jobID: {0}/{1}".format(id, total))
         self.src = source
         self.dst = target
@@ -71,7 +73,9 @@ def XrdCopy(src, dst):
     if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
     for url_src in src:
         for url_dst in dst:
-            process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1)
+            print(url_src["url"])
+            print(url_dst["url"])
+            process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1, sourcelimit = 1)
     process.prepare()
     process.run(handler)
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
@@ -192,7 +196,7 @@ def create_metafile(meta_filename, local_filename, size, hash_val, replica_list 
         f.write("     <size>{}</size>\n".format(size))
         f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
         for url in replica_list:
-            f.write("     <url>{}</url>\n".format(url))
+            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
         f.write('   </file>\n')
         f.write(' </metalink>\n')
         f.closed
@@ -309,8 +313,8 @@ async def ProcessXrootdCp(xrd_copy_command):
     if xrd_copy_command[-1].startswith('file://'):
         isDstLocal = True
         dst = xrd_copy_command[-1].replace("file://", "")
-        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), dst)
-        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), dst)
+        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
+        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
     else:
         dst = xrd_copy_command[-1]
 
@@ -387,6 +391,8 @@ async def ProcessXrootdCp(xrd_copy_command):
         meta_fn = src_path.as_posix().replace("/", "_") + ".meta4"
         meta_fn = re.sub("^_", "", meta_fn)
         create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
+        del url_list_src[:]
+        url_list_src.append({"url": meta_fn, "token": ''})
     else:
         # single file is uploaded to multiple replicas
         for server in json_dict['results']:
