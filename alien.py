@@ -9,6 +9,7 @@ import json
 import logging
 import ssl
 import OpenSSL
+import shlex
 from datetime import datetime
 from pathlib import Path
 from enum import Enum
@@ -183,7 +184,7 @@ def IsValidCert(fname):
 
 def create_metafile(meta_filename, local_filename, size, hash_val, replica_list = []):
     published = str(datetime.now().replace(microsecond=0).isoformat())
-    with open(meta_filename,'w') as f:
+    with open(meta_filename, 'w') as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
         f.write("   <published>{}</published>\n".format(published))
@@ -263,9 +264,13 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     else:
         websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
         if shellcmd:
-            shell_run = subprocess.run(shellcmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii')
-            if shell_run.stdout: print(shell_run.stdout)
-            if shell_run.stderr: print(shell_run.stderr)
+            # shlex.split(shellcmd)
+            # shlex.quote(shellcmd)
+            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
+            stdout = shell_run.stdout
+            if stdout: print(stdout)
+            stderr = shell_run.stderr
+            if stderr: print(stderr)
         else:
             for item in json_dict['results']:
                 print(item['message'])
@@ -379,8 +384,8 @@ async def ProcessXrootdCp(xrd_copy_command):
             md5_4meta = server['md5']
         url_list_dst.append({"url": dst_final_path_str, "token": ''})
 
-        meta_fn = src_path.as_posix().replace("/","_") + ".meta4"
-        meta_fn = re.sub("^_","",meta_fn)
+        meta_fn = src_path.as_posix().replace("/", "_") + ".meta4"
+        meta_fn = re.sub("^_", "", meta_fn)
         create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
     else:
         # single file is uploaded to multiple replicas
@@ -459,10 +464,11 @@ async def JAlienConnect(jsoncmd = ''):
                 # if shell command, just run it and return
                 if re.match("sh:", INPUT):
                     sh_cmd = re.sub(r'^sh:', '', INPUT)
-                    shcmd_list = sh_cmd.split()
-                    shcmd_out = subprocess.Popen(shcmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    stdout, stderr = shcmd_out.communicate()
+                    #sh_cmd = shlex.quote(sh_cmd)
+                    shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
+                    stdout = shcmd_out.stdout
                     if stdout: print(stdout.decode())
+                    stderr = shcmd_out.stderr
                     if stderr: print(stderr.decode())
                     continue
 
