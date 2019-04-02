@@ -265,11 +265,9 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         ccmd = ''
         return  # after writing the token files we finished with the message
 
-    if not json_meta_output:
-        if 'metadata' in json_dict:
-            del json_dict['metadata']
-
     if json_output:
+        if not json_meta_output:
+            if 'metadata' in json_dict: del json_dict['metadata']
         print(json.dumps(json_dict, sort_keys=True, indent=4))
     else:
         websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
@@ -378,6 +376,11 @@ async def ProcessXrootdCp(xrd_copy_command):
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
     #print(json.dumps(json_dict, sort_keys=True, indent=4))
+
+    if not json_dict['results']:
+        if json_dict["metadata"]["error"]:
+            print("{}".format(json_dict["metadata"]["error"]))
+            return
 
     url_list_src = []
     url_list_dst = []
