@@ -31,8 +31,6 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
     token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
 
     def begin(self, id, total, source, target):
-        print(source)
-        print(target)
         print("jobID: {0}/{1}".format(id, total))
         self.src = source
         self.dst = target
@@ -45,15 +43,25 @@ class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         results_status = results['status'].status
         results_errno = results['status'].errno
         results_code = results['status'].code
-        results_error = results['status'].error
-        results_fatal = results['status'].fatal
-        results_ok = results['status'].ok
-        print("OK: {0} ; ERROR: {1} ; FATAL: {2} ; ERRNO: {3} ; MESSAGE: {4}".format(results_ok, results_error, results_fatal, results_errno, results_message))
+        status = ''
+        if results['status'].ok: status = 'OK'
+        if results['status'].error: status = 'ERROR'
+        if results['status'].fatal: status = 'FATAL'
+
+        if results['status'].ok:
+            print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
+        else:
+            print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
+
+        if not self.isUpload:
+            if results['status'].ok:
+                os.remove(urlparse(str(self.src)).path)
+
         if self.isUpload:
-            if results_ok:
+            if results['status'].ok:
                 dst_str = str(self.dst)
                 link = urlparse(dst_str)
-                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')
+                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
                 self.token_list_upload_ok.append(str(token))
 
     def update(self, jobId, processed, total):
@@ -73,8 +81,6 @@ def XrdCopy(src, dst):
     if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
     for url_src in src:
         for url_dst in dst:
-            print(url_src["url"])
-            print(url_dst["url"])
             process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1, sourcelimit = 1)
     process.prepare()
     process.run(handler)
@@ -121,8 +127,8 @@ userkey = os.getenv('X509_USER_KEY', userkey_default)
 
 # token certificate
 getToken = bool(False)
-tokencert_default = tmpdir + "/tokencert_uid" + str(UID) + ".pem"
-tokenkey_default = tmpdir + "/tokenkey_uid" + str(UID) + ".pem"
+tokencert_default = tmpdir + "/tokencert_" + str(UID) + ".pem"
+tokenkey_default = tmpdir + "/tokenkey_" + str(UID) + ".pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
 tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
@@ -382,14 +388,17 @@ async def ProcessXrootdCp(xrd_copy_command):
         md5_4meta = ''
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_src.append({"url": complete_url, "token": server['envelope']})
             url_list_4meta.append(complete_url)
-            size_4meta = server['size']
-            md5_4meta = server['md5']
-        url_list_dst.append({"url": dst_final_path_str, "token": ''})
+
+        url_list_dst.append({"url": dst_final_path_str, "token": ''})  # the local file destination
+
+        size_4meta = json_dict['results'][0]['size']  # size SHOULD be the same for all replicas
+        md5_4meta = json_dict['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
         meta_fn = src_path.as_posix().replace("/", "_") + ".meta4"
         meta_fn = re.sub("^_", "", meta_fn)
+        meta_fn = tmpdir + "/" + meta_fn
+
         create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
         del url_list_src[:]
         url_list_src.append({"url": meta_fn, "token": ''})
