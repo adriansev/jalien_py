@@ -24,75 +24,27 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     sys.exit(1)
 
 
-class MyCopyProgressHandler(client.utils.CopyProgressHandler):
-    isUpload = False
-    src = ''  # pass the source from begin to end
-    dst = ''  # pass the target from begin to end
-    token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
-
-    def begin(self, id, total, source, target):
-        print("jobID: {0}/{1}".format(id, total))
-        self.src = source
-        self.dst = target
-        if XRDDEBUG:
-            print("source: {}".format(source))
-            print("target: {}".format(target))
-
-    def end(self, jobId, results):
-        results_message = results['status'].message
-        results_status = results['status'].status
-        results_errno = results['status'].errno
-        results_code = results['status'].code
-        status = ''
-        if results['status'].ok: status = 'OK'
-        if results['status'].error: status = 'ERROR'
-        if results['status'].fatal: status = 'FATAL'
-
-        if results['status'].ok:
-            print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
-        else:
-            print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
-
-        if not self.isUpload:
-            if results['status'].ok:
-                os.remove(urlparse(str(self.src)).path)
-
-        if self.isUpload:
-            if results['status'].ok:
-                dst_str = str(self.dst)
-                link = urlparse(dst_str)
-                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
-                self.token_list_upload_ok.append(str(token))
-
-    def update(self, jobId, processed, total):
-        print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
-
-
-def XrdCopy(src, dst):
-    global websocket
-    #-N | --nopbar       does not print the progress bar
-    #-p | --path         automatically create remote destination path
-    #-P | --posc         enables persist on successful close semantics. Files are automatically deleted should they not be successfully closed.
-    #-f | --force        replaces any existing output file
-    #-v | --verbose      produces more information about the copy
-    process = client.CopyProcess()
-    handler = MyCopyProgressHandler()
-    handler.wb = websocket
-    if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
-    for url_src in src:
-        for url_dst in dst:
-            process.add_job(url_src["url"], url_dst["url"], force = False, posc = True, mkdir = True, chunksize = 4194304, parallelchunks = 1, sourcelimit = 1)
-    process.prepare()
-    process.run(handler)
-    return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
-
-
 # xrdcp generic parameters (used by ALICE tests)
 FirstConnectMaxCnt = 2
 TransactionTimeout = 60
 RequestTimeout = 60
 ReadCacheSize = 0
 xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
+
+# XRootD copy parameters
+# inittimeout: copy initialization timeout(int)
+# tpctimeout: timeout for a third-party copy to finish(int)
+# coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
+#:param checksummode: checksum mode to be used #:type    checksummode: string
+#:param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+#:param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+hashtype = str('md5')
+sources = int(1)  # max number of download sources
+chunks = int(1)  # number of chunks that should be requested in parallel
+chunksize = int(4194304)  # chunk size for remote transfers
+makedir = bool(True)  # create the parent directories when creating a file
+overwrite = bool(True)  # overwrite target if it exists
+posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
 
 # environment debug variable
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
@@ -157,6 +109,65 @@ ccmd = ''
 
 # command history
 cmd_hist = []
+
+
+class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+    isUpload = False
+    src = ''  # pass the source from begin to end
+    dst = ''  # pass the target from begin to end
+    token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+
+    def begin(self, id, total, source, target):
+        print("jobID: {0}/{1}".format(id, total))
+        self.src = source
+        self.dst = target
+        if XRDDEBUG:
+            print("source: {}".format(source))
+            print("target: {}".format(target))
+
+    def end(self, jobId, results):
+        results_message = results['status'].message
+        results_status = results['status'].status
+        results_errno = results['status'].errno
+        results_code = results['status'].code
+        status = ''
+        if results['status'].ok: status = 'OK'
+        if results['status'].error: status = 'ERROR'
+        if results['status'].fatal: status = 'FATAL'
+
+        if results['status'].ok:
+            print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
+        else:
+            print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
+
+        if not self.isUpload:
+            if results['status'].ok:
+                os.remove(urlparse(str(self.src)).path)
+
+        if self.isUpload:
+            if results['status'].ok:
+                dst_str = str(self.dst)
+                link = urlparse(dst_str)
+                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
+                self.token_list_upload_ok.append(str(token))
+
+    def update(self, jobId, processed, total):
+        print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
+
+
+def XrdCopy(src, dst):
+    global websocket, overwrite, sources, chunks, chunksize, makedir, posc, hashtype
+    process = client.CopyProcess()
+    handler = MyCopyProgressHandler()
+    handler.wb = websocket
+    if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
+    for url_src in src:
+        for url_dst in dst:
+            process.add_job(url_src["url"], url_dst["url"], force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
+                            sourcelimit = sources, checksumtype = hashtype)
+    process.prepare()
+    process.run(handler)
+    return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
 def signal_handler(sig, frame):
