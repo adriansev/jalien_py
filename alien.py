@@ -424,8 +424,12 @@ async def ProcessXrootdCp(xrd_copy_command):
         url_list_src.append({"url": src_final_path_str, "token": ''})
 
     if XRDDEBUG:
-        print("src: {}".format(url_list_src))
-        print("dst: {}".format(url_list_dst))
+        for url in url_list_src:
+            print("src:\n{}".format(url['url']))
+            print("src_token:\n{}\n\n".format(url['token']))
+        for url in url_list_dst:
+            print("dst:\n{}".format(url['url']))
+            print("dst_token:\n{}\n\n".format(url['token']))
 
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst)  # defer the list of url and files to xrootd processing
 
