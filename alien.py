@@ -489,14 +489,14 @@ async def JAlienConnect(jsoncmd = ''):
                 signal.signal(signal.SIGINT, signal_handler)
                 INPUT = ''
                 try:
-                    INPUT = input(f"jsh: {currentdir} > ")
+                    INPUT = input(f"jsh: {currentdir} >")
                 except EOFError:
                     exit_message()
 
                 if not INPUT: continue
                 # if shell command, just run it and return
-                if re.match("sh:", INPUT):
-                    sh_cmd = re.sub(r'^sh:', '', INPUT)
+                if re.match("!", INPUT):
+                    sh_cmd = re.sub(r'^!', '', INPUT)
                     #sh_cmd = shlex.quote(sh_cmd)
                     shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
                     stdout = shcmd_out.stdout
