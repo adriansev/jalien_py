@@ -170,6 +170,18 @@ def XrdCopy(src, dst):
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
+def md5(file):
+    import hashlib
+    BLOCKSIZE = 65536
+    hasher = hashlib.md5()
+    with open(file, 'rb') as f:
+        buf = f.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = f.read(BLOCKSIZE)
+    return hasher.hexdigest()
+
+
 def signal_handler(sig, frame):
     print('\nExit')
     sys.exit(0)
