@@ -312,7 +312,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
 
 
 async def ProcessXrootdCp(xrd_copy_command):
-    global websocket
+    global websocket, currentdir
     if len(xrd_copy_command) < 2:
         print("at least 2 arguments are needed : src dst")
         print("the command is of the form of (with the strict order of arguments):")
@@ -327,23 +327,39 @@ async def ProcessXrootdCp(xrd_copy_command):
     # clean up the paths to be used in the xrdcp command
     src = ''
     src_path = ''
+    src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-2].startswith('file://'):
         isSrcLocal = True
         src = xrd_copy_command[-2].replace("file://", "")
-        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix(), src)
-        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix(), src)
+        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
+        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
+        if not src.startswith('/'):
+            src = Path.cwd().as_posix() + "/" + src
     else:
         src = xrd_copy_command[-2]
+        if not src.startswith('/'):
+            src = currentdir + src
+        src_specs_remotes = src.split(",")
+        src = src_specs_remotes[0]  # first item remains the file
+        src_specs_remotes.pop(0)  # let's remove first item which is the file path
 
     dst = ''
     dst_path = ''
+    dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-1].startswith('file://'):
         isDstLocal = True
         dst = xrd_copy_command[-1].replace("file://", "")
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
         dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
+        if not dst.startswith('/'):
+            dst = Path.cwd().as_posix() + "/" + dst
     else:
         dst = xrd_copy_command[-1]
+        if not dst.startswith('/'):
+            dst = currentdir + dst
+        dst_specs_remotes = dst.split(",")
+        dst = dst_specs_remotes[0]  # first item remains the file
+        dst_specs_remotes.pop(0)  # let's remove first item which is the file path
 
     src_path = Path(src)
     dst_path = Path(dst)
@@ -386,19 +402,22 @@ async def ProcessXrootdCp(xrd_copy_command):
 
         get_envelope_arg_list.append("write")
         get_envelope_arg_list.append(dst_path.as_posix())
-
-    if XRDDEBUG:
-        print(src_path.as_posix())
-        print(dst_path.as_posix())
-        print(get_envelope_arg_list)
-        print("\n")
+        if dst_specs_remotes:
+            specs_remotes = ",".join(dst_specs_remotes)
+            get_envelope_arg_list.append(specs_remotes)
 
     access_cmd_json = CreateJsonCommand('access', get_envelope_arg_list)
     await websocket.send(access_cmd_json)
     result = await websocket.recv()
     result.encode('ascii', 'ignore')
     json_dict = json.loads(result)
-    #print(json.dumps(json_dict, sort_keys=True, indent=4))
+
+    if XRDDEBUG:
+        print(src_path.as_posix())
+        print(dst_path.as_posix())
+        print(get_envelope_arg_list)
+        print("\n")
+        print(json.dumps(json_dict, sort_keys=True, indent=4))
 
     if not json_dict['results']:
         if json_dict["metadata"]["error"]:
@@ -416,7 +435,7 @@ async def ProcessXrootdCp(xrd_copy_command):
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
             url_list_4meta.append(complete_url)
 
-        url_list_dst.append({"url": dst_final_path_str, "token": ''})  # the local file destination
+        url_list_dst.append({"url": dst_final_path_str, "access": ''})  # the local file destination
 
         size_4meta = json_dict['results'][0]['size']  # size SHOULD be the same for all replicas
         md5_4meta = json_dict['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
@@ -426,14 +445,13 @@ async def ProcessXrootdCp(xrd_copy_command):
         meta_fn = tmpdir + "/" + meta_fn
 
         create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
-        del url_list_src[:]
-        url_list_src.append({"url": meta_fn, "token": ''})
+        url_list_src.append({"url": meta_fn, "access": ''})
     else:
         # single file is uploaded to multiple replicas
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_dst.append({"url": complete_url, "token": server['envelope']})
-        url_list_src.append({"url": src_final_path_str, "token": ''})
+            url_list_dst.append({"url": complete_url, "access": server})
+        url_list_src.append({"url": src_final_path_str, "access": ''})
 
     if XRDDEBUG:
         for url in url_list_src:
