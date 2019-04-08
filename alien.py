@@ -384,6 +384,9 @@ async def ProcessXrootdCp(xrd_copy_command):
 
         get_envelope_arg_list.append("read")
         get_envelope_arg_list.append(src_path.as_posix())
+        if src_specs_remotes:
+            specs_remotes = ",".join(src_specs_remotes)
+            get_envelope_arg_list.append(specs_remotes)
     else:  # WRITE TO GRID
         isDownload = False
         if not dst_path.is_absolute():
@@ -429,39 +432,37 @@ async def ProcessXrootdCp(xrd_copy_command):
     if isDownload:
         # multiple replicas are downloaded to a single file
         url_list_4meta = []
-        size_4meta = ''
-        md5_4meta = ''
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
             url_list_4meta.append(complete_url)
 
-        url_list_dst.append({"url": dst_final_path_str, "access": ''})  # the local file destination
+        url_list_dst.append({"url": dst_final_path_str})  # the local file destination
 
         size_4meta = json_dict['results'][0]['size']  # size SHOULD be the same for all replicas
         md5_4meta = json_dict['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
-        meta_fn = src_path.as_posix().replace("/", "_") + ".meta4"
-        meta_fn = re.sub("^_", "", meta_fn)
-        meta_fn = tmpdir + "/" + meta_fn
+        meta_fn = tmpdir + "/" + src_path.as_posix().replace("/", "_") + ".meta4"
 
         create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
-        url_list_src.append({"url": meta_fn, "access": ''})
+        url_list_src.append({"url": meta_fn})
     else:
         # single file is uploaded to multiple replicas
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_dst.append({"url": complete_url, "access": server})
-        url_list_src.append({"url": src_final_path_str, "access": ''})
+            url_list_dst.append({"url": complete_url})
+        url_list_src.append({"url": src_final_path_str})
 
     if XRDDEBUG:
         for url in url_list_src:
             print("src:\n{}".format(url['url']))
-            print("src_token:\n{}\n\n".format(url['token']))
         for url in url_list_dst:
             print("dst:\n{}".format(url['url']))
-            print("dst_token:\n{}\n\n".format(url['token']))
 
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst)  # defer the list of url and files to xrootd processing
+
+
+##TODO
+
 
     if token_list_upload_ok:  # it was an upload job that had succesfull uploads
         for token in token_list_upload_ok:
