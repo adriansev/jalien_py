@@ -164,7 +164,7 @@ def XrdCopy(src, dst):
     for url_src in src:
         for url_dst in dst:
             process.add_job(url_src["url"], url_dst["url"], force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
-                            sourcelimit = sources, checksumtype = hashtype)
+                            sourcelimit = sources)  # , checksumtype = hashtype
     process.prepare()
     process.run(handler)
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
