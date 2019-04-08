@@ -36,16 +36,10 @@ homedir = os.getenv('HOME', '~')
 tmpdir = os.getenv('TMPDIR', '/tmp')
 fUser = os.getenv('alien_API_USER', os.getenv('LOGNAME', 'USER'))
 
-# let get the token file name
-UID = os.getuid()
-
 # SSL SETTINGS
 cert = None
 key = None
 capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
-
-# user cert locations
-userproxy = '/tmp' + '/x509up_u' + str(UID)
 
 user_globus_dir = homedir + '/.globus'
 usercert_default = user_globus_dir + '/usercert.pem'
@@ -55,7 +49,7 @@ usercert = os.getenv('X509_USER_CERT', usercert_default)
 userkey = os.getenv('X509_USER_KEY', userkey_default)
 
 # token certificate
-getToken = bool(False)
+UID = os.getuid()
 tokencert_default = tmpdir + "/tokencert_" + str(UID) + ".pem"
 tokenkey_default = tmpdir + "/tokenkey_" + str(UID) + ".pem"
 tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
@@ -63,29 +57,21 @@ tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
 # Web socket static variables
 websocket = None  # global websocket
-fWSPort = 8097  # websocket port
-fHostWS = ''
-fHostWSUrl = ''
-
-# Websocket endpoint to be used
-server_central = 'alice-jcentral.cern.ch'
-ws_path = '/websocket/json'
-default_server = server_central
+jalien_server = 'alice-jcentral.cern.ch'
+jalien_websocket_port = 8097  # websocket port
+jalien_websocket_path = '/websocket/json'
+fHostWSUrl = 'wss://' + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
 
 # jalien_py internal vars
-fGridHome = str('')
+alienHome = ''
 currentdir = ''
 commandlist = ''
-site = ''
 user = ''
 error = ''
 exitcode = ''
 
-# current command in execution
-ccmd = ''
-
-# command history
-cmd_hist = []
+ccmd = ''  # current command in execution
+cmd_hist = []  # command history
 
 # xrdcp generic parameters (used by ALICE tests)
 FirstConnectMaxCnt = 2
@@ -232,7 +218,6 @@ def create_metafile(meta_filename, local_filename, size, hash_val, replica_list 
 
 def create_ssl_context():
     global cert, key
-    # ssl related options
     if IsValidCert(tokencert):
         cert = tokencert
         key  = tokenkey
@@ -257,35 +242,49 @@ def CreateJsonCommand(command, options=[]):
     return jcmd
 
 
+async def token():
+    global websocket, ccmd, tokencert, tokenkey
+    await websocket.send(CreateJsonCommand('token'))
+    result = await websocket.recv()
+    json_dict = json.loads(result.encode('ascii', 'ignore'))
+
+    tokencert_content = json_dict['results'][0]["tokencert"]
+    tokenkey_content  = json_dict['results'][0]["tokenkey"]
+
+    if os.path.isfile(tokencert): os.chmod(tokencert, 0o700)  # make it writeable
+    with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file=tcert)  # write the tokencert
+    os.chmod(tokencert, 0o400)  # make it readonly
+
+    if os.path.isfile(tokenkey): os.chmod(tokenkey, 0o700)  # make it writeable
+    with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
+    os.chmod(tokenkey, 0o400)  # make it readonly
+    ccmd = ''
+
+
+async def getSessionVars():
+    global websocket, ccmd, user, alienHome, currentdir, commandlist
+    # get the command list to check validity of commands
+    await websocket.send(CreateJsonCommand('commandlist'))
+    result = await websocket.recv()
+    result = result.lstrip()
+    json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
+    json_dict = json_dict_list[-1]
+    # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+    commandlist = json_dict["results"][0]["message"]
+    currentdir = json_dict["metadata"]["currentdir"]
+    user = json_dict["metadata"]["user"]
+    alienHome = currentdir  # this is first query so current dir is alienHOME
+
+
 def ProcessReceivedMessage(message='', shellcmd = None):
-    global json_output, json_meta_output, getToken, currentdir, site, user, ccmd, error, exitcode
+    global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
     if not message: return
-    message.encode('ascii', 'ignore')
-    json_dict = json.loads(message)
+    json_dict = json.loads(message.encode('ascii', 'ignore'))
     currentdir = json_dict["metadata"]["currentdir"]
     user = json_dict["metadata"]["user"]
 
     error = ''
-    if 'error' in json_dict["metadata"]:
-        error = json_dict["metadata"]["error"]
-
-    if getToken:  # Processing of token command
-        tokencert_content = json_dict['results'][0]["tokencert"]
-        if os.path.isfile(tokencert):
-            os.chmod(tokencert, 0o700)
-        with open(tokencert, "w") as tcert:
-            print(f"{tokencert_content}", file=tcert)
-            os.chmod(tokencert, 0o400)
-
-        tokenkey_content = json_dict['results'][0]["tokenkey"]
-        if os.path.isfile(tokenkey):
-            os.chmod(tokenkey, 0o700)
-        with open(tokenkey, "w") as tkey:
-            print(f"{tokenkey_content}", file=tkey)
-            os.chmod(tokenkey, 0o400)
-        getToken = bool(False)
-        ccmd = ''
-        return  # after writing the token files we finished with the message
+    if 'error' in json_dict["metadata"]: error = json_dict["metadata"]["error"]
 
     if json_output:
         if not json_meta_output:
@@ -302,198 +301,23 @@ def ProcessReceivedMessage(message='', shellcmd = None):
             stderr = shell_run.stderr
             if stderr: print(stderr)
         else:
-            for item in json_dict['results']:
-                print(item['message'])
+            print(websocket_output)
             if error: print(error)
 
-    # reset the current executed command, the received message was processed
-    ccmd = ''
-
-
-async def ProcessXrootdCp(xrd_copy_command):
-    global websocket, currentdir
-    if len(xrd_copy_command) < 2:
-        print("at least 2 arguments are needed : src dst")
-        print("the command is of the form of (with the strict order of arguments):")
-        print("cp args src dst")
-        print("where src|dst are local files if prefixed with file:// or grid files otherwise")
-        return
-
-    isSrcLocal = bool(False)
-    isDstLocal = bool(False)
-    isDownload = bool(True)
-    file_name = ''
-
-    # clean up the paths to be used in the xrdcp command
-    src = ''
-    src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
-        isSrcLocal = True
-        isDownload = False
-        src = xrd_copy_command[-2].replace("file://", "")
-        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
-        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
-        if not src.startswith('/'):
-            src = Path.cwd().as_posix() + "/" + src
-    else:
-        src = xrd_copy_command[-2]
-        if not src.startswith('/'):
-            src = currentdir + src
-        src_specs_remotes = src.split(",")
-        src = src_specs_remotes[0]  # first item remains the file
-        src_specs_remotes.pop(0)  # let's remove first item which is the file path
-
-    dst = ''
-    dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
-        isDstLocal = True
-        dst = xrd_copy_command[-1].replace("file://", "")
-        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
-        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
-        if not dst.startswith('/'):
-            dst = Path.cwd().as_posix() + "/" + dst
-    else:
-        isDownload = False
-        dst = xrd_copy_command[-1]
-        if not dst.startswith('/'):
-            dst = currentdir + dst
-        dst_specs_remotes = dst.split(",")
-        dst = dst_specs_remotes[0]  # first item remains the file
-        dst_specs_remotes.pop(0)  # let's remove first item which is the file path
-
-    if dst.endswith("/"):
-        dst = dst + src.split("/")[-1]
-
-    if not (isSrcLocal ^ isDstLocal):
-        print("src and dst cannot be both of the same type : one must be local and one grid")
-        return
-
-    # process paths for DOWNLOAD
-    get_envelope_arg_list = []  # construct command for getting authz envelope
-    if isDstLocal:  # DOWNLOAD FROM GRID
-        isDownload = True
-        get_envelope_arg_list.append("read")
-        get_envelope_arg_list.append(src)
-        if src_specs_remotes:
-            specs_remotes = ",".join(src_specs_remotes)
-            get_envelope_arg_list.append(specs_remotes)
-    else:  # WRITE TO GRID
-        isDownload = False
-        get_envelope_arg_list.append("write")
-        get_envelope_arg_list.append(dst)
-        if dst_specs_remotes:
-            specs_remotes = ",".join(dst_specs_remotes)
-            get_envelope_arg_list.append(specs_remotes)
-
-    access_cmd_json = CreateJsonCommand('access', get_envelope_arg_list)
-    await websocket.send(access_cmd_json)
-    result = await websocket.recv()
-    result.encode('ascii', 'ignore')
-    json_dict = json.loads(result)
-
-    if XRDDEBUG:
-        print(src)
-        print(dst)
-        print(get_envelope_arg_list)
-        print("\n")
-        print(json.dumps(json_dict, sort_keys=True, indent=4))
-
-    if not json_dict['results']:
-        if json_dict["metadata"]["error"]:
-            print("{}".format(json_dict["metadata"]["error"]))
-            return
-
-    url_list_src = []
-    url_list_dst = []
-    nSEs = json_dict['results'][0]['nSEs']
-    if isDownload:
-        # multiple replicas are downloaded to a single file
-        url_list_4meta = []
-        for server in json_dict['results']:
-            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_4meta.append(complete_url)
-
-        url_list_dst.append({"url": dst})  # the local file destination
-
-        size_4meta = json_dict['results'][0]['size']  # size SHOULD be the same for all replicas
-        md5_4meta = json_dict['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-
-        meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
-
-        create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
-        url_list_src.append({"url": meta_fn})
-    else:
-        # single file is uploaded to multiple replicas
-        for server in json_dict['results']:
-            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_dst.append({"url": complete_url})
-        url_list_src.append({"url": src})
-
-    if XRDDEBUG:
-        for url in url_list_src:
-            print("src:\n{}".format(url['url']))
-        for url in url_list_dst:
-            print("dst:\n{}".format(url['url']))
-        print("\n\n")
-        print(json.dumps(json_dict, sort_keys=True, indent=4))
-
-    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload)  # defer the list of url and files to xrootd processing
-
-    # commit envelope size lfn perm expire pfn se guid md5
-    if token_list_upload_ok:  # it was an upload job that had succesfull uploads
-        # common values for all commit commands
-        lfn = src
-        size = os.path.getsize(lfn)
-        md5sum = md5(lfn)
-        perm = '644'
-        expire = '0'
-        for token in token_list_upload_ok:  # for each succesful token
-            for server in json_dict['results']:  # go over all received servers
-                if token in server['envelope']:  # for the server that have the succesful uploaded token
-                    pfn = server['url']
-                    se = server['se']
-                    guid = server['guid']
-                    commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-                    json_commit = CreateJsonCommand('commit', commit_args_list)
-                    await websocket.send(json_commit)
-                    commit_results = await websocket.recv()
-                    json_dict = json.loads(commit_results)
-                    if 'metadata' in json_dict: del json_dict['metadata']
-                    print(json.dumps(json_dict, sort_keys=True, indent=4))
-                    if XRDDEBUG:
-                        print(json.dumps(json_dict, sort_keys=True, indent=4))
+    ccmd = ''  # reset the current executed command, the received message was processed
 
 
 async def JAlienConnect(jsoncmd = ''):
-    global websocket, fHostWS, fHostWSUrl, ws_path, currentdir, site, commandlist, getToken, ccmd
-    fHostWS = 'wss://' + default_server + ':' + str(fWSPort)
-    fHostWSUrl = fHostWS + ws_path
-    if str(fHostWSUrl).startswith("wss://"):
-        ssl_context = create_ssl_context()
-    else:
-        ssl_context = None
+    global websocket, currentdir, commandlist, ccmd
+    ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
     async with websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue = 4, max_size = 16*1024*1024) as websocket:
         # if the certificate used is not the token, then get one
-        if cert == usercert:
-            getToken = bool(True)
-            await websocket.send(CreateJsonCommand('token'))
-            result = await websocket.recv()
-            ProcessReceivedMessage(result)
+        if cert == usercert: await token()
 
-        # no matter if command or interactive mode, we need currentdir, user and commandlist
-        if not commandlist:
-            # get the command list to check validity of commands
-            await websocket.send(CreateJsonCommand('commandlist'))
-            result = await websocket.recv()
-            result = result.lstrip()
-            json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
-            json_dict = json_dict_list[-1]
-            # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-            commandlist = json_dict["results"][0]["message"]
-            currentdir = json_dict["metadata"]["currentdir"]
-            user = json_dict["metadata"]["user"]
+        # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
+        if not commandlist: await getSessionVars()
 
         if jsoncmd:  # command mode
             ccmd = jsoncmd
@@ -569,6 +393,150 @@ async def JAlienConnect(jsoncmd = ''):
                 json_dict_list = json.loads("[{}]".format(result.replace('}{', '},{')))
                 result = json.dumps(json_dict_list[-1])
                 ProcessReceivedMessage(result, pipe_to_shell_cmd)
+
+
+async def ProcessXrootdCp(xrd_copy_command):
+    global websocket, currentdir
+    if len(xrd_copy_command) < 2:
+        print("at least 2 arguments are needed : src dst")
+        print("the command is of the form of (with the strict order of arguments):")
+        print("cp args src dst")
+        print("where src|dst are local files if prefixed with file:// or grid files otherwise")
+        print("after each src,dst can be added comma separated arguments like: disk:N,SE1,SE2,!SE3")
+        return
+
+    isSrcLocal = bool(False)
+    isDstLocal = bool(False)
+    isDownload = bool(True)
+    file_name = ''
+
+    # clean up the paths to be used in the xrdcp command
+    src = ''
+    src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
+        isSrcLocal = True
+        isDownload = False
+        src = xrd_copy_command[-2].replace("file://", "")
+        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
+        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
+        if not src.startswith('/'):
+            src = Path.cwd().as_posix() + "/" + src
+    else:
+        src = xrd_copy_command[-2]
+        if not src.startswith('/'):
+            src = currentdir + src
+        src_specs_remotes = src.split(",")
+        src = src_specs_remotes[0]  # first item remains the file
+        src_specs_remotes.pop(0)  # let's remove first item which is the file path
+
+    dst = ''
+    dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
+        isDstLocal = True
+        dst = xrd_copy_command[-1].replace("file://", "")
+        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
+        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
+        if not dst.startswith('/'):
+            dst = Path.cwd().as_posix() + "/" + dst
+    else:
+        isDownload = False
+        dst = xrd_copy_command[-1]
+        if not dst.startswith('/'):
+            dst = currentdir + dst
+        dst_specs_remotes = dst.split(",")
+        dst = dst_specs_remotes[0]  # first item remains the file
+        dst_specs_remotes.pop(0)  # let's remove first item which is the file path
+
+    # if destination is a directory (specified with ending /) let's keep the same filename
+    if dst.endswith("/"): dst = dst + src.split("/")[-1]
+
+    if not (isSrcLocal ^ isDstLocal):
+        print("src and dst cannot be both of the same type : one must be local and one grid")
+        return
+
+    # process paths for DOWNLOAD
+    get_envelope_arg_list = []  # construct command for getting authz envelope
+    if isDstLocal:  # DOWNLOAD FROM GRID
+        isDownload = True
+        get_envelope_arg_list = ["read", src]
+        if src_specs_remotes: get_envelope_arg_list.append(str(",".join(src_specs_remotes)))
+    else:  # WRITE TO GRID
+        isDownload = False
+        get_envelope_arg_list = ["write", dst]
+        if dst_specs_remotes: get_envelope_arg_list.append(str(",".join(dst_specs_remotes)))
+
+    await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
+    result = await websocket.recv()
+    access_request = json.loads(result.encode('ascii', 'ignore'))
+
+    if XRDDEBUG:
+        print(src)
+        print(dst)
+        print(get_envelope_arg_list)
+        print("\n")
+        print(json.dumps(access_request, sort_keys=True, indent=4))
+
+    if not access_request['results']:
+        if access_request["metadata"]["error"]:
+            print("{}".format(access_request["metadata"]["error"]))
+            return
+
+    url_list_src = []
+    url_list_dst = []
+    nSEs = access_request['results'][0]['nSEs']
+    if isDownload:
+        # multiple replicas are downloaded to a single file
+        url_list_4meta = []
+        for server in access_request['results']:
+            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+            url_list_4meta.append(complete_url)
+
+        url_list_dst.append({"url": dst})  # the local file destination
+
+        size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
+        md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+
+        meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
+
+        create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
+        url_list_src.append({"url": meta_fn})
+    else:
+        # single file is uploaded to multiple replicas
+        for server in access_request['results']:
+            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+            url_list_dst.append({"url": complete_url})
+        url_list_src.append({"url": src})
+
+    if XRDDEBUG:
+        for url in url_list_src: print("src:\n{}".format(url['url']))
+        for url in url_list_dst: print("dst:\n{}".format(url['url']))
+        print("\n\n")
+        print(json.dumps(access_request, sort_keys=True, indent=4))
+
+    # defer the list of url and files to xrootd processing - actual XRootD copy takes place
+    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload)
+
+    if token_list_upload_ok:  # it was an upload job that had succesfull uploads
+        # common values for all commit commands
+        lfn = src
+        size = os.path.getsize(lfn)
+        md5sum = md5(lfn)
+        perm = '644'
+        expire = '0'
+        for token in token_list_upload_ok:  # for each succesful token
+            for server in access_request['results']:  # go over all received servers
+                if token in server['envelope']:  # for the server that have the succesful uploaded token
+                    pfn = server['url']
+                    se = server['se']
+                    guid = server['guid']
+                    # envelope size lfn perm expire pfn se guid md5
+                    commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
+                    await websocket.send(CreateJsonCommand('commit', commit_args_list))
+                    if XRDDEBUG:
+                        commit_results = await websocket.recv()  # useless return message
+                        json_dict = json.loads(commit_results)
+                        if 'metadata' in json_dict: del json_dict['metadata']
+                        print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
 if __name__ == '__main__':
