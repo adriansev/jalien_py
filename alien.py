@@ -17,34 +17,11 @@ from urllib.parse import urlparse
 import asyncio
 import websockets
 # import websockets.speedups
-from XRootD import client
+
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6")
     sys.exit(1)
-
-
-# xrdcp generic parameters (used by ALICE tests)
-FirstConnectMaxCnt = 2
-TransactionTimeout = 60
-RequestTimeout = 60
-ReadCacheSize = 0
-xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
-
-# XRootD copy parameters
-# inittimeout: copy initialization timeout(int)
-# tpctimeout: timeout for a third-party copy to finish(int)
-# coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
-#:param checksummode: checksum mode to be used #:type    checksummode: string
-#:param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
-#:param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
-hashtype = str('md5')
-sources = int(1)  # max number of download sources
-chunks = int(1)  # number of chunks that should be requested in parallel
-chunksize = int(4194304)  # chunk size for remote transfers
-makedir = bool(True)  # create the parent directories when creating a file
-overwrite = bool(True)  # overwrite target if it exists
-posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
 
 # environment debug variable
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
@@ -110,60 +87,82 @@ ccmd = ''
 # command history
 cmd_hist = []
 
+# xrdcp generic parameters (used by ALICE tests)
+FirstConnectMaxCnt = 2
+TransactionTimeout = 60
+RequestTimeout = 60
+ReadCacheSize = 0
+xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
 
-class MyCopyProgressHandler(client.utils.CopyProgressHandler):
-    isUpload = False
-    src = ''  # pass the source from begin to end
-    dst = ''  # pass the target from begin to end
-    token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+# XRootD copy parameters
+# inittimeout: copy initialization timeout(int)
+# tpctimeout: timeout for a third-party copy to finish(int)
+# coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
+#:param checksummode: checksum mode to be used #:type    checksummode: string
+#:param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+#:param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+hashtype = str('md5')
+sources = int(1)  # max number of download sources
+chunks = int(1)  # number of chunks that should be requested in parallel
+chunksize = int(4194304)  # chunk size for remote transfers
+makedir = bool(True)  # create the parent directories when creating a file
+overwrite = bool(True)  # overwrite target if it exists
+posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
 
-    def begin(self, id, total, source, target):
-        print("jobID: {0}/{1}".format(id, total))
-        self.src = source
-        self.dst = target
-        if XRDDEBUG:
-            print("source: {}".format(source))
-            print("target: {}".format(target))
 
-    def end(self, jobId, results):
-        results_message = results['status'].message
-        results_status = results['status'].status
-        results_errno = results['status'].errno
-        results_code = results['status'].code
-        status = ''
-        if results['status'].ok: status = 'OK'
-        if results['status'].error: status = 'ERROR'
-        if results['status'].fatal: status = 'FATAL'
+def XrdCopy(src, dst, isDownload = bool(True)):
+    from XRootD import client
+    global overwrite, sources, chunks, chunksize, makedir, posc, hashtype
 
-        if results['status'].ok:
-            print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
-        else:
-            print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
+    class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+        isDownload = bool(True)
+        src = ''  # pass the source from begin to end
+        dst = ''  # pass the target from begin to end
+        token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
 
-        if not self.isUpload:
+        def begin(self, id, total, source, target):
+            print("jobID: {0}/{1}".format(id, total))
+            self.src = source
+            self.dst = target
+            if XRDDEBUG:
+                print("CopyProgressHandler.source: {}".format(self.src))
+                print("CopyProgressHandler.target: {}".format(self.dst))
+
+        def end(self, jobId, results):
+            results_message = results['status'].message
+            results_status = results['status'].status
+            results_errno = results['status'].errno
+            results_code = results['status'].code
+            status = ''
+            if results['status'].ok: status = 'OK'
+            if results['status'].error: status = 'ERROR'
+            if results['status'].fatal: status = 'FATAL'
+
             if results['status'].ok:
-                os.remove(urlparse(str(self.src)).path)
+                print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
+                if self.isDownload:
+                    os.remove(urlparse(str(self.src)).path)  # remove the created metalink
+                else:  # isUpload
+                    link = urlparse(str(self.dst))
+                    token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
+                    self.token_list_upload_ok.append(str(token))
+            else:
+                print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
 
-        if self.isUpload:
-            if results['status'].ok:
-                dst_str = str(self.dst)
-                link = urlparse(dst_str)
-                token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
-                self.token_list_upload_ok.append(str(token))
+        def update(self, jobId, processed, total):
+            print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
-    def update(self, jobId, processed, total):
-        print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
-
-
-def XrdCopy(src, dst):
-    global websocket, overwrite, sources, chunks, chunksize, makedir, posc, hashtype
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
-    handler.wb = websocket
-    if len(dst) > 1: handler.isUpload = True  # this is a upload job because there are multiple destinations
+    handler.isDownload = isDownload
     for url_src in src:
         for url_dst in dst:
-            process.add_job(url_src["url"], url_dst["url"], force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
+            process.add_job(url_src["url"], url_dst["url"],
+                            force = overwrite,
+                            posc = posc,
+                            mkdir = makedir,
+                            chunksize = chunksize,
+                            parallelchunks = chunks,
                             sourcelimit = sources)  # , checksumtype = hashtype
     process.prepare()
     process.run(handler)
@@ -323,13 +322,14 @@ async def ProcessXrootdCp(xrd_copy_command):
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
     isDownload = bool(True)
+    file_name = ''
 
     # clean up the paths to be used in the xrdcp command
     src = ''
-    src_path = ''
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-2].startswith('file://'):
+    if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
         isSrcLocal = True
+        isDownload = False
         src = xrd_copy_command[-2].replace("file://", "")
         src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
         src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
@@ -344,9 +344,8 @@ async def ProcessXrootdCp(xrd_copy_command):
         src_specs_remotes.pop(0)  # let's remove first item which is the file path
 
     dst = ''
-    dst_path = ''
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-1].startswith('file://'):
+    if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
         isDstLocal = True
         dst = xrd_copy_command[-1].replace("file://", "")
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
@@ -354,6 +353,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         if not dst.startswith('/'):
             dst = Path.cwd().as_posix() + "/" + dst
     else:
+        isDownload = False
         dst = xrd_copy_command[-1]
         if not dst.startswith('/'):
             dst = currentdir + dst
@@ -361,9 +361,8 @@ async def ProcessXrootdCp(xrd_copy_command):
         dst = dst_specs_remotes[0]  # first item remains the file
         dst_specs_remotes.pop(0)  # let's remove first item which is the file path
 
-    src_path = Path(src)
-    dst_path = Path(dst)
-    file_name = src_path.name  # no matter the case, the actual proper filename is given by src
+    if dst.endswith("/"):
+        dst = dst + src.split("/")[-1]
 
     if not (isSrcLocal ^ isDstLocal):
         print("src and dst cannot be both of the same type : one must be local and one grid")
@@ -371,40 +370,17 @@ async def ProcessXrootdCp(xrd_copy_command):
 
     # process paths for DOWNLOAD
     get_envelope_arg_list = []  # construct command for getting authz envelope
-    src_final_path_str = ''
-    dst_final_path_str = ''
     if isDstLocal:  # DOWNLOAD FROM GRID
         isDownload = True
-        if not dst_path.is_absolute():
-            dst_path = Path.cwd()/dst_path
-        else:
-            dst_path = dst_path
-        if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
-        dst_final_path_str = dst_path.as_posix()
-
         get_envelope_arg_list.append("read")
-        get_envelope_arg_list.append(src_path.as_posix())
+        get_envelope_arg_list.append(src)
         if src_specs_remotes:
             specs_remotes = ",".join(src_specs_remotes)
             get_envelope_arg_list.append(specs_remotes)
     else:  # WRITE TO GRID
         isDownload = False
-        if not dst_path.is_absolute():
-            dst_path = Path(currentdir)/dst_path
-        else:
-            dst_path = dst_path
-        if dst_path.is_dir(): dst_path = Path.joinpath(dst_path, file_name)
-
-        if not src_path.is_absolute():
-            src_path = Path.cwd()/src_path
-        else:
-            src_path = src_path
-
-        dst_final_path_str = dst_path.as_posix()
-        src_final_path_str = src_path.as_posix()
-
         get_envelope_arg_list.append("write")
-        get_envelope_arg_list.append(dst_path.as_posix())
+        get_envelope_arg_list.append(dst)
         if dst_specs_remotes:
             specs_remotes = ",".join(dst_specs_remotes)
             get_envelope_arg_list.append(specs_remotes)
@@ -416,8 +392,8 @@ async def ProcessXrootdCp(xrd_copy_command):
     json_dict = json.loads(result)
 
     if XRDDEBUG:
-        print(src_path.as_posix())
-        print(dst_path.as_posix())
+        print(src)
+        print(dst)
         print(get_envelope_arg_list)
         print("\n")
         print(json.dumps(json_dict, sort_keys=True, indent=4))
@@ -429,6 +405,7 @@ async def ProcessXrootdCp(xrd_copy_command):
 
     url_list_src = []
     url_list_dst = []
+    nSEs = json_dict['results'][0]['nSEs']
     if isDownload:
         # multiple replicas are downloaded to a single file
         url_list_4meta = []
@@ -436,42 +413,55 @@ async def ProcessXrootdCp(xrd_copy_command):
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
             url_list_4meta.append(complete_url)
 
-        url_list_dst.append({"url": dst_final_path_str})  # the local file destination
+        url_list_dst.append({"url": dst})  # the local file destination
 
         size_4meta = json_dict['results'][0]['size']  # size SHOULD be the same for all replicas
         md5_4meta = json_dict['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
-        meta_fn = tmpdir + "/" + src_path.as_posix().replace("/", "_") + ".meta4"
+        meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
 
-        create_metafile(meta_fn, dst_final_path_str, size_4meta, md5_4meta, url_list_4meta)
+        create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
         url_list_src.append({"url": meta_fn})
     else:
         # single file is uploaded to multiple replicas
         for server in json_dict['results']:
             complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
             url_list_dst.append({"url": complete_url})
-        url_list_src.append({"url": src_final_path_str})
+        url_list_src.append({"url": src})
 
     if XRDDEBUG:
         for url in url_list_src:
             print("src:\n{}".format(url['url']))
         for url in url_list_dst:
             print("dst:\n{}".format(url['url']))
+        print("\n\n")
+        print(json.dumps(json_dict, sort_keys=True, indent=4))
 
-    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst)  # defer the list of url and files to xrootd processing
+    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload)  # defer the list of url and files to xrootd processing
 
-
-##TODO
-
-
+    # commit envelope size lfn perm expire pfn se guid md5
     if token_list_upload_ok:  # it was an upload job that had succesfull uploads
-        for token in token_list_upload_ok:
-            json_commit = CreateJsonCommand('commit', [str(token)])
-            await websocket.send(json_commit)
-            wb_results = await websocket.recv()
-            json_dict = json.loads(wb_results)
-            if XRDDEBUG:
-                print(json.dumps(json_dict, sort_keys=True, indent=4))
+        # common values for all commit commands
+        lfn = src
+        size = os.path.getsize(lfn)
+        md5sum = md5(lfn)
+        perm = '644'
+        expire = '0'
+        for token in token_list_upload_ok:  # for each succesful token
+            for server in json_dict['results']:  # go over all received servers
+                if token in server['envelope']:  # for the server that have the succesful uploaded token
+                    pfn = server['url']
+                    se = server['se']
+                    guid = server['guid']
+                    commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
+                    json_commit = CreateJsonCommand('commit', commit_args_list)
+                    await websocket.send(json_commit)
+                    commit_results = await websocket.recv()
+                    json_dict = json.loads(commit_results)
+                    if 'metadata' in json_dict: del json_dict['metadata']
+                    print(json.dumps(json_dict, sort_keys=True, indent=4))
+                    if XRDDEBUG:
+                        print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
 async def JAlienConnect(jsoncmd = ''):
