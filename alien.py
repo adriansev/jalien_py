@@ -105,8 +105,11 @@ def XrdCopy(src, dst, isDownload = bool(True)):
         src = ''  # pass the source from begin to end
         dst = ''  # pass the target from begin to end
         token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+        timestamp_begin = None
+        total = None
 
         def begin(self, id, total, source, target):
+            self.timestamp_begin = datetime.now().timestamp()
             print("jobID: {0}/{1} ... ".format(id, total), end = '')
             self.src = source
             self.dst = target
@@ -125,7 +128,19 @@ def XrdCopy(src, dst, isDownload = bool(True)):
             if results['status'].fatal: status = 'FATAL'
 
             if results['status'].ok:
-                print("STATUS: {0} ; MESSAGE: {1}".format(status, results_message))
+                deltaT = datetime.now().timestamp() - self.timestamp_begin
+                speed = self.total/deltaT
+                bytes_s = 'bytes/s'
+                kbytes_s = 'kB/s'
+                mbytes_s = 'MB/s'
+                unit = bytes_s
+                if int(speed/1024) > 1:
+                    speed = speed/1024
+                    unit = kbytes_s
+                if int(speed/(1024*1024)) > 1:
+                    speed = speed/(1024*1024)
+                    unit = mbytes_s
+                print("STATUS: {0} ; SPEED = {1:.2f} {2} ; MESSAGE: {3}".format(status, speed, unit, results_message))
                 if self.isDownload:
                     os.remove(urlparse(str(self.src)).path)  # remove the created metalink
                 else:  # isUpload
@@ -136,7 +151,7 @@ def XrdCopy(src, dst, isDownload = bool(True)):
                 print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
 
         def update(self, jobId, processed, total):
-            pass  # not interested in updates
+            self.total = total
             #print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
     process = client.CopyProcess()
