@@ -1,0 +1,4 @@
+#!/bin/bash
+
+python3 -OO -m py_compile $(which alien.py)
+exec python3 $(which alien.py)
