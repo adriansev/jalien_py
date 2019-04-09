@@ -92,7 +92,7 @@ sources = int(1)  # max number of download sources
 chunks = int(1)  # number of chunks that should be requested in parallel
 chunksize = int(4194304)  # chunk size for remote transfers
 makedir = bool(True)  # create the parent directories when creating a file
-overwrite = bool(True)  # overwrite target if it exists
+overwrite = bool(False)  # overwrite target if it exists
 posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
 
 
@@ -107,7 +107,7 @@ def XrdCopy(src, dst, isDownload = bool(True)):
         token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
 
         def begin(self, id, total, source, target):
-            print("jobID: {0}/{1}".format(id, total))
+            print("jobID: {0}/{1} ... ".format(id, total), end = '')
             self.src = source
             self.dst = target
             if XRDDEBUG:
@@ -136,7 +136,8 @@ def XrdCopy(src, dst, isDownload = bool(True)):
                 print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
 
         def update(self, jobId, processed, total):
-            print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
+            pass  # not interested in updates
+            #print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
@@ -396,7 +397,7 @@ async def JAlienConnect(jsoncmd = ''):
 
 
 async def ProcessXrootdCp(xrd_copy_command):
-    global websocket, currentdir
+    global websocket, currentdir, sources, chunks, chunksize, mkdir, overwrite, posc
     if len(xrd_copy_command) < 2:
         print("at least 2 arguments are needed : src dst")
         print("the command is of the form of (with the strict order of arguments):")
@@ -405,10 +406,15 @@ async def ProcessXrootdCp(xrd_copy_command):
         print("after each src,dst can be added comma separated arguments like: disk:N,SE1,SE2,!SE3")
         return
 
+    overwrite = False  # let's default to false
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
     isDownload = bool(True)
     file_name = ''
+
+    if '-f' in xrd_copy_command:
+        overwrite = True
+        xrd_copy_command.remove('-f')
 
     # clean up the paths to be used in the xrdcp command
     src = ''
@@ -500,6 +506,16 @@ async def ProcessXrootdCp(xrd_copy_command):
 
         create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
         url_list_src.append({"url": meta_fn})
+
+        # let's check the destination, if existent, check the validity
+        if not overwrite:
+            if os.path.isfile(dst):  # first check
+                if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
+            if os.path.isfile(dst):  # if the existent file survived the first check
+                if md5(dst) != md5_4meta: os.remove(dst)
+            if os.path.isfile(dst):  # if the existent file survived the second check
+                print("File is already downloaded and size and md5 match the remote")
+                return
     else:
         # single file is uploaded to multiple replicas
         for server in access_request['results']:

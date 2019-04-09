@@ -1,4 +1,7 @@
 #!/bin/bash
 
+found=$(which alien.py 2>/dev/null)
+[[ -z "${found}" ]] && found="./alien.py"
+
 python3 -OO -m py_compile $(which alien.py)
 exec python3 $(which alien.py)
