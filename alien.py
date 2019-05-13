@@ -323,8 +323,9 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     ccmd = ''  # reset the current executed command, the received message was processed
 
 
-async def JAlienConnect(jsoncmd = ''):
-    global websocket, currentdir, commandlist, ccmd
+# async def JAlienConnect(jsoncmd = ''):
+async def JAlienConnect(cmd = '', args = []):
+    global websocket, currentdir, commandlist, ccmd, alienHome
     ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
@@ -335,13 +336,24 @@ async def JAlienConnect(jsoncmd = ''):
         # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
         if not commandlist: await getSessionVars()
 
-        if jsoncmd:  # command mode
-            ccmd = jsoncmd
+        cwd_grid_path = Path(currentdir)
+        home_grid_path = Path(alienHome)
+
+        if cmd:  # command mode
             signal.signal(signal.SIGINT, signal_handler)
-            json_dict = json.loads(jsoncmd)
-            if json_dict["command"].startswith("cp"):  # defer cp processing to ProcessXrootdCp
-                await ProcessXrootdCp(json_dict["options"])
+            if (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
+                await ProcessXrootdCp(args)
             else:
+                if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+                    for i, arg in enumerate(args):
+                        args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+                        args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
+                        args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+
+                jsoncmd = CreateJsonCommand(cmd, args)
+                if DEBUG: print(jsoncmd)
+                ccmd = jsoncmd
+
                 await websocket.send(jsoncmd)
                 result = await websocket.recv()
                 ProcessReceivedMessage(result)
@@ -380,6 +392,12 @@ async def JAlienConnect(jsoncmd = ''):
                 # process help commands
                 cmd = input_list[0]
                 input_list.pop(0)  # we have the cmd, so remove from the list
+
+                if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+                    for i, arg in enumerate(input_list):
+                        input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+                        input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
+                        input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
 
                 # defer to cp xrootd function
                 if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
@@ -601,9 +619,7 @@ if __name__ == '__main__':
         args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
     if cmd:
-        jsoncmd = CreateJsonCommand(cmd, args)
-        if DEBUG: print(jsoncmd)
-        asyncio.get_event_loop().run_until_complete(JAlienConnect(jsoncmd))
+        asyncio.get_event_loop().run_until_complete(JAlienConnect(cmd, args))
     else:
         asyncio.get_event_loop().run_until_complete(JAlienConnect())
 
