@@ -84,9 +84,9 @@ xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={Tran
 # inittimeout: copy initialization timeout(int)
 # tpctimeout: timeout for a third-party copy to finish(int)
 # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
-#:param checksummode: checksum mode to be used #:type    checksummode: string
-#:param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
-#:param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+# :param checksummode: checksum mode to be used #:type    checksummode: string
+# :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+# :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
 hashtype = str('md5')
 sources = int(1)  # max number of download sources
 chunks = int(1)  # number of chunks that should be requested in parallel
@@ -152,7 +152,7 @@ def XrdCopy(src, dst, isDownload = bool(True)):
 
         def update(self, jobId, processed, total):
             self.total = total
-            #print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
+            # print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
@@ -358,7 +358,7 @@ async def JAlienConnect(jsoncmd = ''):
                 # if shell command, just run it and return
                 if re.match("!", INPUT):
                     sh_cmd = re.sub(r'^!', '', INPUT)
-                    #sh_cmd = shlex.quote(sh_cmd)
+                    # sh_cmd = shlex.quote(sh_cmd)
                     shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
                     stdout = shcmd_out.stdout
                     if stdout: print(stdout.decode())
@@ -427,6 +427,9 @@ async def ProcessXrootdCp(xrd_copy_command):
     isDownload = bool(True)
     file_name = ''
 
+    cwd_grid_path = Path(currentdir)
+    home_grid_path = Path(alienHome)
+
     if '-f' in xrd_copy_command:
         overwrite = True
         xrd_copy_command.remove('-f')
@@ -440,10 +443,14 @@ async def ProcessXrootdCp(xrd_copy_command):
         src = xrd_copy_command[-2].replace("file://", "")
         src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
         src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
+        src = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", src)
         if not src.startswith('/'):
             src = Path.cwd().as_posix() + "/" + src
     else:
         src = xrd_copy_command[-2]
+        src = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", src)
+        src = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", src)
+        src = re.sub(r"\/*\%ALIEN\/+", home_grid_path.as_posix() + "/", src)
         if not src.startswith('/'):
             src = currentdir + src
         src_specs_remotes = src.split(",")
@@ -457,11 +464,15 @@ async def ProcessXrootdCp(xrd_copy_command):
         dst = xrd_copy_command[-1].replace("file://", "")
         dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
         dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
+        dst = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", dst)
         if not dst.startswith('/'):
             dst = Path.cwd().as_posix() + "/" + dst
     else:
         isDownload = False
         dst = xrd_copy_command[-1]
+        dst = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", dst)
+        dst = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", dst)
+        dst = re.sub(r"\/*\%ALIEN\/+", home_grid_path.as_posix() + "/", dst)
         if not dst.startswith('/'):
             dst = currentdir + dst
         dst_specs_remotes = dst.split(",")
