@@ -1,0 +1,8 @@
+For distributing just the script one might want to minify the content  
+   
+# install the minifier  
+`pip3 install --upgrade --user pyminifier`  
+   
+# then minify :  
+`pyminifier --pyz=alien2 alien.py`  
+   
