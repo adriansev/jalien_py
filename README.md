@@ -3,12 +3,13 @@ Python interface to web-socket based interface to ALICE Grid Services
 
 Can be used as command mode and interactive mode :  
 1. Command mode :  
-./j <command>  
+`alien.py <command>  `
 e.g :  
-./j pwd  
+`alien.py pwd  `
    
 2. Interactive mode e.g :  
-./j  
+`
+alien.py  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ > pwd  
 /alice/cern.ch/user/a/asevcenc/  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ > ls /  
@@ -23,12 +24,16 @@ tmp
 var  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ >  
    
+`
+
 For debugging purposes there are 2 symlinks that modify the output format:  
-lrwxrwxrwx 1 1 Jan 31 15:13 j_json -> j  
-lrwxrwxrwx 1 1 Jan 31 15:13 j_json_all -> j  
+`
+alien_json -> alien.py  
+alien_json_all -> alien.py  
+`
   
-j_json will output the exact json of ['results']  
-j_json_all will output the full json answer (including ['metadata'])  
+alien_json will output the exact json of ['results']  
+alien_json_all will output the full json answer (including ['metadata'])  
   
 There are a few environment variables that influence the mechanics of the script :  
 JALIENPY_DEBUG - if true, will activate some printouts  
@@ -37,4 +42,17 @@ JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - full path file descriptions of certificate
    
 X509 locations:  
 X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR   
+
+To use a compile mode, one can declare the following bash functions:  
+`
+j_py_compile () {
+    DIR=$(dirname $(which alien.py))
+    cd ${DIR}
+    python3 -OO -m py_compile alien.py
+}
+
+j ()          { python3 ${HOME}/bin/alien.py "${@}" ;}
+j_json ()     { python3 ${HOME}/bin/alien_json "${@}" ;}
+j_json_all () { python3 ${HOME}/bin/alien_json_all "${@}" ;}
+`
 
