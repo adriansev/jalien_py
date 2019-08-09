@@ -1,3 +1,0 @@
-# Do not use pip at this moment for installing the xrootd python bindings
-# the pip package is python 2 only.
-# for Fedora and EL7(Centos/Scientific) there is a package for python3 - i suspect that Debian ecosystem have it also
