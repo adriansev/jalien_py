@@ -13,6 +13,13 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://gitlab.cern.ch/jalien/xjalienfs",
     packages=setuptools.find_packages(),
+    install_requires=[
+        'urllib3',
+        'pathlib2',
+        'websockets',
+        'pyOpenSSL',
+        'pyxrootd'
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD 3-Clause License",
