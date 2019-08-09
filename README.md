@@ -8,7 +8,7 @@ e.g :
 `alien.py pwd  `
    
 2. Interactive mode e.g :  
-`
+```
 alien.py  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ > pwd  
 /alice/cern.ch/user/a/asevcenc/  
@@ -23,8 +23,7 @@ test
 tmp  
 var  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ >  
-   
-`
+```
 
 For debugging purposes there are 2 symlinks that modify the output format:  
 `
@@ -44,7 +43,7 @@ X509 locations:
 X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR   
 
 To use a compile mode, one can declare the following bash functions:  
-`
+```
 j_py_compile () {
     DIR=$(dirname $(which alien.py))
     cd ${DIR}
@@ -54,5 +53,5 @@ j_py_compile () {
 j ()          { python3 ${HOME}/bin/alien.py "${@}" ;}
 j_json ()     { python3 ${HOME}/bin/alien_json "${@}" ;}
 j_json_all () { python3 ${HOME}/bin/alien_json_all "${@}" ;}
-`
+```
 
