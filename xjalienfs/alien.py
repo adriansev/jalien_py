@@ -292,6 +292,16 @@ async def getSessionVars():
     alienHome = currentdir  # this is first query so current dir is alienHOME
 
 
+async def get_completer_list():
+    global websocket
+    await websocket.send(CreateJsonCommand('ls'))
+    result = await websocket.recv()
+    result = result.lstrip()
+    json_dict = json.loads(result.encode('ascii', 'ignore'))
+    ls_list = list(item['message'] for item in json_dict['results'])
+    return ls_list
+
+
 def ProcessReceivedMessage(message='', shellcmd = None):
     global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
     if not message: return
@@ -377,6 +387,9 @@ async def JAlienConnect(cmd = '', args = []):
                     stderr = shcmd_out.stderr
                     if stderr: print(stderr.decode())
                     continue
+
+                # list of directories in CWD (to be used for autocompletion?)
+                cwd_list = await get_completer_list()
 
                 # process the input and take care of pipe to shell
                 input_list = []
@@ -599,7 +612,9 @@ async def ProcessXrootdCp(xrd_copy_command):
                         print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
-if __name__ == '__main__':
+def main():
+    global json_output, json_meta_output
+
     # Let's start the connection
     logger = logging.getLogger('websockets')
     logger.setLevel(logging.ERROR)
@@ -623,5 +638,6 @@ if __name__ == '__main__':
     else:
         asyncio.get_event_loop().run_until_complete(JAlienConnect())
 
-
+if __name__ == '__main__':
+    main()
 
