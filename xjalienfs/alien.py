@@ -302,6 +302,26 @@ async def get_completer_list():
     return ls_list
 
 
+async def pathtype_grid(path=''):
+    if not path : return
+    global websocket
+    await websocket.send(CreateJsonCommand('stat', path))
+    result = await websocket.recv()
+    json_dict = json.loads(result.lstrip.encode('ascii', 'ignore'))
+
+    error = json_dict["metadata"]["error"]
+    if error: return error
+    return str(json_dict['results'][0]["type"])
+
+
+def pathtype_local(path=''):
+    if not path : return
+    p = Path(path)
+    if p.is_dir():  return str('d')
+    if p.is_file(): return str('f')
+    return str('')
+
+
 def ProcessReceivedMessage(message='', shellcmd = None):
     global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
     if not message: return
