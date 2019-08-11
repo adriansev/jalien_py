@@ -1,0 +1,7 @@
+#!/bin/bash
+
+ARGS="$(echo ${@}| sed 's/ -g//' )" ## if -g was used, remove it as we will detect later if it is required
+GUID_PATTERN='(\{){0,1}[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}(\}){0,1}'
+CMD="alien.py whereis"
+[[ ${ARGS} =~ ${GUID_PATTERN} ]] && CMD="${CMD} -g"
+exec ${CMD} ${ARGS}
