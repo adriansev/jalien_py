@@ -1,0 +1,8 @@
+One could want/need to package the script with all dependencies in one single executable   
+   
+# install the packager
+`pip3 install --upgrade --user pyinstaller`  
+   
+then  
+`pyinstaller --noupx -F alien.py`  
+   
