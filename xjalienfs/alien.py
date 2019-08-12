@@ -73,6 +73,9 @@ exitcode = ''
 ccmd = ''  # current command in execution
 cmd_hist = []  # command history
 
+# List of entities in current grid directory
+ls_list = []
+
 # xrdcp generic parameters (used by ALICE tests)
 FirstConnectMaxCnt = 2
 TransactionTimeout = 60
@@ -353,9 +356,42 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     ccmd = ''  # reset the current executed command, the received message was processed
 
 
+async def process_initial_message(message=''):
+    global currentdir, websocket, user, error
+    if websocket and websocket.connection_lost():
+        get_connection()
+        return
+    elif not message:
+        return
+    else:
+        json_dict = json.loads(message.encode('ascii', 'ignore'))
+        if currentdir and not currentdir == json_dict["metadata"]["currentdir"]:
+            await JAlienConnect(cmd='cd', args=[currentdir])
+        user == json_dict["metadata"]["user"]
+        if 'error' in json_dict["metadata"]:
+            error = json_dict["metadata"]["error"]
+
+
+async def get_connection() -> websockets.connect:
+    global websocket
+    if websocket.connection_lost():
+        ssl_context = create_ssl_context()
+        try:
+            websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024,
+                                             close_timeout=60, ping_timeout=60, ping_interval=60)
+            await JAlienConnect(cmd='ping')
+        except websockets.ConnectionClosed():
+            print(websockets.ConnectionClosed.reason + '. Trying again in 1 second')
+            import time
+            time.sleep(1)
+            get_connection()
+
+
+
+
 # async def JAlienConnect(jsoncmd = ''):
 async def JAlienConnect(cmd = '', args = []):
-    global websocket, currentdir, commandlist, ccmd, alienHome
+    global websocket, currentdir, commandlist, ccmd, alienHome, ls_list
     ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
