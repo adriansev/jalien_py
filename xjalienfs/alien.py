@@ -245,7 +245,7 @@ def create_ssl_context():
         key = userkey
 
     ctx = ssl.SSLContext()
-    verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+    verify_mode = ssl.CERT_NONE  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
     ctx.load_verify_locations(capath=capath_default)
