@@ -29,6 +29,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 # environment debug variable
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
+TIME_CONNECT = os.getenv('JALIENPY_TIMECONNECT', '')
 
 # Steering output
 json_output = bool(False)
@@ -362,6 +363,13 @@ def ProcessReceivedMessage(message='', shellcmd = None):
 
 async def InitConnection():
     global websocket, ccmd, user, alienHome, currentdir, commandlist
+
+    # implement a time command for measurement of sent/recv delay
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT:
+        init_begin = datetime.now().timestamp()
+
     ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
@@ -373,6 +381,10 @@ async def InitConnection():
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     if not commandlist: await getSessionVars()
+
+    if init_begin:
+        init_delta = datetime.now().timestamp() - init_begin
+        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta))
 
 
 class Commander(cmd2.Cmd):
@@ -905,6 +917,13 @@ async def JAlienCmd(cmd = '', args = []):
     global websocket, currentdir, alienHome
     await InitConnection()
 
+    # implement a time command for measurement of sent/recv delay
+    message_begin = None
+    message_delta = None
+    if cmd == 'time':
+        cmd = args.pop(0)
+        message_begin = datetime.now().timestamp()
+
     cwd_grid_path = Path(currentdir)
     home_grid_path = Path(alienHome)
 
@@ -923,6 +942,9 @@ async def JAlienCmd(cmd = '', args = []):
 
         await websocket.send(jsoncmd)
         result = await websocket.recv()
+        if message_begin:
+            message_delta = datetime.now().timestamp() - message_begin
+            print(">>>   Time for send/receive command : {}".format(message_delta))
         ProcessReceivedMessage(result)
 
 
@@ -976,9 +998,14 @@ async def JAlienShell():
         else:
             input_list = INPUT.split()
 
-        # process help commands
-        cmd = input_list[0]
-        input_list.pop(0)  # we have the cmd, so remove from the list
+        cmd = input_list.pop(0)  # set the cmd as first item in list and remove it (the rest of list are the arguments)
+
+        # implement a time command for measurement of sent/recv delay
+        message_begin = None
+        message_delta = None
+        if cmd == 'time':
+            cmd = input_list.pop(0)  # remove the time command, leave the actual cmd+args list
+            message_begin = datetime.now().timestamp()
 
         if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
             for i, arg in enumerate(input_list):
@@ -991,6 +1018,7 @@ async def JAlienShell():
             await ProcessXrootdCp(input_list)
             continue
 
+        # process help commands
         if (cmd == "?") or (cmd == "help"):
             if len(input_list) > 0:
                 cmdhelp = input_list[0]
@@ -1010,6 +1038,9 @@ async def JAlienShell():
 
         await websocket.send(jsoncmd)
         result = await websocket.recv()
+        if message_begin:
+            message_delta = datetime.now().timestamp() - message_begin
+            print(">>>   Time for send/receive command : {}".format(message_delta))
         ProcessReceivedMessage(result, pipe_to_shell_cmd)
 
 

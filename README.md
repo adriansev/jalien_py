@@ -1,6 +1,6 @@
-# pyJalien
-Python interface to web-socket based interface to ALICE Grid Services
-
+# alien.py  
+Python interface to web-socket based interface to ALICE Grid Services  
+   
 Can be used as command mode and interactive mode :  
 1. Command mode :  
 `alien.py <command>  `
@@ -38,6 +38,8 @@ There are a few environment variables that influence the mechanics of the script
 JALIENPY_DEBUG - if true, will activate some printouts  
 JALIENPY_XRDDEBUG - if set will activate printout in XRootD commands and functions  
 JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - full path file descriptions of certificate,key token files  
+JALIENPY_TIMECONNECT - enable for measurement of time for websocket creation - e.g. `JALIENPY_TIMECONNECT=1 alien.py pwd`  
+   
    
 X509 locations:  
 X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR   
