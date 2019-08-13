@@ -9,6 +9,7 @@ import json
 import logging
 import ssl
 import OpenSSL
+import readline
 import shlex
 import argparse
 import tempfile
@@ -30,6 +31,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 DEBUG = os.getenv('JALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('JALIENPY_TIMECONNECT', '')
+CMD_TESTING = os.getenv('JALIENPY_NEWSHELL', '')
 
 # Steering output
 json_output = bool(False)
@@ -79,6 +81,7 @@ cmd_hist = []  # command history
 
 local_file_system = True
 cassandra_error = 'This command can only be run on jSh, use the "switch" command to change shell.'
+ls_list = []
 
 # xrdcp generic parameters (used by ALICE tests)
 FirstConnectMaxCnt = 2
@@ -302,12 +305,11 @@ async def getSessionVars():
 
 
 async def get_completer_list():
-    global websocket
+    global websocket, ls_list
     await websocket.send(CreateJsonCommand('ls'))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
     ls_list = list(item['message'] for item in json_dict['results'])
-    return ls_list
 
 
 async def pathtype_grid(path=''):
@@ -388,7 +390,7 @@ async def InitConnection():
 
 
 class Commander(cmd2.Cmd):
-    global websocket, currentdir, commandlist, ccmd, alienHome
+    global websocket, currentdir, commandlist, ccmd, alienHome, ls_list
 
     intro = 'Welcome to the jAliEn shell. Try ? or help to list commands.\nTo change between the grid and your local ' \
             'file system, use the "switch" command. '
@@ -406,7 +408,7 @@ class Commander(cmd2.Cmd):
         self.websocket = websocket
 
         # Initiate cmd2. Set history file and allow the use of IPython to create scripts
-        cmd.__init__(self, persistent_history_file= homedir + '/.alienpy_hist', use_ipython=True)
+        super().__init__(self, persistent_history_file= homedir + '/.alienpy_hist', use_ipython=True)
 
         # Give scripts made by the user access to this class
         self.locals_in_py = True
@@ -415,17 +417,17 @@ class Commander(cmd2.Cmd):
         self.complete_lcd = self.path_complete
 
         # Set the completer for cd equal to all files/directories in the current directory
-        self.ls_list = get_completer_list()
-        self.cd_parser = self.parser.add_argument('cd', choices=self.ls_list, type=str)
+        get_completer_list()
+        self.cd_parser = self.parser.add_argument('cd', choices=ls_list, type=str)
 
     def decorator(self, local=local_file_system):
-        self.ls_list = get_completer_list()
+        get_completer_list()
 
     def do_echo(self, arg):
         """"Print what you write"""
         if local_file_system:
-            rl_utils.rl_set_prompt('heisann')
-            rl_utils.rl_force_redisplay()
+            readline.set_prompt('heisann')
+            readline.rl_force_redisplay()
             self.run_on_local_shell('echo ' + arg)
         else:
             print(arg)
@@ -1238,7 +1240,11 @@ def main():
     if cmd:
         asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args))
     else:
-        asyncio.get_event_loop().run_until_complete(JAlienShell())
+        if CMD_TESTING:
+            app = Commander()
+            app.cmdloop()
+        else:
+            asyncio.get_event_loop().run_until_complete(JAlienShell())
 
 
 if __name__ == '__main__':
