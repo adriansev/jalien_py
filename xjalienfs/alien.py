@@ -289,7 +289,7 @@ async def getSessionVars():
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
     if currentdir and not currentdir == json_dict["metadata"]["currentdir"]:
-        await websocket.send(CreateJsonCommand('cd', currentdir))
+        await websocket.send(CreateJsonCommand('cd', [currentdir]))
     currentdir = json_dict["metadata"]["currentdir"]
     if not alienHome: alienHome = currentdir  # this is first query so current dir is alienHOME
 
@@ -306,7 +306,7 @@ async def get_completer_list():
 async def pathtype_grid(path=''):
     if not path: return
     global websocket
-    await websocket.send(CreateJsonCommand('stat', path))
+    await websocket.send(CreateJsonCommand('stat', [path]))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
 
@@ -369,111 +369,116 @@ async def InitConnection():
     if not commandlist: await getSessionVars()
 
 
-# async def JAlienConnect(jsoncmd = ''):
-async def JAlienConnect(cmd = '', args = []):
+async def JAlienCmd(cmd = '', args = []):
+    global websocket, currentdir, alienHome
+    await InitConnection()
+
+    cwd_grid_path = Path(currentdir)
+    home_grid_path = Path(alienHome)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    if (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
+        await ProcessXrootdCp(args)
+    else:
+        if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+            for i, arg in enumerate(args):
+                args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+                args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
+                args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+
+        jsoncmd = CreateJsonCommand(cmd, args)
+        if DEBUG: print(jsoncmd)
+
+        await websocket.send(jsoncmd)
+        result = await websocket.recv()
+        ProcessReceivedMessage(result)
+
+
+async def JAlienShell():
     global websocket, currentdir, commandlist, ccmd, alienHome
     await InitConnection()
 
     cwd_grid_path = Path(currentdir)
     home_grid_path = Path(alienHome)
 
-    if cmd:  # command mode
+    while True:
         signal.signal(signal.SIGINT, signal_handler)
-        if (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
-            await ProcessXrootdCp(args)
+        INPUT = ''
+        try:
+            INPUT = input(f"jsh: {currentdir} >")
+        except EOFError:
+            exit_message()
+
+        if not INPUT: continue
+
+        # make sure we have with whom to talk to; if not, lets redo the connection
+        # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
+        # (if the end of message frame is not received then all message will be lost as it invalidated)
+        try:
+            ping = await websocket.ping()
+        except websockets.ConnectionClosed:
+            await InitConnection()
+
+        # list of directories in CWD (to be used for autocompletion?)
+        cwd_list = await get_completer_list()
+
+        # if shell command, just run it and return
+        if re.match("!", INPUT):
+            sh_cmd = re.sub(r'^!', '', INPUT)
+            # sh_cmd = shlex.quote(sh_cmd)
+            shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
+            stdout = shcmd_out.stdout
+            if stdout: print(stdout.decode())
+            stderr = shcmd_out.stderr
+            if stderr: print(stderr.decode())
+            continue
+
+        # process the input and take care of pipe to shell
+        input_list = []
+        pipe_to_shell_cmd = ''
+        if "|" in str(INPUT):  # if we have pipe to shell command
+            input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
+            input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
+            pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
+            pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
         else:
-            if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-                for i, arg in enumerate(args):
-                    args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-                    args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
-                    args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+            input_list = INPUT.split()
 
-            jsoncmd = CreateJsonCommand(cmd, args)
-            if DEBUG: print(jsoncmd)
-            ccmd = jsoncmd
+        # process help commands
+        cmd = input_list[0]
+        input_list.pop(0)  # we have the cmd, so remove from the list
 
-            await websocket.send(jsoncmd)
-            result = await websocket.recv()
-            ProcessReceivedMessage(result)
-    else:        # interactive/shell mode
-        while True:
-            signal.signal(signal.SIGINT, signal_handler)
-            INPUT = ''
-            try:
-                INPUT = input(f"jsh: {currentdir} >")
-            except EOFError:
-                exit_message()
+        if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+            for i, arg in enumerate(input_list):
+                input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+                input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
+                input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
 
-            if not INPUT: continue
+        # defer to cp xrootd function
+        if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
+            await ProcessXrootdCp(input_list)
+            continue
 
-            # make sure we have with whom to talk to; if not, lets redo the connection
-            # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
-            # (if the end of message frame is not received then all message will be lost as it invalidated)
-            try:
-                ping = await websocket.ping()
-            except websockets.ConnectionClosed:
-                await InitConnection()
-
-            # list of directories in CWD (to be used for autocompletion?)
-            cwd_list = await get_completer_list()
-
-            # if shell command, just run it and return
-            if re.match("!", INPUT):
-                sh_cmd = re.sub(r'^!', '', INPUT)
-                # sh_cmd = shlex.quote(sh_cmd)
-                shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
-                stdout = shcmd_out.stdout
-                if stdout: print(stdout.decode())
-                stderr = shcmd_out.stderr
-                if stderr: print(stderr.decode())
-                continue
-
-            # process the input and take care of pipe to shell
-            input_list = []
-            pipe_to_shell_cmd = ''
-            if "|" in str(INPUT):  # if we have pipe to shell command
-                input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
-                input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
-                pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
-                pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
+        if (cmd == "?") or (cmd == "help"):
+            if len(input_list) > 0:
+                cmdhelp = input_list[0]
+                if cmdhelp in commandlist:
+                    input_list.clear()
+                    cmd = cmdhelp
+                    input_list.append(cmd)
+                    input_list.append('-h')
             else:
-                input_list = INPUT.split()
-
-            # process help commands
-            cmd = input_list[0]
-            input_list.pop(0)  # we have the cmd, so remove from the list
-
-            if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-                for i, arg in enumerate(input_list):
-                    input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-                    input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
-                    input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
-
-            # defer to cp xrootd function
-            if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-                await ProcessXrootdCp(input_list)
+                print(commandlist)
                 continue
 
-            if (cmd == "?") or (cmd == "help"):
-                if len(input_list) > 0:
-                    cmdhelp = input_list[0]
-                    if cmdhelp in commandlist:
-                        input_list.clear()
-                        cmd = cmdhelp
-                        input_list.append(cmd)
-                        input_list.append('-h')
-                else:
-                    print(commandlist)
-                    continue
+        jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
+        ccmd = jsoncmd  # keep a global copy of the json command that is run
+        cmd_hist.append(jsoncmd)
+        if DEBUG: print(jsoncmd)
 
-            jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
-            ccmd = jsoncmd  # keep a global copy of the json command that is run
-            cmd_hist.append(jsoncmd)
-            if DEBUG: print(jsoncmd)
-
-            await websocket.send(jsoncmd)
-            result = await websocket.recv()
-            ProcessReceivedMessage(result, pipe_to_shell_cmd)
+        await websocket.send(jsoncmd)
+        result = await websocket.recv()
+        ProcessReceivedMessage(result, pipe_to_shell_cmd)
 
 
 async def ProcessXrootdCp(xrd_copy_command):
@@ -668,9 +673,9 @@ def main():
         args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
     if cmd:
-        asyncio.get_event_loop().run_until_complete(JAlienConnect(cmd, args))
+        asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args))
     else:
-        asyncio.get_event_loop().run_until_complete(JAlienConnect())
+        asyncio.get_event_loop().run_until_complete(JAlienShell())
 
 
 if __name__ == '__main__':
