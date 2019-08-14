@@ -32,6 +32,7 @@ DEBUG = os.getenv('JALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('JALIENPY_TIMECONNECT', '')
 CMD_TESTING = os.getenv('JALIENPY_NEWSHELL', '')
+USE_JBOX = os.getenv('JALIENPY_JBOX', '')
 
 # Steering output
 json_output = bool(False)
@@ -63,10 +64,17 @@ tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
 
 # Web socket static variables
 websocket = None  # global websocket
-jalien_server = 'alice-jcentral.cern.ch'
+
+if USE_JBOX:
+    jalien_server = 'localhost'
+else:
+    jalien_server = 'alice-jcentral.cern.ch'
+
 jalien_websocket_port = 8097  # websocket port
 jalien_websocket_path = '/websocket/json'
-fHostWSUrl = 'wss://' + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
+
+wb_protol = 'wss://'
+fHostWSUrl = wb_protol + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
 
 # jalien_py internal vars
 alienHome = ''
@@ -252,12 +260,21 @@ def create_ssl_context():
         key  = userkey
 
     ctx = ssl.SSLContext()
-    verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+    # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+    if USE_JBOX:
+        verify_mode = ssl.CERT_NONE
+    else:
+        verify_mode = ssl.CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
     ctx.load_verify_locations(capath=capath_default)
     ctx.load_verify_locations(capath=user_globus_dir)
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    if USE_JBOX:
+        if Path(tokencert).exists() and IsValidCert(tokencert): ctx.load_verify_locations(cafile=tokencert)
+        ctx.load_cert_chain(certfile=usercert, keyfile=userkey)
+        # ctx.load_cert_chain(certfile=cert, keyfile=key)
+    else:
+        ctx.load_cert_chain(certfile=cert, keyfile=key)
     return ctx
 
 
@@ -372,7 +389,8 @@ async def InitConnection():
     if TIME_CONNECT:
         init_begin = datetime.now().timestamp()
 
-    ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+    ssl_context = None
+    if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
