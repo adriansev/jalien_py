@@ -1078,6 +1078,8 @@ async def ProcessXrootdCp(xrd_copy_command):
     overwrite = False  # let's default to false
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
+    isSrcDir = bool(False)
+    isDstDir = bool(False)
     isDownload = bool(True)
     file_name = ''
 
@@ -1087,6 +1089,19 @@ async def ProcessXrootdCp(xrd_copy_command):
     if '-f' in xrd_copy_command:
         overwrite = True
         xrd_copy_command.remove('-f')
+
+    if '-P' in xrd_copy_command:
+        posc = True
+        xrd_copy_command.remove('-P')
+
+    # TODO !!! read from arguments optional pattern for file copy (pattern to be used in find)
+    pattern="." # default pattern
+
+
+    # TODO !!! read arguments for the below tunables
+    #sources = int(1)  # max number of download sources
+    #chunks = int(1)  # number of chunks that should be requested in parallel
+    #chunksize = int(4194304)  # chunk size for remote transfers
 
     # clean up the paths to be used in the xrdcp command
     src = ''
@@ -1100,6 +1115,10 @@ async def ProcessXrootdCp(xrd_copy_command):
         src = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", src)
         if not src.startswith('/'):
             src = Path.cwd().as_posix() + "/" + src
+        if pathtype_local(src) == 'd': isSrcDir = bool(True)
+        if isSrcDir:
+            print ("Recursive uploading of directories not supported at this moment")
+            return
     else:
         src = xrd_copy_command[-2]
         src = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", src)
@@ -1108,8 +1127,8 @@ async def ProcessXrootdCp(xrd_copy_command):
         if not src.startswith('/'):
             src = currentdir + src
         src_specs_remotes = src.split(",")
-        src = src_specs_remotes[0]  # first item remains the file
-        src_specs_remotes.pop(0)  # let's remove first item which is the file path
+        src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        if pathtype_grid(src) == 'd': isSrcDir = bool(True)
 
     dst = ''
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
@@ -1121,6 +1140,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         dst = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", dst)
         if not dst.startswith('/'):
             dst = Path.cwd().as_posix() + "/" + dst
+        if pathtype_local(dst) == 'd': isDstDir = bool(True)
     else:
         isDownload = False
         dst = xrd_copy_command[-1]
@@ -1130,16 +1150,28 @@ async def ProcessXrootdCp(xrd_copy_command):
         if not dst.startswith('/'):
             dst = currentdir + dst
         dst_specs_remotes = dst.split(",")
-        dst = dst_specs_remotes[0]  # first item remains the file
-        dst_specs_remotes.pop(0)  # let's remove first item which is the file path
+        dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        if pathtype_grid(dst) == 'd': isDstDir = bool(True)
+        if isDstDir:
+            print ("Recursive uploading of directories not supported at this moment")
+            return
 
-    # if destination is a directory (specified with ending /) let's keep the same filename
-    if dst.endswith("/"): dst = dst + src.split("/")[-1]
-
-    if not (isSrcLocal ^ isDstLocal):
-        print("src and dst cannot be both of the same type : one must be local and one grid")
+    if isSrcLocal != isDstLocal:
+        print("The operands cannot specify different source types: one must be local and one grid")
         return
 
+    if isSrcDir != isDstDir:
+        print ("The operands are of different types! Both should be directories or both files!")
+        return
+
+    # if destination is a directory (specified with ending /) let's keep the same filename
+    if not isSrcDir:
+        if dst.endswith("/"): dst = dst + src.split("/")[-1]
+
+
+    # TODO create list of files
+
+    # TODO convert the envelope requesting of one file to request of an array of files
     # process paths for DOWNLOAD
     get_envelope_arg_list = []  # construct command for getting authz envelope
     if isDstLocal:  # DOWNLOAD FROM GRID
