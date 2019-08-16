@@ -28,11 +28,12 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     sys.exit(1)
 
 # environment debug variable
-DEBUG = os.getenv('JALIENPY_DEBUG', '')
-XRDDEBUG = os.getenv('JALIENPY_XRDDEBUG', '')
-TIME_CONNECT = os.getenv('JALIENPY_TIMECONNECT', '')
-CMD_TESTING = os.getenv('JALIENPY_NEWSHELL', '')
-USE_JBOX = os.getenv('JALIENPY_JBOX', '')
+DEBUG = os.getenv('ALIENPY_DEBUG', '')
+DEBUG_WS = os.getenv('ALIENPY_DEBUG_WS', '')
+XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
+TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
+CMD_TESTING = os.getenv('ALIENPY_NEWSHELL', '')
+USE_JBOX = os.getenv('ALIENPY_JBOX', '')
 
 # Steering output
 json_output = bool(False)
@@ -1240,7 +1241,10 @@ def main():
     # Let's start the connection
     logger = logging.getLogger('websockets')
     logger.setLevel(logging.ERROR)
-    # logger.setLevel(logging.DEBUG)
+    if DEBUG_WS:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.ERROR)
     logger.addHandler(logging.StreamHandler())
 
     script_name = sys.argv[0]

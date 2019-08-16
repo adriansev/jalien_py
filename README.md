@@ -35,10 +35,13 @@ alien_json will output the exact json of ['results']
 alien_json_all will output the full json answer (including ['metadata'])  
   
 There are a few environment variables that influence the mechanics of the script :  
-JALIENPY_DEBUG - if true, will activate some printouts  
-JALIENPY_XRDDEBUG - if set will activate printout in XRootD commands and functions  
-JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - full path file descriptions of certificate,key token files  
-JALIENPY_TIMECONNECT - enable for measurement of time for websocket creation - e.g. `JALIENPY_TIMECONNECT=1 alien.py pwd`  
+JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults, full path certificate,key token files  
+   
+Debug options :  
+ALIENPY_DEBUG - if set, will activate some printouts  
+ALIENPY_DEBUG_WS - if set, will activate DEBUG level logging of websocket module  
+ALIENPY_XRDDEBUG - if set will activate printout in XRootD commands and functions  
+ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`  
    
    
 X509 locations:  
