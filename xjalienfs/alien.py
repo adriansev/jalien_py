@@ -107,7 +107,7 @@ xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={Tran
 # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
 # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
 hashtype = str('md5')
-batch = int(4)   # from a list of copy jobs, start <batch> number of downloads
+batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
 sources = int(1) # max number of download sources
 chunks = int(1)  # number of chunks that should be requested in parallel
 chunksize = int(4194304)  # chunk size for remote transfers
@@ -127,9 +127,18 @@ args are the following :
 -f : replace any existing output file
 -P : enable persist on successful close semantic
 -tpc : enable TPC mode ("first" option; "only" option not implemented)
--y : use up to the number of sources specified in parallel
--S : copies using the specified number of TCP connections
--batch : batch size of number of parralel copy jobs
+-y <nr_sources> : use up to the number of sources specified in parallel
+-S <parallel nr chunks> : copy using the specified number of TCP connections
+-chksz <bytes> : chunk size (bytes)
+-T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
+
+for the recursive copy of directories the following options (of the find command) can be used:
+-select <pattern> : select only these files (AliEn find semantics) to be copied; defaults to all "."
+-parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
+-a : copy also the hidden files .* (for recursive copy)
+-j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
+-l <count> : copy only <count> nr of files (for recursive copy)
+-o <offset> : skip first <offset> files found in the src directory (for recursive copy)
 ''')
 
 
@@ -171,20 +180,52 @@ async def ProcessXrootdCp(xrd_copy_command):
         chunks = xrd_copy_command.pop(s_idx +1)
         xrd_copy_command.pop(y_idx)
 
-    if '-batch' in xrd_copy_command:
-        batch_idx = xrd_copy_command.index('-batch')
+    if '-T' in xrd_copy_command:
+        batch_idx = xrd_copy_command.index('-T')
         batch = xrd_copy_command.pop(batch_idx +1)
         xrd_copy_command.pop(batch_idx)
 
+    if '-chksz' in xrd_copy_command:
+        chksz_idx = xrd_copy_command.index('-chksz')
+        chunksize = xrd_copy_command.pop(chksz_idx +1)
+        xrd_copy_command.pop(chksz_idx)
 
-    # TODO !!! read from arguments optional pattern for file copy (pattern to be used in find)
-    pattern="." # default pattern
+    # find options for recursive copy of directories
+    pattern = '.' # default pattern
+    if '-select' in xrd_copy_command:
+        select_idx = xrd_copy_command.index('-select')
+        pattern = xrd_copy_command.pop(select_idx +1)
+        xrd_copy_command.pop(select_idx)
 
+    parent = int(0)
+    if '-parent' in xrd_copy_command:
+        parent_idx = xrd_copy_command.index('-parent')
+        parent = xrd_copy_command.pop(parent_idx +1)
+        xrd_copy_command.pop(parent_idx)
 
-    # TODO !!! read arguments for the below tunables
-    #sources = int(1)  # max number of download sources
-    #chunks = int(1)  # number of chunks that should be requested in parallel
-    #chunksize = int(4194304)  # chunk size for remote transfers
+    find_hidden = bool (False)
+    if '-a' in xrd_copy_command:
+        find_hidden = True
+        xrd_copy_command.remove('-a')
+
+    filter_queueid = None
+    if '-j' in xrd_copy_command:
+        qid_idx = xrd_copy_command.index('-j')
+        filter_queueid = xrd_copy_command.pop(qid_idx +1)
+        xrd_copy_command.pop(qid_idx)
+
+    return_nr = None
+    if '-l' in xrd_copy_command:
+        return_nr_idx = xrd_copy_command.index('-l')
+        return_nr = xrd_copy_command.pop(return_nr_idx +1)
+        xrd_copy_command.pop(return_nr_idx)
+
+    skip_nr = None
+    if '-o' in xrd_copy_command:
+        return_nr_idx = xrd_copy_command.index('-o')
+        skip_nr = xrd_copy_command.pop(skip_nr_idx +1)
+        xrd_copy_command.pop(skip_nr_idx)
+
 
     # clean up the paths to be used in the xrdcp command
     src = ''
@@ -253,16 +294,20 @@ async def ProcessXrootdCp(xrd_copy_command):
         print("The operands cannot specify different source types: one must be local and one grid")
         return
 
-    # if destination is a directory (specified with ending /) let's keep the same filename
-    # if src is file, the destination always will be a file (if dst is dir, we will append the filename)
-    if (not isSrcDir) and dst.endswith("/"): dst = dst + src.split("/")[-1]
-
     if isSrcDir != isDstDir:
         print ("The operands are of different types! Both should be directories or both files!")
         return
 
+    if (not isDownload) and isDstDir:
+        print ("Recursive upload of directories not implemented at this moment")
+        return
 
     # TODO create list of files
+    src_lfnlist = []
+    if isDownload and isSrcDir:
+        print ("WIP - working on file list of the source + tokens for each lfn")
+        return
+
 
     # TODO convert the envelope requesting of one file to request of an array of files
     # process paths for DOWNLOAD
