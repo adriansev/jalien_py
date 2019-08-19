@@ -143,6 +143,32 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
+async def getEnvelope(lfn_list = [], specs = [], isWrite = bool(False)):
+    global websocket
+    access_list = []
+    if not lfn_list: return access_list
+    access_type = 'read'
+    if isWrite: access_type = 'write'
+    for lfn in lfn_list:
+        get_envelope_arg_list = [access_type, lfn]
+        if specs: get_envelope_arg_list.append(str(",".join(specs)))
+        await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
+        result = await websocket.recv()
+        access_list.append({"lfn": lfn, "answer": result})
+    return access_list
+
+
+def setDst(file = '', parent = 0):
+    p = Path(file)
+    filename = p.parts[0]
+    if parent >= (len(p.parts) - 1): parent = len(p.parts) - 1 - 1
+    basedir = p.parents[parent].as_posix()
+    if basedir == '/':
+        return file
+    else:
+        return p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
+
+
 async def ProcessXrootdCp(xrd_copy_command):
     global websocket, currentdir, sources, chunks, chunksize, mkdir, overwrite, posc, batch, tpc
     if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
@@ -309,84 +335,105 @@ async def ProcessXrootdCp(xrd_copy_command):
         await websocket.send(CreateJsonCommand('find', find_args))
         result = await websocket.recv()
         src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
-        for file in src_list_files_dict['results']: src_filelist.append(file['message'])
+        for file in src_list_files_dict['results']: src_filelist.append(file['lfn'])
 
     dst_filelist = []
     if isDownload and isSrcDir:
         for file in src_filelist:
-            p = Path(file)
-            filename = p.parts[0]
-            if parent >= (len(p.parts) - 1): parent = len(p.parts) - 1 - 1
-            basedir = p.parents[parent].as_posix()
-            if basedir == '/':
-                dst_filelist.append(file)
-            else:
-                dst_file = p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
-                dst_filelist.append(dst_file)
+            dst_filelist.append(setDst(file, parent))
 
-    if isDownload and isSrcDir:
-        print(src_filelist)
-        print(dst_filelist)
-        print("WIP - working on file list of the source + tokens for each lfn")
-        return
+    # if isDownload and isSrcDir:
+        # print(src_filelist)
+        # print(dst_filelist)
+        # print("WIP - working on file list of the source + tokens for each lfn")
+        # return
 
-    # TODO convert the envelope requesting of one file to request of an array of files
-    # process paths for DOWNLOAD
-    get_envelope_arg_list = []  # construct command for getting authz envelope
-    if isDstLocal:  # DOWNLOAD FROM GRID
-        isDownload = True
-        get_envelope_arg_list = ["read", src]
-        if src_specs_remotes: get_envelope_arg_list.append(str(",".join(src_specs_remotes)))
-    else:  # WRITE TO GRID
-        isDownload = False
-        get_envelope_arg_list = ["write", dst]
-        if dst_specs_remotes: get_envelope_arg_list.append(str(",".join(dst_specs_remotes)))
+    # # TODO convert the envelope requesting of one file to request of an array of files
+    # # process paths for DOWNLOAD
+    # get_envelope_arg_list = []  # construct command for getting authz envelope
+    # if isDstLocal:  # DOWNLOAD FROM GRID
+        # isDownload = True
+        # get_envelope_arg_list = ["read", src]
+        # if src_specs_remotes: get_envelope_arg_list.append(str(",".join(src_specs_remotes)))
+    # else:  # WRITE TO GRID
+        # isDownload = False
+        # get_envelope_arg_list = ["write", dst]
+        # if dst_specs_remotes: get_envelope_arg_list.append(str(",".join(dst_specs_remotes)))
 
-    await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
-    result = await websocket.recv()
-    access_request = json.loads(result.encode('ascii', 'ignore'))
+    # await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
+    # result = await websocket.recv()
+    # access_request = json.loads(result.encode('ascii', 'ignore'))
+
+    lfn_list = []
+    if isDownload:
+        isWrite = bool(False)
+        specs = src_specs_remotes
+        if isSrcDir:
+            lfn_list = src_filelist
+        else:
+            lfn_list.append(src)
+    else:
+        isWrite = bool(True)
+        specs = dst_specs_remotes
+        if isDstDir:
+            lfn_list = dst_filelist
+        else:
+            lfn_list.append(dst)
+
+    envelope_list = await getEnvelope(lfn_list, specs, isWrite)
+
+    # clean up the entries with errors
+    errors_list = []
+    for item_idx, item in enumerate(envelope_list):
+        lfn = item["lfn"]
+        result = item["answer"]
+        access_request = json.loads(result.encode('ascii', 'ignore'))
+        if not access_request['results']:
+            if access_request["metadata"]["error"]:
+                errors_list.append(item_idx)
+    for idx in reversed(errors_list): envelope_list.remove(idx)  # make sure we remove from back to front the lfns with errors
+    if not envelope_list: return  # if all errors and list empty, just return
 
     if XRDDEBUG:
-        print(src)
-        print(dst)
-        print(get_envelope_arg_list)
-        print("\n")
-        print(json.dumps(access_request, sort_keys=True, indent=4))
-
-    if not access_request['results']:
-        if access_request["metadata"]["error"]:
-            print("{}".format(access_request["metadata"]["error"]))
-            return
+        for item in envelope_list:
+            lfn = envelope_list["lfn"]
+            result = envelope_list["answer"]
+            access_request = json.loads(result.encode('ascii', 'ignore'))
+            print(lfn)
+            print(json.dumps(access_request, sort_keys=True, indent=4))
 
     url_list_src = []
     url_list_dst = []
-    nSEs = access_request['results'][0]['nSEs']
     if isDownload:
-        # multiple replicas are downloaded to a single file
-        url_list_4meta = []
-        for server in access_request['results']:
-            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_4meta.append(complete_url)
+        for item_idx, item in enumerate(envelope_list):
+            lfn = item["lfn"]
+            result = item["answer"]
+            access_request = json.loads(result.encode('ascii', 'ignore'))
+            nSEs = access_request['results'][0]['nSEs']
+            # multiple replicas are downloaded to a single file
+            url_list_4meta = []
+            for server in access_request['results']:
+                complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+                url_list_4meta.append(complete_url)
 
-        url_list_dst.append({"url": dst})  # the local file destination
+            if isDstDir: dst = dst_filelist[item_idx]
+            url_list_dst.append({"url": dst})  # the local file destination
 
-        size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
-        md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+            size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
+            md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+            # let's check the destination, if existent, check the validity
+            if not overwrite:
+                if os.path.isfile(dst):  # first check
+                    if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
+                if os.path.isfile(dst):  # if the existent file survived the first check
+                    if md5(dst) != md5_4meta: os.remove(dst)
+                if os.path.isfile(dst):  # if the existent file survived the second check
+                    print("File is already downloaded and size and md5 match the remote")
+                    return
 
-        meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
-
-        create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
-        url_list_src.append({"url": meta_fn})
-
-        # let's check the destination, if existent, check the validity
-        if not overwrite:
-            if os.path.isfile(dst):  # first check
-                if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
-            if os.path.isfile(dst):  # if the existent file survived the first check
-                if md5(dst) != md5_4meta: os.remove(dst)
-            if os.path.isfile(dst):  # if the existent file survived the second check
-                print("File is already downloaded and size and md5 match the remote")
-                return
+            meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
+            create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
+            url_list_src.append({"url": meta_fn})
     else:
         # single file is uploaded to multiple replicas
         for server in access_request['results']:
@@ -626,7 +673,7 @@ async def getSessionVars():
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-    commandlist = json_dict["results"][0]["message"]
+    commandlist = json_dict["results"][0]['message']
     user = json_dict["metadata"]["user"]
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
@@ -641,7 +688,7 @@ async def get_completer_list():
     await websocket.send(CreateJsonCommand('ls'))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
-    ls_list = list(item['message'] for item in json_dict['results'])
+    ls_list = list(item['name'] for item in json_dict['results'])
 
 
 async def pathtype_grid(path=''):
@@ -1272,6 +1319,7 @@ async def JAlienCmd(cmd = '', args = []):
                 args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
                 args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
 
+        if not DEBUG: args.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, args)
         if DEBUG: print(jsoncmd)
 
@@ -1366,6 +1414,7 @@ async def JAlienShell():
                 print(commandlist)
                 continue
 
+        if not DEBUG: input_list.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
         ccmd = jsoncmd  # keep a global copy of the json command that is run
         cmd_hist.append(jsoncmd)
