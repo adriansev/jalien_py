@@ -192,40 +192,40 @@ async def ProcessXrootdCp(xrd_copy_command):
         xrd_copy_command.pop(chksz_idx)
 
     # find options for recursive copy of directories
+    find_args = []
+    parent = int(0)
+    if '-parent' in xrd_copy_command:
+        parent_idx = xrd_copy_command.index('-parent')
+        parent = int(xrd_copy_command.pop(parent_idx + 1))
+        xrd_copy_command.pop(parent_idx)
+
+    if '-a' in xrd_copy_command:
+        find_args.append('-a')
+        xrd_copy_command.remove('-a')
+
+    if '-j' in xrd_copy_command:
+        qid_idx = xrd_copy_command.index('-j')
+        find_args.append('-j')
+        find_args.append(xrd_copy_command.pop(qid_idx + 1))
+        xrd_copy_command.pop(qid_idx)
+
+    if '-l' in xrd_copy_command:
+        return_nr_idx = xrd_copy_command.index('-l')
+        find_args.append('-l')
+        find_args.append(xrd_copy_command.pop(return_nr_idx + 1))
+        xrd_copy_command.pop(return_nr_idx)
+
+    if '-o' in xrd_copy_command:
+        skip_nr_idx = xrd_copy_command.index('-o')
+        find_args.append('-o')
+        find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
+        xrd_copy_command.pop(skip_nr_idx)
+
     pattern = '.'  # default pattern
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
-
-    parent = int(0)
-    if '-parent' in xrd_copy_command:
-        parent_idx = xrd_copy_command.index('-parent')
-        parent = xrd_copy_command.pop(parent_idx + 1)
-        xrd_copy_command.pop(parent_idx)
-
-    find_hidden = bool(False)
-    if '-a' in xrd_copy_command:
-        find_hidden = True
-        xrd_copy_command.remove('-a')
-
-    filter_queueid = None
-    if '-j' in xrd_copy_command:
-        qid_idx = xrd_copy_command.index('-j')
-        filter_queueid = xrd_copy_command.pop(qid_idx + 1)
-        xrd_copy_command.pop(qid_idx)
-
-    return_nr = None
-    if '-l' in xrd_copy_command:
-        return_nr_idx = xrd_copy_command.index('-l')
-        return_nr = xrd_copy_command.pop(return_nr_idx + 1)
-        xrd_copy_command.pop(return_nr_idx)
-
-    skip_nr = None
-    if '-o' in xrd_copy_command:
-        skip_nr_idx = xrd_copy_command.index('-o')
-        skip_nr = xrd_copy_command.pop(skip_nr_idx + 1)
-        xrd_copy_command.pop(skip_nr_idx)
 
     # clean up the paths to be used in the xrdcp command
     src = ''
@@ -302,9 +302,31 @@ async def ProcessXrootdCp(xrd_copy_command):
         print("Recursive upload of directories not implemented at this moment")
         return
 
-    # TODO create list of files
-    src_lfnlist = []
+    src_filelist = []
     if isDownload and isSrcDir:
+        find_args.append(src)
+        find_args.append(pattern)
+        await websocket.send(CreateJsonCommand('find', find_args))
+        result = await websocket.recv()
+        src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
+        for file in src_list_files_dict['results']: src_filelist.append(file['message'])
+
+    dst_filelist = []
+    if isDownload and isSrcDir:
+        for file in src_filelist:
+            p = Path(file)
+            filename = p.parts[0]
+            if parent >= (len(p.parts) - 1): parent = len(p.parts) - 1 - 1
+            basedir = p.parents[parent].as_posix()
+            if basedir == '/':
+                dst_filelist.append(file)
+            else:
+                dst_file = p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
+                dst_filelist.append(dst_file)
+
+    if isDownload and isSrcDir:
+        print(src_filelist)
+        print(dst_filelist)
         print("WIP - working on file list of the source + tokens for each lfn")
         return
 
