@@ -108,13 +108,14 @@ xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={Tran
 # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
 hashtype = str('md5')
 batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-sources = int(1) # max number of download sources
+sources = int(1)  # max number of download sources
 chunks = int(1)  # number of chunks that should be requested in parallel
 chunksize = int(4194304)  # chunk size for remote transfers
 makedir = bool(True)  # create the parent directories when creating a file
 overwrite = bool(False)  # overwrite target if it exists
 tpc = str('')  # do TPC if possible ("first")
 posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+
 
 def xrdcp_help():
     print('''at least 2 arguments are needed : src dst
@@ -172,38 +173,38 @@ async def ProcessXrootdCp(xrd_copy_command):
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        sources = xrd_copy_command.pop(y_idx +1)
+        sources = xrd_copy_command.pop(y_idx + 1)
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
         s_idx = xrd_copy_command.index('-S')
-        chunks = xrd_copy_command.pop(s_idx +1)
+        chunks = xrd_copy_command.pop(s_idx + 1)
         xrd_copy_command.pop(y_idx)
 
     if '-T' in xrd_copy_command:
         batch_idx = xrd_copy_command.index('-T')
-        batch = xrd_copy_command.pop(batch_idx +1)
+        batch = xrd_copy_command.pop(batch_idx + 1)
         xrd_copy_command.pop(batch_idx)
 
     if '-chksz' in xrd_copy_command:
         chksz_idx = xrd_copy_command.index('-chksz')
-        chunksize = xrd_copy_command.pop(chksz_idx +1)
+        chunksize = xrd_copy_command.pop(chksz_idx + 1)
         xrd_copy_command.pop(chksz_idx)
 
     # find options for recursive copy of directories
-    pattern = '.' # default pattern
+    pattern = '.'  # default pattern
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
-        pattern = xrd_copy_command.pop(select_idx +1)
+        pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
 
     parent = int(0)
     if '-parent' in xrd_copy_command:
         parent_idx = xrd_copy_command.index('-parent')
-        parent = xrd_copy_command.pop(parent_idx +1)
+        parent = xrd_copy_command.pop(parent_idx + 1)
         xrd_copy_command.pop(parent_idx)
 
-    find_hidden = bool (False)
+    find_hidden = bool(False)
     if '-a' in xrd_copy_command:
         find_hidden = True
         xrd_copy_command.remove('-a')
@@ -211,21 +212,20 @@ async def ProcessXrootdCp(xrd_copy_command):
     filter_queueid = None
     if '-j' in xrd_copy_command:
         qid_idx = xrd_copy_command.index('-j')
-        filter_queueid = xrd_copy_command.pop(qid_idx +1)
+        filter_queueid = xrd_copy_command.pop(qid_idx + 1)
         xrd_copy_command.pop(qid_idx)
 
     return_nr = None
     if '-l' in xrd_copy_command:
         return_nr_idx = xrd_copy_command.index('-l')
-        return_nr = xrd_copy_command.pop(return_nr_idx +1)
+        return_nr = xrd_copy_command.pop(return_nr_idx + 1)
         xrd_copy_command.pop(return_nr_idx)
 
     skip_nr = None
     if '-o' in xrd_copy_command:
-        return_nr_idx = xrd_copy_command.index('-o')
-        skip_nr = xrd_copy_command.pop(skip_nr_idx +1)
+        skip_nr_idx = xrd_copy_command.index('-o')
+        skip_nr = xrd_copy_command.pop(skip_nr_idx + 1)
         xrd_copy_command.pop(skip_nr_idx)
-
 
     # clean up the paths to be used in the xrdcp command
     src = ''
@@ -242,7 +242,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
         if isSrcDir:
-            print ("Recursive uploading of directories not supported at this moment")
+            print("Recursive uploading of directories not supported at this moment")
             return
     else:
         src = xrd_copy_command[-2]
@@ -287,7 +287,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         dst_type = await pathtype_grid(dst)
         if dst_type == 'd': isDstDir = bool(True)
         if isDstDir:
-            print ("Recursive uploading of directories not supported at this moment")
+            print("Recursive uploading of directories not supported at this moment")
             return
 
     if isSrcLocal == isDstLocal:
@@ -295,19 +295,18 @@ async def ProcessXrootdCp(xrd_copy_command):
         return
 
     if isSrcDir != isDstDir:
-        print ("The operands are of different types! Both should be directories or both files!")
+        print("The operands are of different types! Both should be directories or both files!")
         return
 
     if (not isDownload) and isDstDir:
-        print ("Recursive upload of directories not implemented at this moment")
+        print("Recursive upload of directories not implemented at this moment")
         return
 
     # TODO create list of files
     src_lfnlist = []
     if isDownload and isSrcDir:
-        print ("WIP - working on file list of the source + tokens for each lfn")
+        print("WIP - working on file list of the source + tokens for each lfn")
         return
-
 
     # TODO convert the envelope requesting of one file to request of an array of files
     # process paths for DOWNLOAD
@@ -403,7 +402,6 @@ async def ProcessXrootdCp(xrd_copy_command):
                         json_dict = json.loads(commit_results)
                         if 'metadata' in json_dict: del json_dict['metadata']
                         print(json.dumps(json_dict, sort_keys=True, indent=4))
-
 
 
 def XrdCopy(src, dst, isDownload = bool(True)):
