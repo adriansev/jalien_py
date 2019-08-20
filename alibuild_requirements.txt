@@ -1,0 +1,4 @@
+urllib3
+pathlib2
+websockets
+pyOpenSSL

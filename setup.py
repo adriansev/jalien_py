@@ -18,7 +18,6 @@ setuptools.setup(
         'pathlib2',
         'websockets',
         'pyOpenSSL',
-        'pyxrootd'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
