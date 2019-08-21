@@ -35,9 +35,6 @@ XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 CMD_TESTING = os.getenv('ALIENPY_NEWSHELL', '')
 
-# Web socket - session/application wide globals
-# websocket = None  # global websocket
-
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': '', 'user': '', 'error': '', 'exitcode': '', 'cmdhist': []}
 
