@@ -268,6 +268,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         src = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", src)
         src = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", src)
         if not src.startswith('/'): src = Path.cwd().as_posix() + "/" + src
+        src = re.sub(r"\/{2,}", "/", src)
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
@@ -278,6 +279,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         if not src.startswith('/'): src = currentdir + src
         src_specs_remotes = src.split(",")
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        src = re.sub(r"\/{2,}", "/", src)
         src_type = await pathtype_grid(src)
         if src_type == 'd': isSrcDir = bool(True)
 
@@ -290,6 +292,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         dst = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix(), dst)
         dst = re.sub(r"^\/*\.{1}", Path.cwd().as_posix(), dst)
         if not dst.startswith('/'): dst = Path.cwd().as_posix() + "/" + dst
+        dst = re.sub(r"\/{2,}", "/", dst)
         dst_type = pathtype_local(dst)
         if dst_type == 'd': isDstDir = bool(True)
     else:
@@ -301,6 +304,7 @@ async def ProcessXrootdCp(xrd_copy_command):
         if not dst.startswith('/'): dst = currentdir + dst
         dst_specs_remotes = dst.split(",")
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        dst = re.sub(r"\/{2,}", "/", dst)
         dst_type = await pathtype_grid(dst)
         if dst_type == 'd': isDstDir = bool(True)
 
@@ -320,7 +324,10 @@ async def ProcessXrootdCp(xrd_copy_command):
             src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
-                dst_filelist.append(dst + setDst(file['lfn'], parent))
+                file_relative_name = file['lfn'].replace(src, '')
+                dst_file = dst[:-1] + "/" + setDst(file['lfn'], parent)
+                dst_file = re.sub(r"\/{2,}", "/", dst_file)
+                dst_filelist.append(dst_file)
         else:
             src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
@@ -331,13 +338,15 @@ async def ProcessXrootdCp(xrd_copy_command):
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
             regex = re.compile(pattern)
             list = []
-            for root, dirs, files in os.walk(src):
+            for root, dirs, files in os.walk(src[:-1]):
                 for file in files:
                     filepath = os.path.join(root, file)
                     if regex.match(filepath):
                         src_filelist.append(filepath)
                         file_relative_name = filepath.replace(src, '')
-                        dst_filelist.append(dst + "/" + file_relative_name)
+                        dst_file = dst[:-1] + "/" + setDst(filepath, parent)
+                        dst_file = re.sub(r"\/{2,}", "/", dst_file)
+                        dst_filelist.append(dst_file)
         else:
             src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
