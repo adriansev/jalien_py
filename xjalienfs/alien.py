@@ -767,7 +767,7 @@ def pathtype_local(path=''):
 
 
 class Commander(cmd2.Cmd):
-    global websocket, AlienSessionInfo
+    global AlienSessionInfo
 
     intro = 'Welcome to the jAliEn shell. Try ? or help to list commands.\nTo change between the grid and your local ' \
             'file system, use the "switch" command. '
@@ -786,9 +786,8 @@ class Commander(cmd2.Cmd):
         prompt = AlienSessionInfo['currentdir'] + ' >'
 
     def __init__(self):
-        if not websocket:
-            websocket = InitConnection()
-        self.websocket = websocket
+        if not self.websocket:
+            self.websocket = InitConnection()
 
         # Initiate cmd2. Set history file and allow the use of IPython to create scripts
         homedir = Path.home().as_posix()
