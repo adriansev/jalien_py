@@ -8,6 +8,7 @@ import signal
 import json
 import logging
 import ssl
+from typing import NamedTuple
 import OpenSSL
 import readline
 import shlex
@@ -33,88 +34,23 @@ DEBUG_WS = os.getenv('ALIENPY_DEBUG_WS', '')
 XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 CMD_TESTING = os.getenv('ALIENPY_NEWSHELL', '')
-USE_JBOX = os.getenv('ALIENPY_JBOX', '')
 
-# Steering output
-json_output = bool(False)
-json_meta_output = bool(False)
+# Web socket - session/application wide globals
+# websocket = None  # global websocket
 
-# other user oriented variables
-homedir = Path.home().as_posix()
-tmpdir = os.getenv('TMPDIR', '/tmp')
-fUser = os.getenv('alien_API_USER', os.getenv('LOGNAME', 'USER'))
+# global session state;
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': '', 'user': '', 'error': '', 'exitcode': '', 'cmdhist': []}
 
-# SSL SETTINGS
-cert = None
-key = None
-capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
 
-user_globus_dir = homedir + '/.globus'
-usercert_default = user_globus_dir + '/usercert.pem'
-userkey_default = user_globus_dir + '/userkey.pem'
-
-usercert = os.getenv('X509_USER_CERT', usercert_default)
-userkey = os.getenv('X509_USER_KEY', userkey_default)
-
-# token certificate
-UID = os.getuid()
-tokencert_default = tmpdir + "/tokencert_" + str(UID) + ".pem"
-tokenkey_default = tmpdir + "/tokenkey_" + str(UID) + ".pem"
-tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_default)
-tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_default)
-
-# Web socket static variables
-websocket = None  # global websocket
-
-if USE_JBOX:
-    jalien_server = 'localhost'
-else:
-    jalien_server = 'alice-jcentral.cern.ch'
-
-jalien_websocket_port = 8097  # websocket port
-jalien_websocket_path = '/websocket/json'
-
-wb_protol = 'wss://'
-fHostWSUrl = wb_protol + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
-
-# jalien_py internal vars
-alienHome = ''
-currentdir = ''
-commandlist = ''
-user = ''
-error = ''
-exitcode = ''
-
-ccmd = ''  # current command in execution
-cmd_hist = []  # command history
-
-local_file_system = True
-cassandra_error = 'This command can only be run on jSh, use the "switch" command to change shell.'
-ls_list = []
-
-# xrdcp generic parameters (used by ALICE tests)
-FirstConnectMaxCnt = 2
-TransactionTimeout = 60
-RequestTimeout = 60
-ReadCacheSize = 0
-xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
-
-# XRootD copy parameters
-# inittimeout: copy initialization timeout(int)
-# tpctimeout: timeout for a third-party copy to finish(int)
-# coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
-# :param checksummode: checksum mode to be used #:type    checksummode: string
-# :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
-# :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
-hashtype = str('md5')
-batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-sources = int(1)  # max number of download sources
-chunks = int(1)  # number of chunks that should be requested in parallel
-chunksize = int(4194304)  # chunk size for remote transfers
-makedir = bool(True)  # create the parent directories when creating a file
-overwrite = bool(False)  # overwrite target if it exists
-tpc = str('')  # do TPC if possible ("first")
-posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+class XrdCpArgs(NamedTuple):
+    overwrite: bool
+    batch: int
+    sources: int
+    chunks: int
+    chunksize: int
+    makedir: bool
+    posc: bool
+    hashtype: str
 
 
 def xrdcp_help():
@@ -127,7 +63,6 @@ args are the following :
 -h : print help
 -f : replace any existing output file
 -P : enable persist on successful close semantic
--tpc : enable TPC mode ("first" option; "only" option not implemented)
 -y <nr_sources> : use up to the number of sources specified in parallel
 -S <parallel nr chunks> : copy using the specified number of TCP connections
 -chksz <bytes> : chunk size (bytes)
@@ -143,8 +78,8 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
-async def getEnvelope(lfn_list = [], specs = [], isWrite = bool(False)):
-    global websocket
+async def getEnvelope(websocket, lfn_list = [], specs = [], isWrite = bool(False)):
+    if not websocket: return
     access_list = []
     if not lfn_list: return access_list
     access_type = 'read'
@@ -169,11 +104,40 @@ def setDst(file = '', parent = 0):
         return p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
 
 
-async def ProcessXrootdCp(xrd_copy_command):
-    global websocket, currentdir, sources, chunks, chunksize, mkdir, overwrite, posc, batch, tpc
+async def ProcessXrootdCp(websocket, xrd_copy_command):
+    if not websocket: return
+    if not AlienSessionInfo:
+        print('Session information like home and current directories needed')
+        return
+
     if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
         xrdcp_help()
         return
+
+    tmpdir = os.getenv('TMPDIR', '/tmp')
+
+    # xrdcp generic parameters (used by ALICE tests)
+    FirstConnectMaxCnt = 2
+    TransactionTimeout = 60
+    RequestTimeout = 60
+    ReadCacheSize = 0
+    xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
+
+    # XRootD copy parameters
+    # inittimeout: copy initialization timeout(int)
+    # tpctimeout: timeout for a third-party copy to finish(int)
+    # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
+    # :param checksummode: checksum mode to be used #:type    checksummode: string
+    # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+    # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+    hashtype = str('md5')
+    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
+    sources = int(1)  # max number of download sources
+    chunks = int(1)  # number of chunks that should be requested in parallel
+    chunksize = int(4194304)  # chunk size for remote transfers
+    makedir = bool(True)  # create the parent directories when creating a file
+    overwrite = bool(False)  # overwrite target if it exists
+    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
 
     isSrcLocal = bool(False)
     isDstLocal = bool(False)
@@ -182,8 +146,8 @@ async def ProcessXrootdCp(xrd_copy_command):
     isDownload = bool(True)
     file_name = ''
 
-    cwd_grid_path = Path(currentdir)
-    home_grid_path = Path(alienHome)
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
 
     if '-f' in xrd_copy_command:
         overwrite = True
@@ -193,9 +157,9 @@ async def ProcessXrootdCp(xrd_copy_command):
         posc = True
         xrd_copy_command.remove('-P')
 
-    if '-tpc' in xrd_copy_command:
-        tpc = str('first')
-        xrd_copy_command.remove('-tpc')
+    # if '-tpc' in xrd_copy_command:
+        # tpc = str('first')
+        # xrd_copy_command.remove('-tpc')
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
@@ -273,14 +237,14 @@ async def ProcessXrootdCp(xrd_copy_command):
         if src_type == 'd': isSrcDir = bool(True)
     else:
         src = xrd_copy_command[-2]
-        src = re.sub(r"\/*\%ALIEN", alienHome, src)
+        src = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], src)
         src = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix() + "/", src)
         src = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix() + "/", src)
-        if not src.startswith('/'): src = currentdir + src
+        if not src.startswith('/'): src = AlienSessionInfo['currentdir'] + src
         src_specs_remotes = src.split(",")
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = re.sub(r"\/{2,}", "/", src)
-        src_type = await pathtype_grid(src)
+        src_type = await pathtype_grid(websocket, src)
         if src_type == 'd': isSrcDir = bool(True)
 
     dst = ''
@@ -298,14 +262,14 @@ async def ProcessXrootdCp(xrd_copy_command):
     else:
         isDownload = False
         dst = xrd_copy_command[-1]
-        dst = re.sub(r"\/*\%ALIEN", alienHome, dst)
+        dst = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], dst)
         dst = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), dst)
         dst = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), dst)
-        if not dst.startswith('/'): dst = currentdir + dst
+        if not dst.startswith('/'): dst = AlienSessionInfo['currentdir'] + dst
         dst_specs_remotes = dst.split(",")
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = re.sub(r"\/{2,}", "/", dst)
-        dst_type = await pathtype_grid(dst)
+        dst_type = await pathtype_grid(websocket, dst)
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
@@ -358,25 +322,24 @@ async def ProcessXrootdCp(xrd_copy_command):
     else:
         lfn_list = dst_filelist
 
-    envelope_list = await getEnvelope(lfn_list, specs, isWrite)
+    envelope_list = await getEnvelope(websocket, lfn_list, specs, isWrite)
 
-    # clean up the entries with errors
-    errors_list = []
+    # print errors
     for item_idx, item in enumerate(envelope_list):
         lfn = item["lfn"]
         result = item["answer"]
         access_request = json.loads(result.encode('ascii', 'ignore'))
         if not access_request['results']:
-            if access_request["metadata"]["error"] != '0':
-                errors_list.append(item_idx)
+            if access_request["metadata"]["error"]:
+                print("lfn: ", lfn)
+                print("error: ", access_request["metadata"]["error"])
         if XRDDEBUG:
             print(lfn)
             print(json.dumps(access_request, sort_keys=True, indent=4))
 
-    if errors_list:
-        print(errors_list)
-        for idx in reversed(errors_list): envelope_list.remove(idx)  # make sure we remove from back to front the lfns with errors
-    if not envelope_list: return  # if all errors and list empty, just return
+    if not envelope_list:
+        print("list of envelopes is empty")
+        return  # if all errors and list empty, just return
 
     url_list_src = []
     url_list_dst = []
@@ -424,8 +387,10 @@ async def ProcessXrootdCp(xrd_copy_command):
         for url in url_list_src: print("src:{}\n".format(url['url']))
         for url in url_list_dst: print("dst:{}\n".format(url['url']))
 
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype)
+
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload)
+    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
     if (not isDownload) and token_list_upload_ok:  # it was an upload job that had succesfull uploads
         for item_idx, item in enumerate(envelope_list):
@@ -436,7 +401,7 @@ async def ProcessXrootdCp(xrd_copy_command):
             # common values for all commit commands
             lfn = dst
             size = os.path.getsize(src)
-            md5sum = md5(lfn)
+            md5sum = md5(src)
             perm = '644'
             expire = '0'
             for token in token_list_upload_ok:  # for each succesful token
@@ -455,9 +420,18 @@ async def ProcessXrootdCp(xrd_copy_command):
                             print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
-def XrdCopy(src, dst, isDownload = bool(True)):
+def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
+    if not xrd_cp_args: return
     from XRootD import client
-    global overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, tpc
+
+    overwrite = xrd_cp_args.overwrite
+    batch = xrd_cp_args.batch
+    sources = xrd_cp_args.sources
+    chunks = xrd_cp_args.chunks
+    chunksize = xrd_cp_args.chunksize
+    makedir = xrd_cp_args.makedir
+    posc = xrd_cp_args.posc
+    hashtype = xrd_cp_args.hashtype
 
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         isDownload = bool(True)
@@ -515,7 +489,7 @@ def XrdCopy(src, dst, isDownload = bool(True)):
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
-    process.parallel(batch)
+    process.parallel(int(batch))
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
         process.add_job(url_src["url"], url_dst["url"],
@@ -569,6 +543,22 @@ def exit_message():
     sys.exit(0)
 
 
+def CreateJsonCommand(command, options=[]):
+    cmd_dict = {"command": command, "options": options}
+    jcmd = json.dumps(cmd_dict)
+    jcmd.encode('ascii', 'ignore')
+    return jcmd
+
+
+async def AlienSendCmd(wb = None, cmdline = ''):
+    if not wb: return
+    if not cmdline: return
+    cmd_parts = cmdline.split(" ")
+    cmd = cmd_parts.pop(0)
+    await websocket.send(CreateJsonCommand(cmd, cmd_parts))
+    return await websocket.recv()
+
+
 def IsValidCert(fname):
     try:
         with open(fname) as f:
@@ -593,7 +583,13 @@ def IsValidCert(fname):
 
 
 def create_ssl_context():
-    global cert, key
+    # SSL SETTINGS
+    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
+    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+
+    capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
     if IsValidCert(tokencert):
         cert = tokencert
         key  = tokenkey
@@ -603,15 +599,15 @@ def create_ssl_context():
 
     ctx = ssl.SSLContext()
     # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
-    if USE_JBOX:
+    if os.getenv('ALIENPY_JBOX', ''):
         verify_mode = ssl.CERT_NONE
     else:
         verify_mode = ssl.CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
-    ctx.load_verify_locations(capath=capath_default)
-    ctx.load_verify_locations(capath=user_globus_dir)
-    if USE_JBOX:
+    ctx.load_verify_locations(capath = capath_default)
+    ctx.load_verify_locations(capath = Path(usercert).parent)  # $HOME/.globus
+    if os.getenv('ALIENPY_JBOX', ''):
         if Path(tokencert).exists() and IsValidCert(tokencert): ctx.load_verify_locations(cafile=tokencert)
         ctx.load_cert_chain(certfile=usercert, keyfile=userkey)
         # ctx.load_cert_chain(certfile=cert, keyfile=key)
@@ -622,33 +618,39 @@ def create_ssl_context():
 
 async def AlienConnect():
     ssl_context = None
+    if os.getenv('ALIENPY_JBOX', ''):
+        jalien_server = 'localhost'
+    else:
+        jalien_server = 'alice-jcentral.cern.ch'
+
+    jalien_websocket_port = 8097  # websocket port
+    jalien_websocket_path = '/websocket/json'
+
+    wb_protol = 'wss://'
+    fHostWSUrl = wb_protol + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
+
     if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl)
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
-    return await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=10, ping_timeout=20, close_timeout=20)
+    websocket = None
+    try:
+        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=10, ping_timeout=20, close_timeout=20)
+    except websockets.exceptions.ConnectionClosed():
+        print("Connection closed")
 
-
-def CreateJsonCommand(command, options=[]):
-    cmd_dict = {"command": command, "options": options}
-    jcmd = json.dumps(cmd_dict)
-    jcmd.encode('ascii', 'ignore')
-    return jcmd
-
-
-async def AlienSendCmd(wb = None, cmdline = ''):
-    if not wb: return
-    if not cmdline: return
-    cmd_parts = cmdline.split(" ")
-    cmd = cmd_parts.pop(0)
-    await websocket.send(CreateJsonCommand(cmd, cmd_parts))
-    return await websocket.recv()
+    if websocket:
+        return websocket
+    else:
+        AlienConnect()
 
 
 async def InitConnection():
-    global websocket, ccmd, user, alienHome, currentdir, commandlist
-
+    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
+    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
     # implement a time command for measurement of sent/recv delay
     init_begin = None
     init_delta = None
@@ -658,17 +660,18 @@ async def InitConnection():
     websocket = await AlienConnect()
 
     # if the certificate used is not the token, then get one
-    if cert == usercert: await token()
+    if not IsValidCert(tokencert): await token(websocket, tokencert, tokenkey)
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if not commandlist: await getSessionVars()
+    if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
     if init_begin:
         init_delta = datetime.now().timestamp() - init_begin
         print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta))
+    return websocket
 
 
-async def token():
-    global websocket, ccmd, tokencert, tokenkey
+async def token(websocket, tokencert, tokenkey):
+    if not websocket: return
     await websocket.send(CreateJsonCommand('token'))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
@@ -683,34 +686,41 @@ async def token():
     if os.path.isfile(tokenkey): os.chmod(tokenkey, 0o700)  # make it writeable
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
-    ccmd = ''
 
 
-async def getSessionVars():
-    global websocket, ccmd, user, alienHome, currentdir, commandlist
+async def getSessionVars(websocket):
+    if not websocket: return
+    global AlienSessionInfo
     # get the command list to check validity of commands
     await websocket.send(CreateJsonCommand('commandlist'))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-    commandlist = json_dict["results"][0]['message']
-    user = json_dict["metadata"]["user"]
+    AlienSessionInfo['commandlist'] = json_dict["results"][0]['message']
+    AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
-    if currentdir and not currentdir == json_dict["metadata"]["currentdir"]:
-        await websocket.send(CreateJsonCommand('cd', [currentdir]))
-    currentdir = json_dict["metadata"]["currentdir"]
-    if not alienHome: alienHome = currentdir  # this is first query so current dir is alienHOME
+    if AlienSessionInfo['currentdir'] and not AlienSessionInfo['currentdir'] == json_dict["metadata"]["currentdir"]:
+        await websocket.send(CreateJsonCommand('cd', [AlienSessionInfo['currentdir']]))
+    AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
+    if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
 
 
-def ProcessReceivedMessage(message='', shellcmd = None):
-    global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
+def ProcessReceivedMessage(message='', shellcmd = None, json_out = ''):
+    global AlienSessionInfo
+    json_output = bool(False)
+    json_meta_output = bool(False)
+
+    if json_out == 'json_nometa': json_output = True
+    if json_out == 'json_all':
+        json_output = True
+        json_meta_output = True
+
     if not message: return
     json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
-    currentdir = json_dict["metadata"]["currentdir"]
+    AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    error = ''
-    if 'error' in json_dict["metadata"]: error = json_dict["metadata"]["error"]
+    if 'error' in json_dict["metadata"]: AlienSessionInfo['error'] = json_dict["metadata"]["error"]
 
     if json_output:
         if not json_meta_output:
@@ -728,22 +738,20 @@ def ProcessReceivedMessage(message='', shellcmd = None):
             if stderr: print(stderr)
         else:
             print(websocket_output)
-            if error: print(error)
-
-    ccmd = ''  # reset the current executed command, the received message was processed
+            if AlienSessionInfo['error']: print(AlienSessionInfo['error'])
 
 
-async def get_completer_list():
-    global websocket, ls_list
+async def get_completer_list(websocket):
+    if not websocket: return
     await websocket.send(CreateJsonCommand('ls'))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
-    ls_list = list(item['name'] for item in json_dict['results'])
+    return list(item['name'] for item in json_dict['results'])
 
 
-async def pathtype_grid(path=''):
+async def pathtype_grid(websocket, path=''):
+    if not websocket: return
     if not path: return
-    global websocket
     await websocket.send(CreateJsonCommand('stat', [path]))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
@@ -762,24 +770,31 @@ def pathtype_local(path=''):
 
 
 class Commander(cmd2.Cmd):
-    global websocket, currentdir, commandlist, ccmd, alienHome, ls_list
+    global websocket, AlienSessionInfo
 
     intro = 'Welcome to the jAliEn shell. Try ? or help to list commands.\nTo change between the grid and your local ' \
             'file system, use the "switch" command. '
-    if local_file_system:
-        prompt = os.path.abspath(os.curdir) + ' >'
-    else:
-        prompt = currentdir + ' >'
 
     file = None
     cd_parser = None
     parser = argparse.ArgumentParser()
+    ls_list = []
+
+    local_file_system = True
+    cassandra_error = 'This command can only be run on jSh, use the "switch" command to change shell.'
+
+    if local_file_system:
+        prompt = os.path.abspath(os.curdir) + ' >'
+    else:
+        prompt = AlienSessionInfo['currentdir'] + ' >'
 
     def __init__(self):
-        if not websocket: InitConnection()
+        if not websocket:
+            websocket = InitConnection()
         self.websocket = websocket
 
         # Initiate cmd2. Set history file and allow the use of IPython to create scripts
+        homedir = Path.home().as_posix()
         super().__init__(self, persistent_history_file= homedir + '/.alienpy_hist', use_ipython=True)
 
         # Give scripts made by the user access to this class
@@ -789,11 +804,11 @@ class Commander(cmd2.Cmd):
         self.complete_lcd = self.path_complete
 
         # Set the completer for cd equal to all files/directories in the current directory
-        get_completer_list()
+        ls_list = get_completer_list(websocket)
         self.cd_parser = self.parser.add_argument('cd', choices=ls_list, type=str)
 
     def decorator(self, local=local_file_system):
-        get_completer_list()
+        get_completer_list(websocket)
 
     def do_echo(self, arg):
         """"Print what you write"""
@@ -822,7 +837,7 @@ class Commander(cmd2.Cmd):
             self.prompt = os.path.abspath(os.curdir) + ' >'
         else:
             self.parseCMD(arg.__statement__.raw)
-            self.prompt = alienHome + ' >'
+            self.prompt = AlienSessionInfo['alienHome'] + ' >'
             self.decorator()
 
     def do_ls(self, arg):
@@ -845,7 +860,7 @@ class Commander(cmd2.Cmd):
         if local_file_system:
             self.prompt = os.path.abspath(os.curdir) + ' >'
         else:
-            self.prompt = alienHome + ' >'
+            self.prompt = AlienSessionInfo['alienHome'] + ' >'
 
     def do_vim(self, arg):
         """Edit text file"""
@@ -1287,9 +1302,9 @@ class Commander(cmd2.Cmd):
         if stderr: print(stderr.decode())
 
 
-async def JAlienCmd(cmd = '', args = []):
-    global websocket, currentdir, alienHome
-    await InitConnection()
+async def JAlienCmd(cmd = '', args = [], json_out = ''):
+    global AlienSessionInfo
+    websocket = await InitConnection()
 
     # implement a time command for measurement of sent/recv delay
     message_begin = None
@@ -1298,18 +1313,18 @@ async def JAlienCmd(cmd = '', args = []):
         cmd = args.pop(0)
         message_begin = datetime.now().timestamp()
 
-    cwd_grid_path = Path(currentdir)
-    home_grid_path = Path(alienHome)
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
 
     signal.signal(signal.SIGINT, signal_handler)
     if (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
-        await ProcessXrootdCp(args)
+        await ProcessXrootdCp(websocket, args)
     else:
         if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
             for i, arg in enumerate(args):
-                args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-                args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
-                args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+                args[i] = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], arg)
+                args[i] = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), arg)
+                args[i] = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), arg)
 
         if not DEBUG: args.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, args)
@@ -1320,21 +1335,21 @@ async def JAlienCmd(cmd = '', args = []):
         if message_begin:
             message_delta = datetime.now().timestamp() - message_begin
             print(">>>   Time for send/receive command : {}".format(message_delta))
-        ProcessReceivedMessage(result)
+        ProcessReceivedMessage(result, None, json_out)
 
 
-async def JAlienShell():
-    global websocket, currentdir, commandlist, ccmd, alienHome
-    await InitConnection()
+async def JAlienShell(json_out = ''):
+    global AlienSessionInfo
+    websocket = await InitConnection()
 
-    cwd_grid_path = Path(currentdir)
-    home_grid_path = Path(alienHome)
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
 
     while True:
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
         try:
-            INPUT = input(f"jsh: {currentdir} >")
+            INPUT = input(f"jsh: {AlienSessionInfo['currentdir']} >")
         except EOFError:
             exit_message()
 
@@ -1346,10 +1361,10 @@ async def JAlienShell():
         try:
             ping = await websocket.ping()
         except websockets.ConnectionClosed:
-            await InitConnection()
+            websocket = await InitConnection()
 
         # list of directories in CWD (to be used for autocompletion?)
-        cwd_list = await get_completer_list()
+        cwd_list = await get_completer_list(websocket)
 
         # if shell command, just run it and return
         if re.match("!", INPUT):
@@ -1390,26 +1405,25 @@ async def JAlienShell():
 
         # defer to cp xrootd function
         if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-            await ProcessXrootdCp(input_list)
+            await ProcessXrootdCp(websocket, input_list)
             continue
 
         # process help commands
         if (cmd == "?") or (cmd == "help"):
             if len(input_list) > 0:
                 cmdhelp = input_list[0]
-                if cmdhelp in commandlist:
+                if cmdhelp in AlienSessionInfo['commandlist']:
                     input_list.clear()
                     cmd = cmdhelp
                     input_list.append(cmd)
                     input_list.append('-h')
             else:
-                print(commandlist)
+                print(AlienSessionInfo['commandlist'])
                 continue
 
         if not DEBUG: input_list.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
-        ccmd = jsoncmd  # keep a global copy of the json command that is run
-        cmd_hist.append(jsoncmd)
+        AlienSessionInfo['cmdhist'].append(jsoncmd)
         if DEBUG: print(jsoncmd)
 
         await websocket.send(jsoncmd)
@@ -1417,11 +1431,12 @@ async def JAlienShell():
         if message_begin:
             message_delta = datetime.now().timestamp() - message_begin
             print(">>>   Time for send/receive command : {}".format(message_delta))
-        ProcessReceivedMessage(result, pipe_to_shell_cmd)
+        ProcessReceivedMessage(result, pipe_to_shell_cmd, json_out)
 
 
 def main():
-    global json_output, json_meta_output
+    # Steering output
+    json_output = ''
 
     # Let's start the connection
     logger = logging.getLogger('websockets')
@@ -1433,8 +1448,8 @@ def main():
     logger.addHandler(logging.StreamHandler())
 
     script_name = sys.argv[0]
-    if '_json' in script_name: json_output = bool(True)
-    if '_json_all' in script_name: json_meta_output = bool(True)
+    if '_json' in script_name: json_output = 'json_nometa'
+    if '_json_all' in script_name: json_output = 'json_all'
 
     cmd = ''
     args = sys.argv
@@ -1445,13 +1460,13 @@ def main():
         args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
     if cmd:
-        asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args))
+        asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args, json_output))
     else:
         if CMD_TESTING:
             app = Commander()
             app.cmdloop()
         else:
-            asyncio.get_event_loop().run_until_complete(JAlienShell())
+            asyncio.get_event_loop().run_until_complete(JAlienShell(json_output))
 
 
 if __name__ == '__main__':
