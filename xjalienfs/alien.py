@@ -531,6 +531,22 @@ def XrdCopy(src, dst, isDownload = bool(True)):
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
+def create_metafile(meta_filename, local_filename, size, hash_val, replica_list = []):
+    published = str(datetime.now().replace(microsecond=0).isoformat())
+    with open(meta_filename, 'w') as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
+        f.write("   <published>{}</published>\n".format(published))
+        f.write("   <file name=\"{}\">\n".format(local_filename))
+        f.write("     <size>{}</size>\n".format(size))
+        f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
+        for url in replica_list:
+            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
+        f.write('   </file>\n')
+        f.write(' </metalink>\n')
+        f.closed
+
+
 def md5(file):
     import hashlib
     BLOCKSIZE = 65536
@@ -576,22 +592,6 @@ def IsValidCert(fname):
         return False
 
 
-def create_metafile(meta_filename, local_filename, size, hash_val, replica_list = []):
-    published = str(datetime.now().replace(microsecond=0).isoformat())
-    with open(meta_filename, 'w') as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
-        f.write("   <published>{}</published>\n".format(published))
-        f.write("   <file name=\"{}\">\n".format(local_filename))
-        f.write("     <size>{}</size>\n".format(size))
-        f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
-        for url in replica_list:
-            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
-        f.write('   </file>\n')
-        f.write(' </metalink>\n')
-        f.closed
-
-
 def create_ssl_context():
     global cert, key
     if IsValidCert(tokencert):
@@ -620,11 +620,51 @@ def create_ssl_context():
     return ctx
 
 
+async def AlienConnect():
+    ssl_context = None
+    if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+
+    if DEBUG: print("Connecting to : ", fHostWSUrl)
+    """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
+    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
+    return await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=10, ping_timeout=20, close_timeout=20)
+
+
 def CreateJsonCommand(command, options=[]):
     cmd_dict = {"command": command, "options": options}
     jcmd = json.dumps(cmd_dict)
     jcmd.encode('ascii', 'ignore')
     return jcmd
+
+
+async def AlienSendCmd(wb = None, cmdline = ''):
+    if not wb: return
+    if not cmdline: return
+    cmd_parts = cmdline.split(" ")
+    cmd = cmd_parts.pop(0)
+    await websocket.send(CreateJsonCommand(cmd, cmd_parts))
+    return await websocket.recv()
+
+
+async def InitConnection():
+    global websocket, ccmd, user, alienHome, currentdir, commandlist
+
+    # implement a time command for measurement of sent/recv delay
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT:
+        init_begin = datetime.now().timestamp()
+
+    websocket = await AlienConnect()
+
+    # if the certificate used is not the token, then get one
+    if cert == usercert: await token()
+
+    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
+    if not commandlist: await getSessionVars()
+    if init_begin:
+        init_delta = datetime.now().timestamp() - init_begin
+        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta))
 
 
 async def token():
@@ -663,6 +703,36 @@ async def getSessionVars():
     if not alienHome: alienHome = currentdir  # this is first query so current dir is alienHOME
 
 
+def ProcessReceivedMessage(message='', shellcmd = None):
+    global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
+    if not message: return
+    json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
+    currentdir = json_dict["metadata"]["currentdir"]
+
+    error = ''
+    if 'error' in json_dict["metadata"]: error = json_dict["metadata"]["error"]
+
+    if json_output:
+        if not json_meta_output:
+            if 'metadata' in json_dict: del json_dict['metadata']
+        print(json.dumps(json_dict, sort_keys=True, indent=4))
+    else:
+        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+        if shellcmd:
+            # shlex.split(shellcmd)
+            # shlex.quote(shellcmd)
+            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
+            stdout = shell_run.stdout
+            if stdout: print(stdout)
+            stderr = shell_run.stderr
+            if stderr: print(stderr)
+        else:
+            print(websocket_output)
+            if error: print(error)
+
+    ccmd = ''  # reset the current executed command, the received message was processed
+
+
 async def get_completer_list():
     global websocket, ls_list
     await websocket.send(CreateJsonCommand('ls'))
@@ -689,64 +759,6 @@ def pathtype_local(path=''):
     if p.is_dir(): return str('d')
     if p.is_file(): return str('f')
     return str('')
-
-
-def ProcessReceivedMessage(message='', shellcmd = None):
-    global json_output, json_meta_output, currentdir, user, ccmd, error, exitcode
-    if not message: return
-    json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
-    currentdir = json_dict["metadata"]["currentdir"]
-    user = json_dict["metadata"]["user"]
-
-    error = ''
-    if 'error' in json_dict["metadata"]: error = json_dict["metadata"]["error"]
-
-    if json_output:
-        if not json_meta_output:
-            if 'metadata' in json_dict: del json_dict['metadata']
-        print(json.dumps(json_dict, sort_keys=True, indent=4))
-    else:
-        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-        if shellcmd:
-            # shlex.split(shellcmd)
-            # shlex.quote(shellcmd)
-            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
-            stdout = shell_run.stdout
-            if stdout: print(stdout)
-            stderr = shell_run.stderr
-            if stderr: print(stderr)
-        else:
-            print(websocket_output)
-            if error: print(error)
-
-    ccmd = ''  # reset the current executed command, the received message was processed
-
-
-async def InitConnection():
-    global websocket, ccmd, user, alienHome, currentdir, commandlist
-
-    # implement a time command for measurement of sent/recv delay
-    init_begin = None
-    init_delta = None
-    if TIME_CONNECT:
-        init_begin = datetime.now().timestamp()
-
-    ssl_context = None
-    if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
-
-    if DEBUG: print("Connecting to : ", fHostWSUrl)
-    """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
-    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
-    websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=10, ping_timeout=20, close_timeout=20)
-    # if the certificate used is not the token, then get one
-    if cert == usercert: await token()
-
-    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if not commandlist: await getSessionVars()
-
-    if init_begin:
-        init_delta = datetime.now().timestamp() - init_begin
-        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta))
 
 
 class Commander(cmd2.Cmd):
