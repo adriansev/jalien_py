@@ -247,36 +247,35 @@ async def ProcessXrootdCp(xrd_copy_command):
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '.'  # default pattern
+    pattern = '.*'  # default pattern
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
 
-    # clean up the paths to be used in the xrdcp command
+    # list of src files and coresponding dst names
+    src_filelist = []
+    dst_filelist = []
+
+    # clean up and prepare the paths to be used in the xrdcp command
     src = ''
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
         isSrcLocal = True
         isDownload = False
         src = xrd_copy_command[-2].replace("file://", "")
-        src = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", src)
-        src = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", src)
-        src = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", src)
-        if not src.startswith('/'):
-            src = Path.cwd().as_posix() + "/" + src
+        src = re.sub(r"^\~", Path.home().as_posix() + "/", src)
+        src = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", src)
+        src = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", src)
+        if not src.startswith('/'): src = Path.cwd().as_posix() + "/" + src
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
-        if isSrcDir:
-            print("Recursive uploading of directories not supported at this moment")
-            return
     else:
         src = xrd_copy_command[-2]
-        src = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", src)
-        src = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", src)
-        src = re.sub(r"\/*\%ALIEN\/+", home_grid_path.as_posix() + "/", src)
-        if not src.startswith('/'):
-            src = currentdir + src
+        src = re.sub(r"\/*\%ALIEN", alienHome, src)
+        src = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix() + "/", src)
+        src = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix() + "/", src)
+        if not src.startswith('/'): src = currentdir + src
         src_specs_remotes = src.split(",")
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src_type = await pathtype_grid(src)
@@ -287,98 +286,68 @@ async def ProcessXrootdCp(xrd_copy_command):
     if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
         isDstLocal = True
         dst = xrd_copy_command[-1].replace("file://", "")
-        dst = re.sub(r"\/*\.\/+", Path.cwd().as_posix() + "/", dst)
-        dst = re.sub(r"\/*\.\.\/+", Path.cwd().parent.as_posix() + "/", dst)
-        dst = re.sub(r"\/*\~\/+", Path.home().as_posix() + "/", dst)
-        if not dst.startswith('/'):
-            dst = Path.cwd().as_posix() + "/" + dst
-        # if destination is a directory (specified with ending /) let's keep the same filename
-        # if src is file, the destination always will be a file (if dst is dir, we will append the filename)
-        if (not isSrcDir) and dst.endswith("/"): dst = dst + src.split("/")[-1]
+        dst = re.sub(r"^\~", Path.home().as_posix(), dst)
+        dst = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix(), dst)
+        dst = re.sub(r"^\/*\.{1}", Path.cwd().as_posix(), dst)
+        if not dst.startswith('/'): dst = Path.cwd().as_posix() + "/" + dst
         dst_type = pathtype_local(dst)
         if dst_type == 'd': isDstDir = bool(True)
     else:
         isDownload = False
         dst = xrd_copy_command[-1]
-        dst = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", dst)
-        dst = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", dst)
-        dst = re.sub(r"\/*\%ALIEN\/+", home_grid_path.as_posix() + "/", dst)
-        if not dst.startswith('/'):
-            dst = currentdir + dst
+        dst = re.sub(r"\/*\%ALIEN", alienHome, dst)
+        dst = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), dst)
+        dst = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), dst)
+        if not dst.startswith('/'): dst = currentdir + dst
         dst_specs_remotes = dst.split(",")
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        # if destination is a directory (specified with ending /) let's keep the same filename
-        # if src is file, the destination always will be a file (if dst is dir, we will append the filename)
-        if (not isSrcDir) and dst.endswith("/"): dst = dst + src.split("/")[-1]
         dst_type = await pathtype_grid(dst)
         if dst_type == 'd': isDstDir = bool(True)
-        if isDstDir:
-            print("Recursive uploading of directories not supported at this moment")
-            return
 
     if isSrcLocal == isDstLocal:
         print("The operands cannot specify different source types: one must be local and one grid")
         return
 
-    if isSrcDir != isDstDir:
-        print("The operands are of different types! Both should be directories or both files!")
-        return
-
-    if (not isDownload) and isDstDir:
-        print("Recursive upload of directories not implemented at this moment")
-        return
-
-    src_filelist = []
-    if isDownload and isSrcDir:
-        find_args.append(src)
-        find_args.append(pattern)
-        await websocket.send(CreateJsonCommand('find', find_args))
-        result = await websocket.recv()
-        src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
-        for file in src_list_files_dict['results']: src_filelist.append(file['lfn'])
-
-    dst_filelist = []
-    if isDownload and isSrcDir:
-        for file in src_filelist:
-            dst_filelist.append(setDst(file, parent))
-
-    # if isDownload and isSrcDir:
-        # print(src_filelist)
-        # print(dst_filelist)
-        # print("WIP - working on file list of the source + tokens for each lfn")
-        # return
-
-    # # TODO convert the envelope requesting of one file to request of an array of files
-    # # process paths for DOWNLOAD
-    # get_envelope_arg_list = []  # construct command for getting authz envelope
-    # if isDstLocal:  # DOWNLOAD FROM GRID
-        # isDownload = True
-        # get_envelope_arg_list = ["read", src]
-        # if src_specs_remotes: get_envelope_arg_list.append(str(",".join(src_specs_remotes)))
-    # else:  # WRITE TO GRID
-        # isDownload = False
-        # get_envelope_arg_list = ["write", dst]
-        # if dst_specs_remotes: get_envelope_arg_list.append(str(",".join(dst_specs_remotes)))
-
-    # await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
-    # result = await websocket.recv()
-    # access_request = json.loads(result.encode('ascii', 'ignore'))
-
-    lfn_list = []
+    # if src is directory, then create list of files coresponding with options
     if isDownload:
         isWrite = bool(False)
         specs = src_specs_remotes
-        if isSrcDir:
-            lfn_list = src_filelist
+        if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
+            find_args.append(src)
+            find_args.append(pattern)
+            await websocket.send(CreateJsonCommand('find', find_args))
+            result = await websocket.recv()
+            src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
+            for file in src_list_files_dict['results']:
+                src_filelist.append(file['lfn'])
+                dst_filelist.append(dst + setDst(file['lfn'], parent))
         else:
-            lfn_list.append(src)
-    else:
+            src_filelist.append(src)
+            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            dst_filelist.append(dst)
+    else:  # it is upload
         isWrite = bool(True)
         specs = dst_specs_remotes
-        if isDstDir:
-            lfn_list = dst_filelist
+        if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
+            regex = re.compile(pattern)
+            list = []
+            for root, dirs, files in os.walk(src):
+                for file in files:
+                    filepath = os.path.join(root, file)
+                    if regex.match(filepath):
+                        src_filelist.append(filepath)
+                        file_relative_name = filepath.replace(src, '')
+                        dst_filelist.append(dst + "/" + file_relative_name)
         else:
-            lfn_list.append(dst)
+            src_filelist.append(src)
+            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            dst_filelist.append(dst)
+
+    lfn_list = []
+    if isDownload:
+        lfn_list = src_filelist
+    else:
+        lfn_list = dst_filelist
 
     envelope_list = await getEnvelope(lfn_list, specs, isWrite)
 
@@ -389,18 +358,16 @@ async def ProcessXrootdCp(xrd_copy_command):
         result = item["answer"]
         access_request = json.loads(result.encode('ascii', 'ignore'))
         if not access_request['results']:
-            if access_request["metadata"]["error"]:
+            if access_request["metadata"]["error"] != '0':
                 errors_list.append(item_idx)
-    for idx in reversed(errors_list): envelope_list.remove(idx)  # make sure we remove from back to front the lfns with errors
-    if not envelope_list: return  # if all errors and list empty, just return
-
-    if XRDDEBUG:
-        for item in envelope_list:
-            lfn = envelope_list["lfn"]
-            result = envelope_list["answer"]
-            access_request = json.loads(result.encode('ascii', 'ignore'))
+        if XRDDEBUG:
             print(lfn)
             print(json.dumps(access_request, sort_keys=True, indent=4))
+
+    if errors_list:
+        print(errors_list)
+        for idx in reversed(errors_list): envelope_list.remove(idx)  # make sure we remove from back to front the lfns with errors
+    if not envelope_list: return  # if all errors and list empty, just return
 
     url_list_src = []
     url_list_dst = []
@@ -409,14 +376,13 @@ async def ProcessXrootdCp(xrd_copy_command):
             lfn = item["lfn"]
             result = item["answer"]
             access_request = json.loads(result.encode('ascii', 'ignore'))
-            nSEs = access_request['results'][0]['nSEs']
             # multiple replicas are downloaded to a single file
             url_list_4meta = []
             for server in access_request['results']:
                 complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
                 url_list_4meta.append(complete_url)
 
-            if isDstDir: dst = dst_filelist[item_idx]
+            dst = dst_filelist[item_idx]
             url_list_dst.append({"url": dst})  # the local file destination
 
             size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
@@ -431,46 +397,53 @@ async def ProcessXrootdCp(xrd_copy_command):
                     print("File is already downloaded and size and md5 match the remote")
                     return
 
+            src = src_filelist[item_idx]
             meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
             create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
             url_list_src.append({"url": meta_fn})
     else:
-        # single file is uploaded to multiple replicas
-        for server in access_request['results']:
-            complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
-            url_list_dst.append({"url": complete_url})
-        url_list_src.append({"url": src})
+        for item_idx, item in enumerate(envelope_list):
+            lfn = item["lfn"]
+            result = item["answer"]
+            access_request = json.loads(result.encode('ascii', 'ignore'))
+            for server in access_request['results']:
+                complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+                url_list_dst.append({"url": complete_url})
+                url_list_src.append({"url": src})
 
     if XRDDEBUG:
-        for url in url_list_src: print("src:\n{}".format(url['url']))
-        for url in url_list_dst: print("dst:\n{}".format(url['url']))
-        print("\n\n")
-        print(json.dumps(access_request, sort_keys=True, indent=4))
+        for url in url_list_src: print("src:{}\n".format(url['url']))
+        for url in url_list_dst: print("dst:{}\n".format(url['url']))
 
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload)
 
-    if token_list_upload_ok:  # it was an upload job that had succesfull uploads
-        # common values for all commit commands
-        lfn = src
-        size = os.path.getsize(lfn)
-        md5sum = md5(lfn)
-        perm = '644'
-        expire = '0'
-        for token in token_list_upload_ok:  # for each succesful token
-            for server in access_request['results']:  # go over all received servers
-                if token in server['envelope']:  # for the server that have the succesful uploaded token
-                    pfn = server['url']
-                    se = server['se']
-                    guid = server['guid']
-                    # envelope size lfn perm expire pfn se guid md5
-                    commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-                    await websocket.send(CreateJsonCommand('commit', commit_args_list))
-                    if XRDDEBUG:
-                        commit_results = await websocket.recv()  # useless return message
-                        json_dict = json.loads(commit_results)
-                        if 'metadata' in json_dict: del json_dict['metadata']
-                        print(json.dumps(json_dict, sort_keys=True, indent=4))
+    if (not isDownload) and token_list_upload_ok:  # it was an upload job that had succesfull uploads
+        for item_idx, item in enumerate(envelope_list):
+            result = item["answer"]
+            access_request = json.loads(result.encode('ascii', 'ignore'))
+            src = src_filelist[item_idx]
+            dst = dst_filelist[item_idx]
+            # common values for all commit commands
+            lfn = dst
+            size = os.path.getsize(src)
+            md5sum = md5(lfn)
+            perm = '644'
+            expire = '0'
+            for token in token_list_upload_ok:  # for each succesful token
+                for server in access_request['results']:  # go over all received servers
+                    if token in server['envelope']:  # for the server that have the succesful uploaded token
+                        pfn = server['url']
+                        se = server['se']
+                        guid = server['guid']
+                        # envelope size lfn perm expire pfn se guid md5
+                        commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
+                        await websocket.send(CreateJsonCommand('commit', commit_args_list))
+                        if XRDDEBUG:
+                            commit_results = await websocket.recv()  # useless return message
+                            json_dict = json.loads(commit_results)
+                            if 'metadata' in json_dict: del json_dict['metadata']
+                            print(json.dumps(json_dict, sort_keys=True, indent=4))
 
 
 def XrdCopy(src, dst, isDownload = bool(True)):
@@ -535,17 +508,15 @@ def XrdCopy(src, dst, isDownload = bool(True)):
     handler = MyCopyProgressHandler()
     process.parallel(batch)
     handler.isDownload = isDownload
-    for url_src in src:
-        for url_dst in dst:
-            process.add_job(url_src["url"], url_dst["url"],
-                            sourcelimit = sources,
-                            force = overwrite,
-                            posc = posc,
-                            # thirdparty = tpc, # remove from now as i cannot set a disable default
-                            mkdir = makedir,
-                            chunksize = chunksize,
-                            parallelchunks = chunks
-                            )
+    for url_src, url_dst in zip(src, dst):
+        process.add_job(url_src["url"], url_dst["url"],
+                        sourcelimit = sources,
+                        force = overwrite,
+                        posc = posc,
+                        mkdir = makedir,
+                        chunksize = chunksize,
+                        parallelchunks = chunks
+                        )
     process.prepare()
     process.run(handler)
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
