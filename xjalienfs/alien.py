@@ -6,6 +6,7 @@ import re
 import subprocess
 import signal
 import json
+import traceback
 import logging
 import ssl
 from typing import NamedTuple
@@ -634,9 +635,13 @@ async def AlienConnect():
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
     websocket = None
     try:
-        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=10, ping_timeout=20, close_timeout=20)
-    except websockets.exceptions.ConnectionClosed():
+        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=30, ping_timeout=20, close_timeout=20)
+    except websockets.exceptions.ConnectionClosedError:
+        print("ConnectionError closed")
+    except websockets.exceptions.ConnectionClosed:
         print("Connection closed")
+    except Exception as e:
+        logging.error(traceback.format_exc())
 
     if websocket:
         return websocket
@@ -1304,7 +1309,12 @@ if CMD_TESTING:
 
 async def JAlienCmd(cmd = '', args = [], json_out = ''):
     global AlienSessionInfo
-    websocket = await InitConnection()
+    websocket = None
+    try:
+        websocket = await InitConnection()
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        websocket = await InitConnection()
 
     # implement a time command for measurement of sent/recv delay
     message_begin = None
@@ -1340,7 +1350,12 @@ async def JAlienCmd(cmd = '', args = [], json_out = ''):
 
 async def JAlienShell(json_out = ''):
     global AlienSessionInfo
-    websocket = await InitConnection()
+    websocket = None
+    try:
+        websocket = await InitConnection()
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        websocket = await InitConnection()
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
@@ -1360,7 +1375,8 @@ async def JAlienShell(json_out = ''):
         # (if the end of message frame is not received then all message will be lost as it invalidated)
         try:
             ping = await websocket.ping()
-        except websockets.ConnectionClosed:
+        except Exception as e:
+            logging.error(traceback.format_exc())
             websocket = await InitConnection()
 
         # list of directories in CWD (to be used for autocompletion?)
