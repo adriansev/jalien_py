@@ -774,6 +774,8 @@ class Commander(cmd2.Cmd):
     intro = 'Welcome to the jAliEn shell. Try ? or help to list commands.\nTo change between the grid and your local ' \
             'file system, use the "switch" command. '
 
+    websocket = None
+
     file = None
     cd_parser = None
     parser = argparse.ArgumentParser()
@@ -788,6 +790,8 @@ class Commander(cmd2.Cmd):
         prompt = AlienSessionInfo['currentdir'] + ' >'
 
     def __init__(self):
+        cmd2.Cmd.__init__(self)
+
         if not self.websocket:
             self.websocket = InitConnection()
 
