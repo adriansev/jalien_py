@@ -33,10 +33,9 @@ DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_WS = os.getenv('ALIENPY_DEBUG_WS', '')
 XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
-CMD_TESTING = os.getenv('ALIENPY_NEWSHELL', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': '', 'user': '', 'error': '', 'exitcode': '', 'cmdhist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'cmdhist': []}
 
 
 class XrdCpArgs(NamedTuple):
@@ -699,7 +698,9 @@ async def getSessionVars(websocket):
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-    AlienSessionInfo['commandlist'] = json_dict["results"][0]['message']
+    cmd_list = json_dict["results"][0]['message'].split()
+    regex = re.compile(r'.*_csd$')
+    AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
     AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
@@ -772,541 +773,6 @@ def pathtype_local(path=''):
     return str('')
 
 
-if CMD_TESTING:
-    class Commander(cmd2.Cmd):
-        global AlienSessionInfo
-
-        intro = 'Welcome to the jAliEn shell. Try ? or help to list commands.\nTo change between the grid and your local ' \
-                'file system, use the "switch" command. '
-
-        websocket = None
-
-        file = None
-        cd_parser = None
-        parser = argparse.ArgumentParser()
-        ls_list = []
-
-        local_file_system = True
-        cassandra_error = 'This command can only be run on jSh, use the "switch" command to change shell.'
-
-        if local_file_system:
-            prompt = os.path.abspath(os.curdir) + ' >'
-        else:
-            prompt = AlienSessionInfo['currentdir'] + ' >'
-
-        def __init__(self):
-            cmd2.Cmd.__init__(self)
-
-            if not self.websocket:
-                self.websocket = InitConnection()
-
-            # Initiate cmd2. Set history file and allow the use of IPython to create scripts
-            homedir = Path.home().as_posix()
-            super().__init__(self, persistent_history_file= homedir + '/.alienpy_hist', use_ipython=True)
-
-            # Give scripts made by the user access to this class
-            self.locals_in_py = True
-
-            # Sets the completer for lcd equal to the local file system
-            self.complete_lcd = self.path_complete
-
-            # Set the completer for cd equal to all files/directories in the current directory
-            ls_list = get_completer_list(self.websocket)
-            self.cd_parser = self.parser.add_argument('cd', choices=ls_list, type=str)
-
-        def decorator(self, local=local_file_system):
-            get_completer_list(self.websocket)
-
-        def do_echo(self, arg):
-            """"Print what you write"""
-            if self.local_file_system:
-                readline.set_prompt('heisann')
-                readline.rl_force_redisplay()
-                self.run_on_local_shell('echo ' + arg)
-            else:
-                print(arg)
-
-        def do_quit(self, arg):
-            """"Exit the shell"""
-
-            print('Goodbye!')
-            exit(0)
-
-        def do_lcd(self, arg):
-            """Change local directory"""
-            os.chdir(arg)
-            self.prompt = os.path.abspath(os.curdir) + ' >'
-
-        def do_cd(self, arg: argparse.Namespace):
-            """Change directory"""
-            if self.local_file_system:
-                os.chdir(arg)
-                self.prompt = os.path.abspath(os.curdir) + ' >'
-            else:
-                self.parseCMD(arg.__statement__.raw)
-                self.prompt = AlienSessionInfo['alienHome'] + ' >'
-                self.decorator()
-
-        def do_ls(self, arg):
-            """List of all entities in current path"""
-            if self.local_file_system:
-                print(os.listdir(os.curdir))
-            else:
-                self.parseCMD('ls ' + arg)
-            return 5
-
-        def do_less(self, arg):
-            """Read content in file"""
-            if self.local_file_system:
-                self.run_on_local_shell('less ' + arg)
-
-        def do_switch(self, arg):
-            """Change between your local file system and the grid"""
-            if self.local_file_system:
-                self.prompt = os.path.abspath(os.curdir) + ' >'
-            else:
-                self.prompt = AlienSessionInfo['alienHome'] + ' >'
-
-        def do_vim(self, arg):
-            """Edit text file"""
-            if self.local_file_system:
-
-                EDITOR = os.environ.get('EDITOR') if os.environ.get('EDITOR') else 'vim'  # that easy!
-                with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
-                    tf.flush()
-                    subprocess.call([EDITOR, tf.name])
-                    # do the parsing with `tf` using regular File operations.
-                    # for instance:
-                    tf.seek(0)
-                    edited_message = tf.read()
-
-        def do_get(self, arg):
-            """???"""
-            if self.local_file_system:
-                print("This command ")
-            else:
-                self.parseCMD('get ' + arg)
-
-        def do_ls_csd(self, arg):
-            """Runs the ls command in Cassandra. Can only be run on jSh"""
-            global cassandra_error
-            if self.local_file_system:
-                print(cassandra_error)
-            else:
-                self.parseCMD('ls_csd ' + arg)
-
-        def do_cat(self, arg):
-            """Reads a file and writes it to output"""
-            if self.local_file_system:
-                self.run_on_local_shell('cat ' + arg)
-            else:
-                self.parseCMD('cat ' + arg)
-
-        def do_cat_csd(self, arg):
-            """Reads a file and writes it to output. Can only be run on jSh"""
-            global cassandra_error
-            if self.local_file_system:
-                print(cassandra_error)
-            else:
-                self.parseCMD('cat_csd ' + arg)
-
-        def do_whereis(self, arg):
-            """Locates source/binary and manuals sections for specified files"""
-            if self.local_file_system:
-                self.run_on_local_shell('whereis ' + arg)
-            else:
-                self.parseCMD('whereis ' + arg)
-
-        def do_whereis_csd(self, arg):
-            """Locates source/binary and manuals sections for specified files"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('whereis_csd ' + arg)
-
-        def do_cp(self, arg):
-            """Copies file"""
-            if self.local_file_system:
-                self.run_on_local_shell('cp ' + arg)
-            else:
-                self.parseCMD('cp ' + arg)
-
-        def do_cp_csd(self, arg):
-            """Copies File"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('cp_csd ' + arg)
-
-        def do_time(self, arg):
-            """Usage: time <times> <command> [command_arguments]"""
-            if self.local_file_system:
-                self.run_on_local_shell('time ' + arg)
-            else:
-                self.parseCMD('time ' + arg)
-
-        def do_mkdir(self, arg):
-            """Create Directory"""
-            if self.local_file_system:
-                try:
-                    os.mkdir(arg)
-                except FileExistsError:
-                    print('The directory ' + arg + ' already exist')
-            else:
-                self.parseCMD('mkdir ' + arg)
-
-        def do_mkdir_csd(self, arg):
-            """Create Directory"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('mkdir_csd ' + arg)
-
-        def do_find(self, arg):
-            """Finds and locates matching filenames"""
-            if self.local_file_system:
-                self.run_on_local_shell('find ' + arg)
-            else:
-                self.parseCMD('find ' + arg)
-
-        def do_find_csd(self, arg):
-            """Finds and locates matching filenames"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('find_csd ' + arg)
-
-        def do_listFilesFromCollection(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot run locally')
-            else:
-                self.parseCMD('listFilesFromCollection ' + arg)
-
-        def do_submit(self, arg):
-            """Submits file"""
-            if self.local_file_system:
-                print('Cannot run locally')
-            else:
-                self.parseCMD('submit ' + arg)
-
-        def do_motd(self, arg):
-            """Message of the day!"""
-            if self.local_file_system:
-                print('Have a great day!')
-            else:
-                self.parseCMD('motd ' + arg)
-
-        def do_access(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('access ' + arg)
-
-        def do_commit(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot run locally')
-            else:
-                self.parseCMD('commit ' + arg)
-
-        def do_packages(self, arg):
-            """List available packages"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('packages ' + arg)
-
-        def do_pwd(self, arg):
-            """Prints current directory"""
-            if self.local_file_system:
-                self.run_on_local_shell('pwd ' + arg)
-            else:
-                self.parseCMD('pwd ' + arg)
-
-        def do_ps(self, arg):
-            """Reports information on running processes"""
-            if self.local_file_system:
-                self.run_on_local_shell('ps ' + arg)
-            else:
-                self.parseCMD('ps ' + arg)
-
-        def do_rmdir(self, arg):
-            """Remove directories"""
-            if self.local_file_system:
-                self.run_on_local_shell('rmdir ' + arg)
-            else:
-                self.parseCMD('rmdir ' + arg)
-
-        def do_rm(self, arg):
-            """Remove files"""
-            if self.local_file_system:
-                self.run_on_local_shell('rm ' + arg)
-            else:
-                self.parseCMD('rm ' + arg)
-
-        def do_rm_csd(self, arg):
-            """Remove files"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('rm_csd ' + arg)
-
-        def do_mv(self, arg):
-            """Move files"""
-            if self.local_file_system:
-                self.run_on_local_shell('mv ' + arg)
-            else:
-                self.parseCMD('mv ' + arg)
-
-        def do_mv_csd(self, arg):
-            """Move files"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('mv_csd ' + arg)
-
-        def do_masterjob(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('masterjob ' + arg)
-
-        def do_user(self, arg):
-            """Change role of user specified"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('user ' + arg)
-
-        def do_touch(self, arg):
-            """Create file"""
-            if self.local_file_system:
-                self.run_on_local_shell('touch ' + arg)
-            else:
-                self.parseCMD('touch ' + arg)
-
-        def do_touch_csd(self, arg):
-            """Create file"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('touch_csd ' + arg)
-
-        def do_type(self, arg):
-            """..."""
-            if self.local_file_system:
-                self.run_on_local_shell('type ' + arg)
-            else:
-                self.parseCMD('type ' + arg)
-
-        def do_kill(self, arg):
-            """Kill process"""
-            if self.local_file_system:
-                self.run_on_local_shell('kill ' + arg)
-            else:
-                self.parseCMD('kill ' + arg)
-
-        def do_lfn2guid(self, arg):
-            """Prints guid for given lfn"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('lfn2guid ' + arg)
-
-        def do_guid2lfn(self, arg):
-            """Prints lfn for given guid"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('guid2lfn ' + arg)
-
-        def do_guid2lfn_csd(self, arg):
-            """Prints lfn for given guid"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('guid2lfn_csd ' + arg)
-
-        def do_w(self, arg):
-            """Get list of active/waiting jobs"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('w ' + arg)
-
-        def do_uptime(self, arg):
-            """Get list of running/waiting jobs and active users"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('uptime ' + arg)
-
-        def do_chown(self, arg):
-            """Changes an owner or a group for a file"""
-            if self.local_file_system:
-                self.run_on_local_shell('chown ' + arg)
-            else:
-                self.parseCMD('chown ' + arg)
-
-        def do_chown_csd(self, arg):
-            """Changes an owner or a group for a file"""
-            if self.local_file_system:
-                print(self.cassandra_error)
-            else:
-                self.parseCMD('chown_csd ' + arg)
-
-        def do_deleteMirror(self, arg):
-            """Removes a replica of a file from the catalogue"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('deleteMirror ' + arg)
-
-        def do_df(self, arg):
-            """Shows free disk space"""
-            if self.local_file_system:
-                self.run_on_local_shell('df ' + arg)
-            else:
-                self.parseCMD('df ' + arg)
-
-        def do_du(self, arg):
-            """Gives the disk space usage of a directory"""
-            if self.local_file_system:
-                self.run_on_local_shell('du ' + arg)
-            else:
-                self.parseCMD('du ' + arg)
-
-        def do_fquota(self, arg):
-            """Displays information about File Quotas"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('fquota ' + arg)
-
-        def do_jquota(self, arg):
-            """Displays information about Job Quotas"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('jquota ' + arg)
-
-        def do_listSEDistance(self, arg):
-            """Returns the closest working SE for a particular site"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('listSEDistance ' + arg)
-
-        def do_listTransfer(self, arg):
-            """Returns all the transfers that are waiting in the system"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('listTransfer ' + arg)
-
-        def do_md5sum(self, arg):
-            """Returns MD5 checksum of given filename or guid"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('md5sum ' + arg)
-
-        def do_mirror(self, arg):
-            """Mirror copies a file into another SE"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('mirror ' + arg)
-
-        def do_resubmit(self, arg):
-            """Resubmits a job or a group of jobs by IDs"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('resubmit ' + arg)
-
-        def do_top(self, arg):
-            """Display and update information about running processes"""
-            if self.local_file_system:
-                self.run_on_local_shell('top ' + arg)
-            else:
-                self.parseCMD('top ' + arg)
-
-        def do_groups(self, arg):
-            """Shows the groups current user is a member of"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('groups ' + arg)
-
-        def do_token(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('token ' + arg)
-
-        def do_uuid(self, arg):
-            """Returns info about given lfn"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('uuid ' + arg)
-
-        def do_stat(self, arg):
-            """..."""
-            if self.local_file_system:
-                self.run_on_local_shell('stat ' + arg)
-            else:
-                self.parseCMD('stat ' + arg)
-
-        def do_listSEs(self, arg):
-            """Print all (or a subset) of the defined SEs with their details"""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('listSEs ' + arg)
-
-        def do_xrdstat(self, arg):
-            """..."""
-            if self.local_file_system:
-                print('Cannot be run locally')
-            else:
-                self.parseCMD('xrdstat ' + arg)
-
-        def do_whois(self, arg):
-            """Usage: whois [account name]"""
-            if self.local_file_system:
-                self.run_on_local_shell('whois ' + arg)
-            else:
-                self.parseCMD('whois ' + arg)
-
-        '''
-        def do_(self, arg):
-            """XX"""
-            if self.local_file_system:
-                self.run_on_local_shell(' ' + arg)
-            else:
-                self.parseCMD(' ' + arg)
-        '''
-
-        def parseCMD(self, args = []):
-            args = shlex.split(args)
-            cmd1 = args.pop(0)
-            # jsoncmd = CreateJsonCommand(cmd1, args)
-            # if DEBUG: print(jsoncmd)
-            asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd1, args))
-
-        def run_on_local_shell(self, arg):
-            shellcmd_out = subprocess.Popen(arg, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-            stdout, stderr = shellcmd_out.communicate()
-            if stdout: print(stdout.decode())
-            if stderr: print(stderr.decode())
-
-
 async def JAlienCmd(cmd = '', args = [], json_out = ''):
     global AlienSessionInfo
     websocket = None
@@ -1320,21 +786,26 @@ async def JAlienCmd(cmd = '', args = [], json_out = ''):
     message_begin = None
     message_delta = None
     if cmd == 'time':
-        cmd = args.pop(0)
-        message_begin = datetime.now().timestamp()
+        if not args:
+            print("time needs as argument a command")
+            return
+        else:
+            cmd = args.pop(0)
+            message_begin = datetime.now().timestamp()
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
 
     signal.signal(signal.SIGINT, signal_handler)
-    if (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
+    if (cmd == "?") or (cmd == "help"):
+        print(AlienSessionInfo['commandlist'])
+    elif (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
-    else:
-        if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-            for i, arg in enumerate(args):
-                args[i] = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], arg)
-                # args[i] = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), arg)
-                # args[i] = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), arg)
+    elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+        for i, arg in enumerate(args):
+            args[i] = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], arg)
+            # args[i] = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), arg)
+            # args[i] = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), arg)
 
         if not DEBUG: args.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, args)
@@ -1409,33 +880,31 @@ async def JAlienShell(json_out = ''):
         # implement a time command for measurement of sent/recv delay
         message_begin = None
         message_delta = None
-        if cmd == 'time':
-            cmd = input_list.pop(0)  # remove the time command, leave the actual cmd+args list
-            message_begin = datetime.now().timestamp()
 
-        if (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-            for i, arg in enumerate(input_list):
-                input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
-                # input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-                # input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
-
-        # defer to cp xrootd function
-        if cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-            await ProcessXrootdCp(websocket, input_list)
-            continue
-
-        # process help commands
         if (cmd == "?") or (cmd == "help"):
             if len(input_list) > 0:
-                cmdhelp = input_list[0]
-                if cmdhelp in AlienSessionInfo['commandlist']:
+                cmd = input_list.pop(0)
+                if cmd in AlienSessionInfo['commandlist']:
                     input_list.clear()
-                    cmd = cmdhelp
-                    input_list.append(cmd)
                     input_list.append('-h')
             else:
                 print(AlienSessionInfo['commandlist'])
                 continue
+        elif cmd == 'time':
+            if not input_list:
+                print("time needs as argument a command")
+                continue
+            else:
+                cmd = input_list.pop(0)
+                message_begin = datetime.now().timestamp()
+        elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
+            await ProcessXrootdCp(websocket, input_list)
+            continue
+        elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+            for i, arg in enumerate(input_list):
+                input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+                # input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+                # input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
 
         if not DEBUG: input_list.insert(0, '-nokeys')
         jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
@@ -1476,12 +945,7 @@ def main():
     if cmd:
         asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args, json_output))
     else:
-        if CMD_TESTING:
-            import cmd2
-            app = Commander()
-            app.cmdloop()
-        else:
-            asyncio.get_event_loop().run_until_complete(JAlienShell(json_output))
+        asyncio.get_event_loop().run_until_complete(JAlienShell(json_output))
 
 
 if __name__ == '__main__':
