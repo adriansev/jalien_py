@@ -14,7 +14,7 @@ import OpenSSL
 import readline
 import shlex
 import argparse
-#import tempfile
+# import tempfile
 from datetime import datetime
 from pathlib import Path
 from enum import Enum
@@ -1469,11 +1469,9 @@ def main():
 
     cmd = ''
     args = sys.argv
-
     if len(args) > 1:
         args.pop(0)  # remove script name from arg list
-        cmd = args[0]
-        args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
+        cmd = args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
     if cmd:
         asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args, json_output))
