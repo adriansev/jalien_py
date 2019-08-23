@@ -2,6 +2,7 @@
 
 import sys
 import os
+import atexit
 import re
 import subprocess
 import signal
@@ -541,6 +542,36 @@ def exit_message():
     sys.exit(0)
 
 
+def setupHistory():
+    histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
+    try:
+        readline.read_history_file(histfile)
+        h_len = readline.get_current_history_length()
+    except FileNotFoundError:
+        open(histfile, 'wb').close()
+        h_len = 0
+    readline.set_auto_history(True)
+    atexit.register(readline.write_history_file, histfile)
+
+
+def saveHistory(prev_h_len, histfile):
+    new_h_len = readline.get_current_history_length()
+    prev_h_len = readline.get_history_length()
+    readline.set_history_length(1000)
+    readline.append_history_file(new_h_len - prev_h_len, histfile)
+
+
+def runShellCMD(INPUT = ''):
+    if not INPUT: return
+    sh_cmd = re.sub(r'^!', '', INPUT)
+    # sh_cmd = shlex.quote(sh_cmd)
+    shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
+    stdout = shcmd_out.stdout
+    if stdout: print(stdout.decode())
+    stderr = shcmd_out.stderr
+    if stderr: print(stderr.decode())
+
+
 def CreateJsonCommand(command, options=[]):
     cmd_dict = {"command": command, "options": options}
     jcmd = json.dumps(cmd_dict)
@@ -830,12 +861,14 @@ async def JAlienShell(json_out = ''):
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
+    setupHistory()
 
     while True:
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
+        CMDNR = len(AlienSessionInfo['cmdhist'])
         try:
-            INPUT = input(f"jsh: {AlienSessionInfo['currentdir']} >")
+            INPUT = input(f"jsh[{CMDNR}]: {AlienSessionInfo['currentdir']} >")
         except EOFError:
             exit_message()
 
@@ -855,13 +888,7 @@ async def JAlienShell(json_out = ''):
 
         # if shell command, just run it and return
         if re.match("!", INPUT):
-            sh_cmd = re.sub(r'^!', '', INPUT)
-            # sh_cmd = shlex.quote(sh_cmd)
-            shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
-            stdout = shcmd_out.stdout
-            if stdout: print(stdout.decode())
-            stderr = shcmd_out.stderr
-            if stderr: print(stderr.decode())
+            runShellCMD(INPUT)
             continue
 
         # process the input and take care of pipe to shell
@@ -869,9 +896,14 @@ async def JAlienShell(json_out = ''):
         pipe_to_shell_cmd = ''
         if "|" in str(INPUT):  # if we have pipe to shell command
             input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
-            input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
-            pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
-            pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
+            if not input_split_pipe[0]:
+                print("You might wanted to run a shell comand with ! not a pipe from AliEn command to shell")
+                runShellCMD(input_split_pipe[1])
+                continue
+            else:
+                input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
+                pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
+                pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
         else:
             input_list = INPUT.split()
 
