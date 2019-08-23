@@ -10,6 +10,7 @@ import json
 import traceback
 import logging
 import ssl
+import uuid
 from typing import NamedTuple
 import OpenSSL
 import readline
@@ -36,7 +37,7 @@ XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'cmdhist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'cmdhist': [], 'templist': []}
 
 
 class XrdCpArgs(NamedTuple):
@@ -102,7 +103,26 @@ def setDst(file = '', parent = 0):
         return p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
 
 
-async def ProcessXrootdCp(websocket, xrd_copy_command):
+def expand_path_local(path):
+    exp_path = path.replace("file://", "")
+    exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
+    exp_path = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", exp_path)
+    exp_path = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", exp_path)
+    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
+    exp_path = re.sub(r"\/{2,}", "/", exp_path)
+    return exp_path
+
+
+def expand_path_grid(path):
+    exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
+    exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
+    exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
+    if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + exp_path
+    exp_path = re.sub(r"\/{2,}", "/", exp_path)
+    return exp_path
+
+
+async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     if not websocket: return
     if not AlienSessionInfo:
         print('Session information like home and current directories needed')
@@ -225,23 +245,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command):
     if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
         isSrcLocal = True
         isDownload = False
-        src = xrd_copy_command[-2].replace("file://", "")
-        src = re.sub(r"^\~", Path.home().as_posix() + "/", src)
-        src = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", src)
-        src = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", src)
-        if not src.startswith('/'): src = Path.cwd().as_posix() + "/" + src
-        src = re.sub(r"\/{2,}", "/", src)
+        src = expand_path_local(xrd_copy_command[-2])
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
-        src = xrd_copy_command[-2]
-        src = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], src)
-        src = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix() + "/", src)
-        src = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix() + "/", src)
-        if not src.startswith('/'): src = AlienSessionInfo['currentdir'] + src
+        src = expand_path_grid(xrd_copy_command[-2])
         src_specs_remotes = src.split(",")
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        src = re.sub(r"\/{2,}", "/", src)
         src_type = await pathtype_grid(websocket, src)
         if src_type == 'd': isSrcDir = bool(True)
 
@@ -249,24 +259,14 @@ async def ProcessXrootdCp(websocket, xrd_copy_command):
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
         isDstLocal = True
-        dst = xrd_copy_command[-1].replace("file://", "")
-        dst = re.sub(r"^\~", Path.home().as_posix(), dst)
-        dst = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix(), dst)
-        dst = re.sub(r"^\/*\.{1}", Path.cwd().as_posix(), dst)
-        if not dst.startswith('/'): dst = Path.cwd().as_posix() + "/" + dst
-        dst = re.sub(r"\/{2,}", "/", dst)
+        dst = expand_path_local(xrd_copy_command[-1])
         dst_type = pathtype_local(dst)
         if dst_type == 'd': isDstDir = bool(True)
     else:
         isDownload = False
-        dst = xrd_copy_command[-1]
-        dst = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], dst)
-        dst = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), dst)
-        dst = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), dst)
-        if not dst.startswith('/'): dst = AlienSessionInfo['currentdir'] + dst
+        dst = expand_path_grid(xrd_copy_command[-1])
         dst_specs_remotes = dst.split(",")
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        dst = re.sub(r"\/{2,}", "/", dst)
         dst_type = await pathtype_grid(websocket, dst)
         if dst_type == 'd': isDstDir = bool(True)
 
@@ -418,6 +418,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command):
                             if 'metadata' in json_dict: del json_dict['metadata']
                             print(json.dumps(json_dict, sort_keys=True, indent=4))
 
+    return token_list_upload_ok
+
 
 def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     if not xrd_cp_args: return
@@ -475,6 +477,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
                 print("STATUS: {0} ; SPEED = {1:.2f} {2} ; MESSAGE: {3}".format(status, speed, unit, results_message))
                 if self.isDownload:
                     os.remove(urlparse(str(self.src)).path)  # remove the created metalink
+                    self.token_list_upload_ok.append(str(self.src))
                 else:  # isUpload
                     link = urlparse(str(self.dst))
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
@@ -518,6 +521,52 @@ def create_metafile(meta_filename, local_filename, size, hash_val, replica_list 
         f.write('   </file>\n')
         f.write(' </metalink>\n')
         f.closed
+
+
+def make_tmp_fn(lfn = ''):
+    ext = '_' + str(os.getuid()) + '.alienpy_tmp'
+    if not lfn:
+        return os.getenv('TMPDIR', '/tmp') + '/' + str(uuid.uuid4()) + ext
+    return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", "_") + ext
+
+
+async def download_tmp(websocket, lfn):
+    tmpfile = make_tmp_fn(expand_path_grid(lfn))
+    copycmd = "-f " + lfn + " " + 'file://' + tmpfile
+    list_downloaded = await ProcessXrootdCp(websocket, copycmd.split())
+    if list_downloaded: return tmpfile
+
+
+async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
+    # lets recover the lfn from temp file name
+    lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
+    lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
+    lfn = lfn.replace("_", "/")
+    if upload_specs: lfn = lfn + "," + upload_specs
+    copycmd = "-f " + 'file://' + temp_file_name + " " + lfn
+    list_upload = await ProcessXrootdCp(websocket, copycmd.split())
+    if list_upload: return lfn
+
+
+async def DO_cat(websocket, lfn):
+    tmp = make_tmp_fn(lfn)
+    if tmp in AlienSessionInfo['templist']:
+        runShellCMD('cat ' + tmp)
+    else:
+        tmp = await download_tmp(websocket, lfn)
+        if tmp: AlienSessionInfo['templist'].append(tmp)
+        runShellCMD('cat ' + tmp)
+
+
+async def DO_less(websocket, lfn):
+    print("lees needs a distinct pseudo-tty, so let's settle with cat")
+    await DO_cat(websocket, lfn)
+
+
+def cleanup_temp():
+    if AlienSessionInfo['templist']:
+        for f in AlienSessionInfo['templist']:
+            if os.path.isfile(f): os.remove(f)
 
 
 def md5(file):
@@ -830,6 +879,10 @@ async def JAlienCmd(cmd = '', args = [], json_out = ''):
     signal.signal(signal.SIGINT, signal_handler)
     if (cmd == "?") or (cmd == "help"):
         print(AlienSessionInfo['commandlist'])
+    elif (cmd.startswith("cat")):
+        await DO_cat(websocket, args[0])
+    elif (cmd.startswith("less")):
+        await DO_less(websocket, args[0])
     elif (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
     elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
@@ -929,6 +982,12 @@ async def JAlienShell(json_out = ''):
             else:
                 cmd = input_list.pop(0)
                 message_begin = datetime.now().timestamp()
+        elif (cmd.startswith("cat")):
+            await DO_cat(websocket, input_list[0])
+            continue
+        elif (cmd.startswith("less")):
+            await DO_less(websocket, input_list[0])
+            continue
         elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
             await ProcessXrootdCp(websocket, input_list)
             continue
@@ -954,6 +1013,9 @@ async def JAlienShell(json_out = ''):
 def main():
     # Steering output
     json_output = ''
+
+    # at exit delete all temporary files
+    atexit.register(cleanup_temp)
 
     # Let's start the connection
     logger = logging.getLogger('websockets')
