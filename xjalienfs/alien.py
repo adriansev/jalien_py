@@ -37,7 +37,7 @@ XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'cmdhist': [], 'templist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'show_date': False, 'show_lpwd': False, 'templist': []}
 
 
 class XrdCpArgs(NamedTuple):
@@ -853,18 +853,14 @@ def pathtype_local(path=''):
     return str('')
 
 
-async def JAlienCmd(cmd = '', args = [], json_out = ''):
+async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out = ''):
     global AlienSessionInfo
-    websocket = None
-    try:
-        websocket = await InitConnection()
-    except Exception as e:
-        logging.error(traceback.format_exc())
-        websocket = await InitConnection()
-
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
     # implement a time command for measurement of sent/recv delay
     message_begin = None
     message_delta = None
+
     if cmd == 'time':
         if not args:
             print("time needs as argument a command")
@@ -873,37 +869,43 @@ async def JAlienCmd(cmd = '', args = [], json_out = ''):
             cmd = args.pop(0)
             message_begin = datetime.now().timestamp()
 
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
-
-    signal.signal(signal.SIGINT, signal_handler)
     if (cmd == "?") or (cmd == "help"):
-        print(AlienSessionInfo['commandlist'])
+        if len(args) > 0:
+            cmd = args.pop(0)
+            if cmd in AlienSessionInfo['commandlist']:
+                args.clear()
+                args.append('-h')
+        else:
+            print(AlienSessionInfo['commandlist'])
+            return
     elif (cmd.startswith("cat")):
         await DO_cat(websocket, args[0])
+        return
     elif (cmd.startswith("less")):
         await DO_less(websocket, args[0])
-    elif (cmd.startswith("cp")):  # defer cp processing to ProcessXrootdCp
+        return
+    elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
+        return
     elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
         for i, arg in enumerate(args):
-            args[i] = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], arg)
-            # args[i] = re.sub(r"^\/*\.{2}", cwd_grid_path.parents[0].as_posix(), arg)
-            # args[i] = re.sub(r"^\/*\.{1}", cwd_grid_path.as_posix(), arg)
+            args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
+            # args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
+            # args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
 
-        if not DEBUG: args.insert(0, '-nokeys')
-        jsoncmd = CreateJsonCommand(cmd, args)
-        if DEBUG: print(jsoncmd)
+    if not DEBUG: args.insert(0, '-nokeys')
+    jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
+    if DEBUG: print(jsoncmd)
 
-        await websocket.send(jsoncmd)
-        result = await websocket.recv()
-        if message_begin:
-            message_delta = datetime.now().timestamp() - message_begin
-            print(">>>   Time for send/receive command : {}".format(message_delta))
-        ProcessReceivedMessage(result, None, json_out)
+    await websocket.send(jsoncmd)
+    result = await websocket.recv()
+    if message_begin:
+        message_delta = datetime.now().timestamp() - message_begin
+        print(">>>   Time for send/receive command : {}".format(message_delta))
+    ProcessReceivedMessage(result, shellcmd, json_out)
 
 
-async def JAlienShell(json_out = ''):
+async def JAlien(cmd = '', args = [], json_out = ''):
     global AlienSessionInfo
     websocket = None
     try:
@@ -912,35 +914,30 @@ async def JAlienShell(json_out = ''):
         logging.error(traceback.format_exc())
         websocket = await InitConnection()
 
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
-    setupHistory()
+    # Command mode interaction
+    if cmd:
+        await ProcessInput(websocket, cmd, args, None, json_out)
+        return
 
+    # Begin Shell-like interaction
+    setupHistory()  # enable history saving
     while True:
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
-        CMDNR = len(AlienSessionInfo['cmdhist'])
+        prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
+        if AlienSessionInfo['show_date']: prompt = prompt + " " + str(datetime.now().replace(microsecond=0).isoformat())
+        if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
+        prompt = prompt + ' >'
+
         try:
-            INPUT = input(f"jsh[{CMDNR}]: {AlienSessionInfo['currentdir']} >")
+            INPUT = input(prompt)
         except EOFError:
             exit_message()
 
         if not INPUT: continue
 
-        # make sure we have with whom to talk to; if not, lets redo the connection
-        # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
-        # (if the end of message frame is not received then all message will be lost as it invalidated)
-        try:
-            ping = await websocket.ping()
-        except Exception as e:
-            logging.error(traceback.format_exc())
-            websocket = await InitConnection()
-
-        # list of directories in CWD (to be used for autocompletion?)
-        cwd_list = await get_completer_list(websocket)
-
         # if shell command, just run it and return
-        if re.match("!", INPUT):
+        if INPUT.startswith('!'):
             runShellCMD(INPUT)
             continue
 
@@ -962,52 +959,26 @@ async def JAlienShell(json_out = ''):
 
         cmd = input_list.pop(0)  # set the cmd as first item in list and remove it (the rest of list are the arguments)
 
-        # implement a time command for measurement of sent/recv delay
-        message_begin = None
-        message_delta = None
-
-        if (cmd == "?") or (cmd == "help"):
-            if len(input_list) > 0:
-                cmd = input_list.pop(0)
-                if cmd in AlienSessionInfo['commandlist']:
-                    input_list.clear()
-                    input_list.append('-h')
-            else:
-                print(AlienSessionInfo['commandlist'])
+        if cmd == 'prompt':
+            if input_list[0] == 'date':
+                AlienSessionInfo['show_date'] = not AlienSessionInfo['show_date']
                 continue
-        elif cmd == 'time':
-            if not input_list:
-                print("time needs as argument a command")
+            if input_list[0] == 'pwd':
+                AlienSessionInfo['show_lpwd'] = not AlienSessionInfo['show_lpwd']
                 continue
-            else:
-                cmd = input_list.pop(0)
-                message_begin = datetime.now().timestamp()
-        elif (cmd.startswith("cat")):
-            await DO_cat(websocket, input_list[0])
-            continue
-        elif (cmd.startswith("less")):
-            await DO_less(websocket, input_list[0])
-            continue
-        elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-            await ProcessXrootdCp(websocket, input_list)
-            continue
-        elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-            for i, arg in enumerate(input_list):
-                input_list[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
-                # input_list[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-                # input_list[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
 
-        if not DEBUG: input_list.insert(0, '-nokeys')
-        jsoncmd = CreateJsonCommand(cmd, input_list)  # make json with cmd and the list of arguments
-        AlienSessionInfo['cmdhist'].append(jsoncmd)
-        if DEBUG: print(jsoncmd)
+        # make sure we have with whom to talk to; if not, lets redo the connection
+        # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
+        # (if the end of message frame is not received then all message will be lost as it invalidated)
+        try:
+            ping = await websocket.ping()
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            websocket = await InitConnection()
 
-        await websocket.send(jsoncmd)
-        result = await websocket.recv()
-        if message_begin:
-            message_delta = datetime.now().timestamp() - message_begin
-            print(">>>   Time for send/receive command : {}".format(message_delta))
-        ProcessReceivedMessage(result, pipe_to_shell_cmd, json_out)
+        # list of directories in CWD (to be used for autocompletion?)
+        cwd_list = await get_completer_list(websocket)
+        await ProcessInput(websocket, cmd, input_list, pipe_to_shell_cmd, json_out)
 
 
 def main():
@@ -1036,10 +1007,7 @@ def main():
         args.pop(0)  # remove script name from arg list
         cmd = args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
-    if cmd:
-        asyncio.get_event_loop().run_until_complete(JAlienCmd(cmd, args, json_output))
-    else:
-        asyncio.get_event_loop().run_until_complete(JAlienShell(json_output))
+    asyncio.get_event_loop().run_until_complete(JAlien(cmd, args, json_output))
 
 
 if __name__ == '__main__':
