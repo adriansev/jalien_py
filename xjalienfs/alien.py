@@ -253,6 +253,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         src_specs_remotes = src.split(",")
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src_type = await pathtype_grid(websocket, src)
+        if not src_type: return
         if src_type == 'd': isSrcDir = bool(True)
 
     dst = ''
@@ -268,6 +269,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         dst_specs_remotes = dst.split(",")
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst_type = await pathtype_grid(websocket, dst)
+        if not dst_type: return
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
@@ -324,21 +326,21 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     envelope_list = await getEnvelope(websocket, lfn_list, specs, isWrite)
 
     # print errors
+    errors_idx = []
     for item_idx, item in enumerate(envelope_list):
         lfn = item["lfn"]
         result = item["answer"]
         access_request = json.loads(result.encode('ascii', 'ignore'))
-        if not access_request['results']:
-            if access_request["metadata"]["error"]:
-                print("lfn: ", lfn)
-                print("error: ", access_request["metadata"]["error"])
+        if access_request["metadata"]["error"]:
+            errors_idx.append(item_idx)
+            error = access_request["metadata"]["error"]
+            print(f"lfn: {lfn} --> {error}")
         if XRDDEBUG:
             print(lfn)
             print(json.dumps(access_request, sort_keys=True, indent=4))
 
-    if not envelope_list:
-        print("list of envelopes is empty")
-        return  # if all errors and list empty, just return
+    for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
+    if not envelope_list: return  # if all errors and list empty, just return
 
     url_list_src = []
     url_list_dst = []
@@ -347,6 +349,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             lfn = item["lfn"]
             result = item["answer"]
             access_request = json.loads(result.encode('ascii', 'ignore'))
+            if not access_request['results']: continue
             # multiple replicas are downloaded to a single file
             url_list_4meta = []
             for server in access_request['results']:
@@ -378,6 +381,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             result = item["answer"]
             access_request = json.loads(result.encode('ascii', 'ignore'))
             for server in access_request['results']:
+                if not server: continue
                 complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
                 url_list_dst.append({"url": complete_url})
                 url_list_src.append({"url": src})
@@ -554,13 +558,31 @@ async def DO_cat(websocket, lfn):
         runShellCMD('cat ' + tmp)
     else:
         tmp = await download_tmp(websocket, lfn)
-        if tmp: AlienSessionInfo['templist'].append(tmp)
-        runShellCMD('cat ' + tmp)
+        if tmp:
+            AlienSessionInfo['templist'].append(tmp)
+            runShellCMD('cat ' + tmp)
 
 
 async def DO_less(websocket, lfn):
-    print("lees needs a distinct pseudo-tty, so let's settle with cat")
-    await DO_cat(websocket, lfn)
+    tmp = make_tmp_fn(lfn)
+    if tmp in AlienSessionInfo['templist']:
+        runShellCMD('less ' + tmp)
+    else:
+        tmp = await download_tmp(websocket, lfn)
+        if tmp:
+            AlienSessionInfo['templist'].append(tmp)
+            runShellCMD('less ' + tmp)
+
+
+async def DO_more(websocket, lfn):
+    tmp = make_tmp_fn(lfn)
+    if tmp in AlienSessionInfo['templist']:
+        runShellCMD('more ' + tmp)
+    else:
+        tmp = await download_tmp(websocket, lfn)
+        if tmp:
+            AlienSessionInfo['templist'].append(tmp)
+            runShellCMD('more ' + tmp)
 
 
 def cleanup_temp():
@@ -613,8 +635,11 @@ def saveHistory(prev_h_len, histfile):
 def runShellCMD(INPUT = ''):
     if not INPUT: return
     sh_cmd = re.sub(r'^!', '', INPUT)
-    # sh_cmd = shlex.quote(sh_cmd)
-    shcmd_out = subprocess.run(sh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=os.environ)
+    if sh_cmd.startswith('mcedit') or sh_cmd.startswith('nano') or sh_cmd.startswith('vim') or sh_cmd.startswith('less') or sh_cmd.startswith('more'):
+        args = shlex.split(sh_cmd)
+        shcmd_out = subprocess.run(args, capture_output = False, shell=False, env=os.environ)
+    else:
+        shcmd_out = subprocess.run(sh_cmd, capture_output = True, shell=True, env=os.environ)
     stdout = shcmd_out.stdout
     if stdout: print(stdout.decode())
     stderr = shcmd_out.stderr
@@ -879,11 +904,13 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out
             print(AlienSessionInfo['commandlist'])
             return
     elif (cmd.startswith("cat")):
-        await DO_cat(websocket, args[0])
-        return
+        if args[0] != '-h':
+            await DO_cat(websocket, args[0])
+            return
     elif (cmd.startswith("less")):
-        await DO_less(websocket, args[0])
-        return
+        if args[0] != '-h':
+            await DO_less(websocket, args[0])
+            return
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
         return
