@@ -117,7 +117,7 @@ def expand_path_grid(path):
     exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
     exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
-    if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + exp_path
+    # if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -950,10 +950,10 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
         return
-    # elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-        # for i, arg in enumerate(args):
-            # args[i] = expand_path_grid(args[i])
-            # args[i] = re.sub(r"\/{2,}", "/", args[i])
+    elif cmd == 'ls' or cmd == "stat" or cmd == "find" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
+        for i, arg in enumerate(args):
+            args[i] = expand_path_grid(args[i])
+            args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not DEBUG: args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
