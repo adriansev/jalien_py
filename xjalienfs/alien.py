@@ -750,7 +750,7 @@ async def AlienConnect():
     if websocket:
         return websocket
     else:
-        AlienConnect()
+        await AlienConnect()
 
 
 async def InitConnection():
