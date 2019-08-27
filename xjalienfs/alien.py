@@ -585,6 +585,29 @@ async def DO_more(websocket, lfn):
             runShellCMD('more ' + tmp)
 
 
+async def DO_edit(websocket, lfn, editor='mcedit'):
+    if editor == 'mcedit': editor = 'mc -c -e'
+    editor = editor + " "
+    tmp = make_tmp_fn(lfn)
+    if tmp in AlienSessionInfo['templist']:
+        runShellCMD(editor + tmp, False)
+    else:
+        tmp = await download_tmp(websocket, lfn)
+        if tmp:
+            md5_begin = md5(tmp)
+            AlienSessionInfo['templist'].append(tmp)
+            runShellCMD(editor + tmp, False)
+            md5_end = md5(tmp)
+            if md5_begin != md5_end:
+                mod_time = f"{datetime.now():%Y%m%d_%H%M%S}"
+                lfn_backup = lfn + "_" + mod_time
+                await websocket.send(CreateJsonCommand('mv', [lfn, lfn_backup]))
+                result = await websocket.recv()
+                json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+                if json_dict["metadata"]["exitcode"] == '0':
+                    await upload_tmp(websocket, tmp, '')  # we should detect the specs or numer of replicas
+
+
 def cleanup_temp():
     if AlienSessionInfo['templist']:
         for f in AlienSessionInfo['templist']:
@@ -632,14 +655,16 @@ def saveHistory(prev_h_len, histfile):
     readline.append_history_file(new_h_len - prev_h_len, histfile)
 
 
-def runShellCMD(INPUT = ''):
+def runShellCMD(INPUT = '', captureout = True):
     if not INPUT: return
     sh_cmd = re.sub(r'^!', '', INPUT)
-    if sh_cmd.startswith('mcedit') or sh_cmd.startswith('nano') or sh_cmd.startswith('vim') or sh_cmd.startswith('less') or sh_cmd.startswith('more'):
-        args = shlex.split(sh_cmd)
-        shcmd_out = subprocess.run(args, capture_output = False, shell=False, env=os.environ)
+
+    if captureout:
+        args = sh_cmd
     else:
-        shcmd_out = subprocess.run(sh_cmd, capture_output = True, shell=True, env=os.environ)
+        args = shlex.split(sh_cmd)
+    shcmd_out = subprocess.run(args, capture_output = captureout, shell = captureout, env=os.environ)
+
     stdout = shcmd_out.stdout
     if stdout: print(stdout.decode())
     stderr = shcmd_out.stderr
@@ -852,10 +877,10 @@ def ProcessReceivedMessage(message='', shellcmd = None, json_out = ''):
 
 async def get_completer_list(websocket):
     if not websocket: return
-    await websocket.send(CreateJsonCommand('ls', ['-nomsg']))
+    await websocket.send(CreateJsonCommand('ls', ['-nokeys']))
     result = await websocket.recv()
-    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
-    return list(item['name'] for item in json_dict['results'])
+    result_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    return list(item['message'] for item in result_dict['results'])
 
 
 async def pathtype_grid(websocket, path=''):
@@ -911,14 +936,24 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out
         if args[0] != '-h':
             await DO_less(websocket, args[0])
             return
+    elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano'):
+        if args[0] != '-h':
+            await DO_edit(websocket, args[0], editor=cmd)
+            return
+    elif (cmd == 'edit'):
+        EDITOR = os.getenv('EDITOR', '')
+        if not EDITOR: return
+        cmd = EDITOR
+        if args[0] != '-h':
+            await DO_edit(websocket, args[0], editor=cmd)
+            return
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
         return
-    elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
-        for i, arg in enumerate(args):
-            args[i] = re.sub(r"%ALIEN", home_grid_path.as_posix() + "/", arg)
-            # args[i] = re.sub(r"\/*\.\/+", cwd_grid_path.as_posix() + "/", arg)
-            # args[i] = re.sub(r"\/*\.\.\/+", cwd_grid_path.parent.as_posix() + "/", arg)
+    # elif (cmd.startswith("ls")) or (cmd.startswith("stat")) or (cmd.startswith("find")) or (cmd.startswith("xrdstat")) or (cmd.startswith("rm")) or (cmd.startswith("lfn2guid")):
+        # for i, arg in enumerate(args):
+            # args[i] = expand_path_grid(args[i])
+            # args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not DEBUG: args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
@@ -1004,7 +1039,7 @@ async def JAlien(cmd = '', args = [], json_out = ''):
             websocket = await InitConnection()
 
         # list of directories in CWD (to be used for autocompletion?)
-        cwd_list = await get_completer_list(websocket)
+        # cwd_list = await get_completer_list(websocket)
         await ProcessInput(websocket, cmd, input_list, pipe_to_shell_cmd, json_out)
 
 
