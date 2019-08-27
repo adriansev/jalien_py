@@ -840,41 +840,6 @@ async def getSessionVars(websocket):
     if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
 
 
-def ProcessReceivedMessage(message='', shellcmd = None, json_out = ''):
-    global AlienSessionInfo
-    json_output = bool(False)
-    json_meta_output = bool(False)
-
-    if json_out == 'json_nometa': json_output = True
-    if json_out == 'json_all':
-        json_output = True
-        json_meta_output = True
-
-    if not message: return
-    json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
-    AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
-
-    if 'error' in json_dict["metadata"]: AlienSessionInfo['error'] = json_dict["metadata"]["error"]
-
-    if json_output:
-        if not json_meta_output:
-            if 'metadata' in json_dict: del json_dict['metadata']
-        print(json.dumps(json_dict, sort_keys=True, indent=4))
-    else:
-        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-        if shellcmd:
-            # shlex.split(shellcmd)
-            # shlex.quote(shellcmd)
-            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
-            stdout = shell_run.stdout
-            if stdout: print(stdout)
-            stderr = shell_run.stderr
-            if stderr: print(stderr)
-        else:
-            print(websocket_output)
-            if AlienSessionInfo['error']: print(AlienSessionInfo['error'])
-
-
 async def get_completer_list(websocket):
     if not websocket: return
     await websocket.send(CreateJsonCommand('ls', ['-nokeys']))
@@ -903,7 +868,7 @@ def pathtype_local(path=''):
     return str('')
 
 
-async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out = ''):
+async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None):
     global AlienSessionInfo
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
@@ -957,17 +922,47 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None, json_out
 
     if not DEBUG: args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
-    if DEBUG: print(jsoncmd)
+    if DEBUG: print(f'send json: {jsoncmd}')
 
     await websocket.send(jsoncmd)
     result = await websocket.recv()
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
         print(">>>   Time for send/receive command : {}".format(message_delta))
-    ProcessReceivedMessage(result, shellcmd, json_out)
+    ProcessReceivedMessage(result, shellcmd)
 
 
-async def JAlien(cmd = '', args = [], json_out = ''):
+def ProcessReceivedMessage(message='', shellcmd = None):
+    if not message: return
+    global AlienSessionInfo
+    json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
+    AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
+
+    if 'error' in json_dict["metadata"]:
+        error = json_dict["metadata"]["error"]
+        exitcode = json_dict["metadata"]["exitcode"]
+        AlienSessionInfo['error'] = error
+        AlienSessionInfo['exitcode'] = exitcode
+        print(f'exitcode: {exitcode} ; err: {error}')
+
+    if DEBUG:
+        print(json.dumps(json_dict, sort_keys=True, indent=4))
+    else:
+        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+        if not websocket_output: return
+        if shellcmd:
+            # shlex.split(shellcmd)
+            # shlex.quote(shellcmd)
+            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
+            stdout = shell_run.stdout
+            if stdout: print(stdout)
+            stderr = shell_run.stderr
+            if stderr: print(stderr)
+        else:
+            print(websocket_output)
+
+
+async def JAlien(cmd = '', args = []):
     global AlienSessionInfo
     websocket = None
     try:
@@ -978,7 +973,7 @@ async def JAlien(cmd = '', args = [], json_out = ''):
 
     # Command mode interaction
     if cmd:
-        await ProcessInput(websocket, cmd, args, None, json_out)
+        await ProcessInput(websocket, cmd, args, None)
         return
 
     # Begin Shell-like interaction
@@ -1040,13 +1035,10 @@ async def JAlien(cmd = '', args = [], json_out = ''):
 
         # list of directories in CWD (to be used for autocompletion?)
         # cwd_list = await get_completer_list(websocket)
-        await ProcessInput(websocket, cmd, input_list, pipe_to_shell_cmd, json_out)
+        await ProcessInput(websocket, cmd, input_list, pipe_to_shell_cmd)
 
 
 def main():
-    # Steering output
-    json_output = ''
-
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
@@ -1059,17 +1051,13 @@ def main():
         logger.setLevel(logging.ERROR)
     logger.addHandler(logging.StreamHandler())
 
-    script_name = sys.argv[0]
-    if '_json' in script_name: json_output = 'json_nometa'
-    if '_json_all' in script_name: json_output = 'json_all'
-
     cmd = ''
     args = sys.argv
     if len(args) > 1:
         args.pop(0)  # remove script name from arg list
         cmd = args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
 
-    asyncio.get_event_loop().run_until_complete(JAlien(cmd, args, json_output))
+    asyncio.get_event_loop().run_until_complete(JAlien(cmd, args))
 
 
 if __name__ == '__main__':
