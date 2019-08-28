@@ -943,7 +943,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['error'] = error
         AlienSessionInfo['exitcode'] = exitcode
-        print(f'exitcode: {exitcode} ; err: {error}')
+        if exitcode != "0": print(f'exitcode: {exitcode} ; err: {error}')
 
     if DEBUG:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
