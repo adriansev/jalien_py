@@ -37,7 +37,7 @@ XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'show_date': False, 'show_lpwd': False, 'templist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'show_date': False, 'show_lpwd': False, 'templist': []}
 
 
 class XrdCpArgs(NamedTuple):
@@ -117,7 +117,10 @@ def expand_path_grid(path):
     exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
     exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
-    # if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + exp_path
+    if not exp_path.startswith('/'):
+        path_components = path.split("/")
+        if path_components[0] in AlienSessionInfo['cwd_list']:
+            exp_path = AlienSessionInfo['currentdir'] + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -416,11 +419,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                         # envelope size lfn perm expire pfn se guid md5
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
                         await websocket.send(CreateJsonCommand('commit', commit_args_list))
-                        if XRDDEBUG:
-                            commit_results = await websocket.recv()  # useless return message
-                            json_dict = json.loads(commit_results)
-                            if 'metadata' in json_dict: del json_dict['metadata']
-                            print(json.dumps(json_dict, sort_keys=True, indent=4))
+                        commit_results = await websocket.recv()  # useless return message
+                        if XRDDEBUG: print(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
     return token_list_upload_ok
 
@@ -840,12 +840,12 @@ async def getSessionVars(websocket):
     if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
 
 
-async def get_completer_list(websocket):
+async def cwd_list(websocket):
     if not websocket: return
-    await websocket.send(CreateJsonCommand('ls', ['-nokeys']))
+    await websocket.send(CreateJsonCommand('ls', ['-nokeys', '-F']))
     result = await websocket.recv()
     result_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
-    return list(item['message'] for item in result_dict['results'])
+    AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
 
 
 async def pathtype_grid(websocket, path=''):
@@ -872,6 +872,8 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None):
     global AlienSessionInfo
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
+    await cwd_list(websocket)  # let's start knowing what is the content of grid current dir
+
     # implement a time command for measurement of sent/recv delay
     message_begin = None
     message_delta = None
@@ -915,7 +917,8 @@ async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None):
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
         await ProcessXrootdCp(websocket, args)
         return
-    elif cmd == 'ls' or cmd == "stat" or cmd == "find" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
+    elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
+        # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
             args[i] = expand_path_grid(args[i])
             args[i] = re.sub(r"\/{2,}", "/", args[i])
@@ -938,12 +941,11 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    if 'error' in json_dict["metadata"]:
-        error = json_dict["metadata"]["error"]
-        exitcode = json_dict["metadata"]["exitcode"]
-        AlienSessionInfo['error'] = error
-        AlienSessionInfo['exitcode'] = exitcode
-        if exitcode != "0": print(f'exitcode: {exitcode} ; err: {error}')
+    error = json_dict["metadata"]["error"]
+    exitcode = json_dict["metadata"]["exitcode"]
+    AlienSessionInfo['error'] = error
+    AlienSessionInfo['exitcode'] = exitcode
+    if exitcode != "0": print(f'exitcode: {exitcode} ; err: {error}')
 
     if DEBUG:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
