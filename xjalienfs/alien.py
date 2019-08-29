@@ -764,7 +764,7 @@ async def AlienConnect():
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
     websocket = None
     try:
-        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=30, ping_timeout=20, close_timeout=20)
+        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
     except websockets.exceptions.ConnectionClosedError:
         print("ConnectionError closed")
     except websockets.exceptions.ConnectionClosed:
