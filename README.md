@@ -24,28 +24,26 @@ tmp
 var  
 jsh:CERN: /alice/cern.ch/user/a/asevcenc/ >  
 ```
+For both command and interctive mode multiple commands can be issued separated by `;`  
+For command mode the full string must be enclosed by either double or single quotes  
+The interactive mode save the command history in `${HOME}/.alienpy_history` and it can be navigated with Up/Down keys  
+`!` is understood as running into shell whatever command follows  
+and `|` pipe whatever output of AliEn command to a shell command (that follows after the `|`)
 
-For debugging purposes there are 2 symlinks that modify the output format:  
-```
-alien_json -> alien.py  
-alien_json_all -> alien.py  
-```
-  
-alien_json will output the exact json of ['results']  
-alien_json_all will output the full json answer (including ['metadata'])  
-  
 There are a few environment variables that influence the mechanics of the script :  
 JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults, full path certificate,key token files  
-   
-Debug options :  
-ALIENPY_DEBUG - if set, will activate some printouts  
+If set these X509 locations will be used:  
+X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR   
+
+For debugging purposes there are a few environment toggles :  
+ALIENPY_DEBUG - if set, will activate some printouts, and all output will be the raw json content  
 ALIENPY_DEBUG_WS - if set, will activate DEBUG level logging of websocket module  
 ALIENPY_XRDDEBUG - if set will activate printout in XRootD commands and functions  
 ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`  
-   
-   
-X509 locations:  
-X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR   
+a `time` command was added that, when prefixed to any other command, will report the time taken for command execution  
+
+`cat/more/less` will download the target lfn to a temporary file and will act upon it while  
+`vi/nano/mcedit` will, after the modification of downloaded temporary, backup the existing lfn, and upload the modified file  
 
 #######################  
 ```cp``` option  
