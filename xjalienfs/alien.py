@@ -868,8 +868,12 @@ def pathtype_local(path=''):
     return str('')
 
 
-async def ProcessInput(websocket, cmd = '', args = [], shellcmd = None):
+async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
+    if not cmd_string: return
     global AlienSessionInfo
+    args = cmd_string.split(" ")
+    cmd = args.pop(0)
+
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
     await cwd_list(websocket)  # let's start knowing what is the content of grid current dir
@@ -970,9 +974,9 @@ def ProcessReceivedMessage(message='', shellcmd = None):
             print(websocket_output)
 
 
-async def JAlien(cmd = '', args = []):
+async def JAlien(commands = ''):
     global AlienSessionInfo
-    websocket = None
+
     try:
         websocket = await InitConnection()
     except Exception as e:
@@ -980,8 +984,9 @@ async def JAlien(cmd = '', args = []):
         websocket = await InitConnection()
 
     # Command mode interaction
-    if cmd:
-        await ProcessInput(websocket, cmd, args, None)
+    if commands:
+        cmds_tokens = commands.split(";")
+        for token in cmds_tokens: await ProcessInput(websocket, token, None)
         return
 
     # Begin Shell-like interaction
@@ -1006,44 +1011,45 @@ async def JAlien(cmd = '', args = []):
             runShellCMD(INPUT)
             continue
 
-        # process the input and take care of pipe to shell
-        input_list = []
-        pipe_to_shell_cmd = ''
-        if "|" in str(INPUT):  # if we have pipe to shell command
-            input_split_pipe = INPUT.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
-            if not input_split_pipe[0]:
-                print("You might wanted to run a shell comand with ! not a pipe from AliEn command to shell")
-                runShellCMD(input_split_pipe[1])
-                continue
+        cmds_tokens = INPUT.split(";")
+        for token in cmds_tokens:
+            # process the input and take care of pipe to shell
+            input_list = []
+            pipe_to_shell_cmd = ''
+            if "|" in str(token):  # if we have pipe to shell command
+                input_split_pipe = token.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
+                if not input_split_pipe[0]:
+                    print("You might wanted to run a shell comand with ! not a pipe from AliEn command to shell")
+                    runShellCMD(input_split_pipe[1])
+                    continue
+                else:
+                    input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
+                    pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
+                    pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
             else:
-                input_list = input_split_pipe[0].split()  # the list of arguments sent to websocket
-                pipe_to_shell_cmd = input_split_pipe[1]  # the shell command
-                pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
-        else:
-            input_list = INPUT.split()
+                input_list = token.split()
 
-        cmd = input_list.pop(0)  # set the cmd as first item in list and remove it (the rest of list are the arguments)
+            # cmd = input_list.pop(0)  # set the cmd as first item in list and remove it (the rest of list are the arguments)
 
-        if cmd == 'prompt':
-            if input_list[0] == 'date':
-                AlienSessionInfo['show_date'] = not AlienSessionInfo['show_date']
-                continue
-            if input_list[0] == 'pwd':
-                AlienSessionInfo['show_lpwd'] = not AlienSessionInfo['show_lpwd']
-                continue
+            if input_list[0] == 'prompt':
+                if input_list[0] == 'date':
+                    AlienSessionInfo['show_date'] = not AlienSessionInfo['show_date']
+                    continue
+                if input_list[0] == 'pwd':
+                    AlienSessionInfo['show_lpwd'] = not AlienSessionInfo['show_lpwd']
+                    continue
 
-        # make sure we have with whom to talk to; if not, lets redo the connection
-        # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
-        # (if the end of message frame is not received then all message will be lost as it invalidated)
-        try:
-            ping = await websocket.ping()
-        except Exception as e:
-            logging.error(traceback.format_exc())
-            websocket = await InitConnection()
+            # make sure we have with whom to talk to; if not, lets redo the connection
+            # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
+            # (if the end of message frame is not received then all message will be lost as it invalidated)
+            try:
+                ping = await websocket.ping()
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                websocket = await InitConnection()
 
-        # list of directories in CWD (to be used for autocompletion?)
-        # cwd_list = await get_completer_list(websocket)
-        await ProcessInput(websocket, cmd, input_list, pipe_to_shell_cmd)
+            cmd_string = ' '.join(input_list)
+            await ProcessInput(websocket, cmd_string, pipe_to_shell_cmd)
 
 
 def main():
@@ -1059,13 +1065,10 @@ def main():
         logger.setLevel(logging.ERROR)
     logger.addHandler(logging.StreamHandler())
 
-    cmd = ''
-    args = sys.argv
-    if len(args) > 1:
-        args.pop(0)  # remove script name from arg list
-        cmd = args.pop(0)  # ALSO remove command from arg list - remains only command args or empty
-
-    asyncio.get_event_loop().run_until_complete(JAlien(cmd, args))
+    # args = sys.argv
+    sys.argv.pop(0)  # remove the name of the script(alien.py)
+    cmd_string = ' '.join(sys.argv)
+    asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
 
 
 if __name__ == '__main__':
