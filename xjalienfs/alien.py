@@ -941,11 +941,17 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    error = json_dict["metadata"]["error"]
-    exitcode = json_dict["metadata"]["exitcode"]
-    AlienSessionInfo['error'] = error
-    AlienSessionInfo['exitcode'] = exitcode
-    if exitcode != "0": print(f'exitcode: {exitcode} ; err: {error}')
+    error = ''
+    if 'error' in json_dict["metadata"]:
+        error = json_dict["metadata"]["error"]
+        AlienSessionInfo['error'] = error
+
+    exitcode = ''
+    if 'exitcode' in json_dict["metadata"]:
+        exitcode = json_dict["metadata"]["exitcode"]
+        AlienSessionInfo['exitcode'] = exitcode
+
+    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}')
 
     if DEBUG:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
