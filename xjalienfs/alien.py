@@ -201,22 +201,22 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        sources = xrd_copy_command.pop(y_idx + 1)
+        sources = int(xrd_copy_command.pop(y_idx + 1))
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
         s_idx = xrd_copy_command.index('-S')
-        chunks = xrd_copy_command.pop(s_idx + 1)
+        chunks = int(xrd_copy_command.pop(s_idx + 1))
         xrd_copy_command.pop(y_idx)
 
     if '-T' in xrd_copy_command:
         batch_idx = xrd_copy_command.index('-T')
-        batch = xrd_copy_command.pop(batch_idx + 1)
+        batch = int(xrd_copy_command.pop(batch_idx + 1))
         xrd_copy_command.pop(batch_idx)
 
     if '-chksz' in xrd_copy_command:
         chksz_idx = xrd_copy_command.index('-chksz')
-        chunksize = xrd_copy_command.pop(chksz_idx + 1)
+        chunksize = int(xrd_copy_command.pop(chksz_idx + 1))
         xrd_copy_command.pop(chksz_idx)
 
     # find options for recursive copy of directories
