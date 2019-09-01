@@ -137,12 +137,29 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
-    # xrdcp generic parameters (used by ALICE tests)
-    FirstConnectMaxCnt = 2
-    TransactionTimeout = 60
-    RequestTimeout = 60
-    ReadCacheSize = 0
-    xrdcp_args = f"&FirstConnectMaxCnt={FirstConnectMaxCnt}&TransactionTimeout={TransactionTimeout}&RequestTimeout={RequestTimeout}&ReadCacheSize={ReadCacheSize}"
+    # xrdcp parameters (used by ALICE tests)
+    # http://xrootd.org/doc/man/xrdcp.1.html
+
+    # Override the application name reported to the server.
+    os.environ["XRD_APPNAME"] = "alien.py"
+
+    # Default value for the time after which an error is declared if it was impossible to get a response to a request.
+    os.environ["XRD_REQUESTTIMEOUT"] = "60"
+
+    # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
+    os.environ["XRD_CONNECTIONWINDOW"] = "15"
+
+    # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
+    os.environ["XRD_CONNECTIONRETRY"] = "4"
+
+    # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
+    os.environ["XRD_TIMEOUTRESOLUTION"] = "1"
+
+    # If set the client tries first IPv4 address (turned off by default).
+    os.environ["XRD_PREFERIPV4"] = "1"
+
+    # Size of a single data chunk handled by xrdcp / XrdCl::CopyProcess.
+    os.environ["XRD_CPCHUNKSIZE"] = "128"
 
     # XRootD copy parameters
     # inittimeout: copy initialization timeout(int)
@@ -356,7 +373,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             # multiple replicas are downloaded to a single file
             url_list_4meta = []
             for server in access_request['results']:
-                complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+                complete_url = server['url'] + "?" + "authz=" + server['envelope']
                 url_list_4meta.append(complete_url)
 
             dst = dst_filelist[item_idx]
@@ -385,16 +402,15 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             access_request = json.loads(result.encode('ascii', 'ignore'))
             for server in access_request['results']:
                 if not server: continue
-                complete_url = server['url'] + "?" + "authz=" + server['envelope'] + xrdcp_args
+                complete_url = server['url'] + "?" + "authz=" + server['envelope']
                 url_list_dst.append({"url": complete_url})
                 url_list_src.append({"url": src})
 
     if XRDDEBUG:
-        for url in url_list_src: print("src:{}\n".format(url['url']))
-        for url in url_list_dst: print("dst:{}\n".format(url['url']))
+        for url in url_list_src: print("src:{}".format(url['url']))
+        for url in url_list_dst: print("dst:{}".format(url['url']))
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype)
-
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
@@ -498,6 +514,9 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     process.parallel(int(batch))
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
+        if XRDDEBUG:
+            print("\nadd copy job with src: {}".format(url_src['url']))
+            print("add copy job with dst: {}\n".format(url_dst['url']))
         process.add_job(url_src["url"], url_dst["url"],
                         sourcelimit = sources,
                         force = overwrite,
@@ -519,7 +538,7 @@ def create_metafile(meta_filename, local_filename, size, hash_val, replica_list 
         f.write("   <published>{}</published>\n".format(published))
         f.write("   <file name=\"{}\">\n".format(local_filename))
         f.write("     <size>{}</size>\n".format(size))
-        f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
+        if hash_val: f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
         for url in replica_list:
             f.write("     <url><![CDATA[{}]]></url>\n".format(url))
         f.write('   </file>\n')
