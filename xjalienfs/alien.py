@@ -105,10 +105,12 @@ def setDst(file = '', parent = 0):
 
 def expand_path_local(path):
     exp_path = path.replace("file://", "")
+    # exp_path_components = list(filter(None, exp_path.split("/")))
     exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", exp_path)
-    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
+    if not exp_path.startswith('/'):
+        exp_path = Path.cwd().as_posix() + "/" + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -119,8 +121,10 @@ def expand_path_grid(path):
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
     if not exp_path.startswith('/'):
         path_components = path.split("/")
-        if path_components[0] in AlienSessionInfo['cwd_list']:
-            exp_path = AlienSessionInfo['currentdir'] + exp_path
+        r = re.compile(path_components[0] + "\\/*")
+        matches = list(filter(r.match, AlienSessionInfo['cwd_list']))
+        if matches:
+            exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -262,7 +266,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     # clean up and prepare the paths to be used in the xrdcp command
     src = ''
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-2].startswith('file://'):  # second to last argument (should be the source)
+    if xrd_copy_command[-2].startswith('file:'):  # second to last argument (should be the source)
         isSrcLocal = True
         isDownload = False
         src = expand_path_local(xrd_copy_command[-2])
@@ -270,7 +274,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         if src_type == 'd': isSrcDir = bool(True)
     else:
         src = expand_path_grid(xrd_copy_command[-2])
-        src_specs_remotes = src.split(",")
+        src_specs_remotes = src.split(",", maxsplit = 1)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src_type = await pathtype_grid(websocket, src)
         if not src_type: return
@@ -278,7 +282,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
 
     dst = ''
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-1].startswith('file://'):  # last argument (should be the destination)
+    if xrd_copy_command[-1].startswith('file:'):  # last argument (should be the destination)
         isDstLocal = True
         dst = expand_path_local(xrd_copy_command[-1])
         dst_type = pathtype_local(dst)
@@ -286,7 +290,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     else:
         isDownload = False
         dst = expand_path_grid(xrd_copy_command[-1])
-        dst_specs_remotes = dst.split(",")
+        dst_specs_remotes = dst.split(",", maxsplit = 1)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst_type = await pathtype_grid(websocket, dst)
         if not dst_type: return
@@ -309,8 +313,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
-                file_relative_name = file['lfn'].replace(src, '')
-                dst_file = dst[:-1] + "/" + setDst(file['lfn'], parent)
+                file_relative_name = file['lfn'].replace(Path(src).parents[parent].as_posix(), '')
+                dst_file = dst + "/" + file_relative_name  # setDst(file['lfn'], parent)
                 dst_file = re.sub(r"\/{2,}", "/", dst_file)
                 dst_filelist.append(dst_file)
         else:
@@ -328,14 +332,20 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                     filepath = os.path.join(root, file)
                     if regex.match(filepath):
                         src_filelist.append(filepath)
-                        file_relative_name = filepath.replace(src, '')
-                        dst_file = dst[:-1] + "/" + setDst(filepath, parent)
+                        file_relative_name = filepath.replace(Path(src).parents[parent].as_posix(), '')
+                        dst_file = dst[:-1] + "/" + file_relative_name
                         dst_file = re.sub(r"\/{2,}", "/", dst_file)
                         dst_filelist.append(dst_file)
         else:
             src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
             dst_filelist.append(dst)
+
+    if XRDDEBUG:
+        print("We are going to copy these files:")
+        for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
+            print("src:{}".format(src_dbg))
+            print("dst:{}\n".format(dst_dbg))
 
     lfn_list = []
     if isDownload:
@@ -373,7 +383,11 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             # multiple replicas are downloaded to a single file
             url_list_4meta = []
             for server in access_request['results']:
-                complete_url = server['url'] + "?" + "authz=" + server['envelope']
+                url_components = server['url'].split('#')
+                if len(url_components) > 1:
+                    complete_url = url_components[0] + '?xrdcl.unzip=' + url_components[1] + '&authz=' + server['envelope']
+                else:
+                    complete_url = url_components[0] + "?authz=" + server['envelope']
                 url_list_4meta.append(complete_url)
 
             dst = dst_filelist[item_idx]
@@ -397,6 +411,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             url_list_src.append({"url": meta_fn})
     else:
         for item_idx, item in enumerate(envelope_list):
+            src = src_filelist[item_idx]
             lfn = item["lfn"]
             result = item["answer"]
             access_request = json.loads(result.encode('ascii', 'ignore'))
@@ -407,10 +422,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 url_list_src.append({"url": src})
 
     if XRDDEBUG:
-        for url in url_list_src: print("src:{}".format(url['url']))
-        for url in url_list_dst: print("dst:{}".format(url['url']))
+        print("List of files:")
+        for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
+            print("src:{}".format(src_dbg['url']))
+            print("dst:{}\n".format(dst_dbg['url']))
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype)
+
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
@@ -926,11 +944,11 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
         if args[0] != '-h':
             await DO_less(websocket, args[0])
             return
-    elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano'):
+    elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
         if args[0] != '-h':
             await DO_edit(websocket, args[0], editor=cmd)
             return
-    elif (cmd == 'edit'):
+    elif (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
         if not EDITOR: return
         cmd = EDITOR
