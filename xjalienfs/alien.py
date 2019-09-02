@@ -148,22 +148,22 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     os.environ["XRD_APPNAME"] = "alien.py"
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
-    os.environ["XRD_REQUESTTIMEOUT"] = "60"
+    if not os.getenv('XRD_REQUESTTIMEOUT'): os.environ["XRD_REQUESTTIMEOUT"] = "60"
 
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
-    os.environ["XRD_CONNECTIONWINDOW"] = "15"
+    if not os.getenv('XRD_CONNECTIONWINDOW'): os.environ["XRD_CONNECTIONWINDOW"] = "15"
 
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
-    os.environ["XRD_CONNECTIONRETRY"] = "4"
+    if not os.getenv('XRD_CONNECTIONRETRY'): os.environ["XRD_CONNECTIONRETRY"] = "4"
 
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
-    os.environ["XRD_TIMEOUTRESOLUTION"] = "1"
+    if not os.getenv('XRD_TIMEOUTRESOLUTION'): os.environ["XRD_TIMEOUTRESOLUTION"] = "1"
 
     # If set the client tries first IPv4 address (turned off by default).
-    os.environ["XRD_PREFERIPV4"] = "1"
+    if not os.getenv('XRD_PREFERIPV4'): os.environ["XRD_PREFERIPV4"] = "1"
 
     # Size of a single data chunk handled by xrdcp / XrdCl::CopyProcess.
-    os.environ["XRD_CPCHUNKSIZE"] = "128"
+    if not os.getenv('XRD_CPCHUNKSIZE'): os.environ["XRD_CPCHUNKSIZE"] = "128"
 
     # XRootD copy parameters
     # inittimeout: copy initialization timeout(int)
