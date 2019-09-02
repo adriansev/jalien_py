@@ -1048,15 +1048,15 @@ async def JAlien(commands = ''):
             else:
                 input_list = token.split()
 
-            # cmd = input_list.pop(0)  # set the cmd as first item in list and remove it (the rest of list are the arguments)
-
             if input_list[0] == 'prompt':
-                if input_list[0] == 'date':
-                    AlienSessionInfo['show_date'] = not AlienSessionInfo['show_date']
-                    continue
-                if input_list[0] == 'pwd':
-                    AlienSessionInfo['show_lpwd'] = not AlienSessionInfo['show_lpwd']
-                    continue
+                if len(input_list) > 1 and input_list[1] == 'date':
+                    AlienSessionInfo['show_date'] = (not AlienSessionInfo['show_date'])
+                elif len(input_list) > 1 and input_list[1] == 'pwd':
+                    AlienSessionInfo['show_lpwd'] = (not AlienSessionInfo['show_lpwd'])
+                else:
+                    print("Arguments supported are : <date> for date information and <pwd> for local directory")
+                input_list.clear()
+                continue
 
             # make sure we have with whom to talk to; if not, lets redo the connection
             # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
@@ -1067,8 +1067,7 @@ async def JAlien(commands = ''):
                 logging.error(traceback.format_exc())
                 websocket = await InitConnection()
 
-            cmd_string = ' '.join(input_list)
-            await ProcessInput(websocket, cmd_string, pipe_to_shell_cmd)
+            await ProcessInput(websocket, ' '.join(input_list), pipe_to_shell_cmd)
 
 
 def main():
