@@ -934,7 +934,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
                 args.clear()
                 args.append('-h')
         else:
-            print(AlienSessionInfo['commandlist'])
+            print(' '.join(AlienSessionInfo['commandlist']))
             return
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
