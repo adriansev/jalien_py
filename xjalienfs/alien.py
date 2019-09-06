@@ -313,7 +313,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
-                file_relative_name = file['lfn'].replace(Path(src).parents[parent].as_posix(), '')
+                src_path = Path(src)
+                if parent > (len(src_path.parents) - 1): parent = len(src_path.parents) - 1  # make sure maximum parent var point to first dir in path
+                src_root = src_path.parents[parent].as_posix()
+                if src_root != '/':
+                    file_relative_name = file['lfn'].replace(src_root, '')
+                else:
+                    file_relative_name = file['lfn']
                 dst_file = dst + "/" + file_relative_name  # setDst(file['lfn'], parent)
                 dst_file = re.sub(r"\/{2,}", "/", dst_file)
                 dst_filelist.append(dst_file)
@@ -332,7 +338,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                     filepath = os.path.join(root, file)
                     if regex.match(filepath):
                         src_filelist.append(filepath)
-                        file_relative_name = filepath.replace(Path(src).parents[parent].as_posix(), '')
+                        src_path = Path(src)
+                        if parent > (len(src_path.parents) - 1): parent = len(src_path.parents) - 1  # make sure maximum parent var point to first dir in path
+                        src_root = src_path.parents[parent].as_posix()
+                        if src_root != '/':
+                            file_relative_name = filepath.replace(src_root, '')
+                        else:
+                            file_relative_name = filepath
                         dst_file = dst[:-1] + "/" + file_relative_name
                         dst_file = re.sub(r"\/{2,}", "/", dst_file)
                         dst_filelist.append(dst_file)
