@@ -484,6 +484,30 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     posc = xrd_cp_args.posc
     hashtype = xrd_cp_args.hashtype
 
+    def cursor_up(lines = 1):
+        if lines < 1: lines = 1
+        for k in range(lines):
+            sys.stdout.write('\x1b[1A')
+            sys.stdout.flush()
+
+    def cursor_down(lines = 1):
+        if lines < 1: lines = 1
+        for k in range(lines):
+            sys.stdout.write('\x1b[1B')
+            sys.stdout.flush()
+
+    def cursor_right(pos = 1):
+        if pos < 1: pos = 1
+        for k in range(pos):
+            sys.stdout.write('\x1b[1C')
+            sys.stdout.flush()
+
+    def cursor_left(pos = 1):
+        if pos < 1: pos = 1
+        for k in range(pos):
+            sys.stdout.write('\x1b[1D')
+            sys.stdout.flush()
+
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         isDownload = bool(True)
         src = ''  # pass the source from begin to end
@@ -491,12 +515,16 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
         token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
         timestamp_begin = None
         total = None
+        jobs = None
+        job_list = []
 
         def begin(self, id, total, source, target):
             self.timestamp_begin = datetime.now().timestamp()
-            print("jobID: {0}/{1} ... ".format(id, total), end = '')
+            print("jobID: {0}/{1} >>> Start".format(id, total))
             self.src = source
             self.dst = target
+            self.jobs = int(total)
+            self.job_list.append(id)
             if XRDDEBUG:
                 print("CopyProgressHandler.source: {}".format(self.src))
                 print("CopyProgressHandler.target: {}".format(self.dst))
@@ -524,7 +552,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
                 if int(speed/(1024*1024)) > 1:
                     speed = speed/(1024*1024)
                     unit = mbytes_s
-                print("STATUS: {0} ; SPEED = {1:.2f} {2} ; MESSAGE: {3}".format(status, speed, unit, results_message))
+                print("jobID: {0}/{1} >>> STATUS: {2} ; SPEED = {3:.2f} {4} ; MESSAGE: {5}".format(jobId, self.jobs, status, speed, unit, results_message))
                 if self.isDownload:
                     os.remove(urlparse(str(self.src)).path)  # remove the created metalink
                     self.token_list_upload_ok.append(str(self.src))
@@ -533,11 +561,12 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
                     self.token_list_upload_ok.append(str(token))
             else:
-                print("STATUS: {0} ; ERRNO: {1} ; CODE: {2} ; MESSAGE: {3}".format(results_status, results_errno, results_code, results_message))
+                print("jobID: {0}/{1} >>> STATUS: {2} ; ERRNO: {3} ; CODE: {4} ; MESSAGE: {5}".format(jobId, self.jobs, results_status, results_errno, results_code, results_message))
 
         def update(self, jobId, processed, total):
             self.total = total
-            # print("jobID : {0} ; processed: {1}, total: {2}".format(jobId, processed, total))
+            # perc = float(processed)/float(total)
+            # print("jobID: {0}/{1} >>> Completion = {2:.2f}".format(jobId, self.jobs, perc))
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
