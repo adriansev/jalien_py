@@ -415,7 +415,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                     if md5(dst) != md5_4meta: os.remove(dst)
                 if os.path.isfile(dst):  # if the existent file survived the second check
                     print("File is already downloaded and size and md5 match the remote")
-                    return
+                    continue
 
             src = src_filelist[item_idx]
             meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
