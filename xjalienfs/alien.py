@@ -394,12 +394,14 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             if not access_request['results']: continue
             # multiple replicas are downloaded to a single file
             url_list_4meta = []
+            is_zip = False
+            file_in_zip = ''
             for server in access_request['results']:
-                url_components = server['url'].split('#')
+                url_components = server['url'].rsplit('#', maxsplit = 1)
                 if len(url_components) > 1:
-                    complete_url = url_components[0] + '?xrdcl.unzip=' + url_components[1] + '&authz=' + server['envelope']
-                else:
-                    complete_url = url_components[0] + "?authz=" + server['envelope']
+                    is_zip = True
+                    file_in_zip = url_components[1]
+                complete_url = url_components[0] + '?authz=' + server['envelope']
                 url_list_4meta.append(complete_url)
 
             dst = dst_filelist[item_idx]
@@ -418,9 +420,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                     continue
 
             src = src_filelist[item_idx]
-            meta_fn = tmpdir + "/" + src.replace("/", "_") + ".meta4"
+            meta_fn = tmpdir + "/" + src.replace("/", "%") + ".meta4"
             create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
-            url_list_src.append({"url": meta_fn})
+            if is_zip:
+                download_link = meta_fn + '?xrdcl.unzip=' + file_in_zip
+            else:
+                download_link = meta_fn
+            url_list_src.append({"url": download_link})
     else:
         for item_idx, item in enumerate(envelope_list):
             src = src_filelist[item_idx]
