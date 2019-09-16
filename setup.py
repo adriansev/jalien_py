@@ -14,9 +14,7 @@ setuptools.setup(
     url="https://gitlab.cern.ch/jalien/xjalienfs",
     packages=setuptools.find_packages(),
     install_requires=[
-        'hashlib'
         'urllib3',
-        'pathlib2',
         'websockets',
         'pyOpenSSL',
         'pyxrootd'
