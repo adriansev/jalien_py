@@ -794,6 +794,27 @@ def IsValidCert(fname):
         return False
 
 
+def CertInfo(fname):
+    try:
+        with open(fname) as f:
+            cert_bytes = f.read()
+    except Exception:
+        print(f"File >>>{fname}<<< not found")
+        return
+
+    try:
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    except Exception:
+        print(f"Could not load certificate >>>{fname}<<<")
+        return
+
+    utc_time_notafter = datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
+    utc_time_notbefore = datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
+    issuer = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_issuer().get_components()]))
+    subject = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_subject().get_components()]))
+    print(f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}")
+
+
 def create_ssl_context():
     # SSL SETTINGS
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
@@ -963,6 +984,11 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
     home_grid_path = Path(AlienSessionInfo['alienHome'])
     await cwd_list(websocket)  # let's start knowing what is the content of grid current dir
 
+    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
+    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+
     # implement a time command for measurement of sent/recv delay
     message_begin = None
     message_delta = None
@@ -974,6 +1000,24 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
         else:
             cmd = args.pop(0)
             message_begin = datetime.now().timestamp()
+
+    if cmd == 'certinfo':
+        CertInfo(usercert)
+        return
+
+    if cmd == 'token':
+        if len(args) > 0 and args[0] == 'refresh':
+            os.remove(tokencert)
+            os.remove(tokenkey)
+            try:
+                websocket = await InitConnection()
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                websocket = await InitConnection()
+            return
+        if not args or (len(args) > 0 and args[0] == 'info'):
+            CertInfo(tokencert)
+            return
 
     if (cmd == "?") or (cmd == "help"):
         if len(args) > 0:
