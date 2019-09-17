@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "WARNING: This is a no-op call. The alien-token-init isn't needed for JAliEn"
