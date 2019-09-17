@@ -1,7 +1,18 @@
 import setuptools
+import os
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
+
+alibuild_requirements = [
+        'urllib3',
+        'websockets',
+        'pyOpenSSL',
+    ]
+
+standard_requirements = alibuild_requirements + [ "pyxrootd" ]
+
+selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
 
 setuptools.setup(
     name="xjalienfs",
@@ -13,12 +24,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://gitlab.cern.ch/jalien/xjalienfs",
     packages=setuptools.find_packages(),
-    install_requires=[
-        'urllib3',
-        'websockets',
-        'pyOpenSSL',
-        'pyxrootd'
-    ],
+    install_requires=selected_requirements,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD 3-Clause License",
