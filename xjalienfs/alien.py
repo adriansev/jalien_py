@@ -13,7 +13,6 @@ import ssl
 import uuid
 from typing import NamedTuple
 import OpenSSL
-import readline
 import shlex
 import argparse
 # import tempfile
@@ -24,6 +23,12 @@ from urllib.parse import urlparse
 import asyncio
 import websockets
 # import websockets.speedups
+
+try:
+    import readline
+    has_readline = True
+except:
+    has_readline = False
 
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -719,25 +724,24 @@ def exit_message():
     print('\nExit')
     sys.exit(0)
 
+if has_readline:
+    def setupHistory():
+        histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
+        try:
+            readline.read_history_file(histfile)
+            h_len = readline.get_current_history_length()
+        except FileNotFoundError:
+            open(histfile, 'wb').close()
+            h_len = 0
+        readline.set_auto_history(True)
+        atexit.register(readline.write_history_file, histfile)
 
-def setupHistory():
-    histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-    try:
-        readline.read_history_file(histfile)
-        h_len = readline.get_current_history_length()
-    except FileNotFoundError:
-        open(histfile, 'wb').close()
-        h_len = 0
-    readline.set_auto_history(True)
-    atexit.register(readline.write_history_file, histfile)
 
-
-def saveHistory(prev_h_len, histfile):
-    new_h_len = readline.get_current_history_length()
-    prev_h_len = readline.get_history_length()
-    readline.set_history_length(1000)
-    readline.append_history_file(new_h_len - prev_h_len, histfile)
-
+    def saveHistory(prev_h_len, histfile):
+        new_h_len = readline.get_current_history_length()
+        prev_h_len = readline.get_history_length()
+        readline.set_history_length(1000)
+        readline.append_history_file(new_h_len - prev_h_len, histfile)
 
 def runShellCMD(INPUT = '', captureout = True):
     if not INPUT: return
@@ -1075,7 +1079,9 @@ async def JAlien(commands = ''):
         return
 
     # Begin Shell-like interaction
-    setupHistory()  # enable history saving
+    if has_readline:
+        setupHistory()  # enable history saving
+
     while True:
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
