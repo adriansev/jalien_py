@@ -53,6 +53,7 @@ class XrdCpArgs(NamedTuple):
     makedir: bool
     posc: bool
     hashtype: str
+    streams: int
 
 
 def xrdcp_help():
@@ -66,8 +67,9 @@ args are the following :
 -f : replace any existing output file
 -P : enable persist on successful close semantic
 -y <nr_sources> : use up to the number of sources specified in parallel
--S <parallel nr chunks> : copy using the specified number of TCP connections
--chksz <bytes> : chunk size (bytes)
+-S <aditional TPC streams> : uses num additional parallel streams to do the transfer. The maximum value is 15. The default is 0 (i.e., use only the main stream).
+-chunks <nr chunks> : number of chunks that should be requested in parallel
+-chunksz <bytes> : chunk size (bytes)
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
 
 for the recursive copy of directories the following options (of the find command) can be used:
@@ -179,6 +181,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     hashtype = str('md5')
     batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
     sources = int(1)  # max number of download sources
+    streams = int(0)  # uses num additional parallel streams to do the transfer. The maximum value is 15. The default is 0 (i.e., use only the main stream).
     chunks = int(1)  # number of chunks that should be requested in parallel
     chunksize = int(4194304)  # chunk size for remote transfers
     makedir = bool(True)  # create the parent directories when creating a file
@@ -214,7 +217,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
 
     if '-S' in xrd_copy_command:
         s_idx = xrd_copy_command.index('-S')
-        chunks = int(xrd_copy_command.pop(s_idx + 1))
+        streams = int(xrd_copy_command.pop(s_idx + 1))
         xrd_copy_command.pop(y_idx)
 
     if '-T' in xrd_copy_command:
@@ -222,8 +225,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         batch = int(xrd_copy_command.pop(batch_idx + 1))
         xrd_copy_command.pop(batch_idx)
 
-    if '-chksz' in xrd_copy_command:
-        chksz_idx = xrd_copy_command.index('-chksz')
+    if '-chunks' in xrd_copy_command:
+        chunks_nr_idx = xrd_copy_command.index('-chunks')
+        chunks_nr = int(xrd_copy_command.pop(chunks_nr_idx + 1))
+        xrd_copy_command.pop(chunks_nr_idx)
+
+    if '-chunksz' in xrd_copy_command:
+        chksz_idx = xrd_copy_command.index('-chunksz')
         chunksize = int(xrd_copy_command.pop(chksz_idx + 1))
         xrd_copy_command.pop(chksz_idx)
 
@@ -449,8 +457,11 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             print("src:{}".format(src_dbg['url']))
             print("dst:{}\n".format(dst_dbg['url']))
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype)
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
 
+    if not (url_list_src or url_list_dst):
+        print("copy src/dst lists are empty, no copy process to be started")
+        return []
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
@@ -493,6 +504,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     makedir = xrd_cp_args.makedir
     posc = xrd_cp_args.posc
     hashtype = xrd_cp_args.hashtype
+    streams = xrd_cp_args.streams
 
     def cursor_up(lines = 1):
         if lines < 1: lines = 1
@@ -581,6 +593,10 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
     process.parallel(int(batch))
+    if streams > 0:
+        if streams > 15: streams = 15
+        client.EnvPutInt('SubStreamsPerChannel', streams)
+
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
         if XRDDEBUG:
