@@ -27,9 +27,8 @@ import websockets
 try:
     import readline
     has_readline = True
-except:
+except ImportError:
     has_readline = False
-
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6")
@@ -724,6 +723,7 @@ def exit_message():
     print('\nExit')
     sys.exit(0)
 
+
 if has_readline:
     def setupHistory():
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
@@ -736,12 +736,12 @@ if has_readline:
         readline.set_auto_history(True)
         atexit.register(readline.write_history_file, histfile)
 
-
     def saveHistory(prev_h_len, histfile):
         new_h_len = readline.get_current_history_length()
         prev_h_len = readline.get_history_length()
         readline.set_history_length(1000)
         readline.append_history_file(new_h_len - prev_h_len, histfile)
+
 
 def runShellCMD(INPUT = '', captureout = True):
     if not INPUT: return
