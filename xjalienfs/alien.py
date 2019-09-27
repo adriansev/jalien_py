@@ -41,7 +41,7 @@ XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '', 'show_date': False, 'show_lpwd': False, 'templist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': []}
 
 
 class XrdCpArgs(NamedTuple):
@@ -1089,7 +1089,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 
 
 def ProcessReceivedMessage(message='', shellcmd = None):
-    if not message: return
+    if not message: return int(61)  # ENODATA
     global AlienSessionInfo
     json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
@@ -1104,23 +1104,32 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}')
-
     if DEBUG:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
-    else:
-        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-        if not websocket_output: return
-        if shellcmd:
-            # shlex.split(shellcmd)
-            # shlex.quote(shellcmd)
-            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
-            stdout = shell_run.stdout
-            if stdout: print(stdout)
-            stderr = shell_run.stderr
-            if stderr: print(stderr)
+        if 'exitcode':
+            return int(exitcode)
         else:
-            print(websocket_output)
+            return int(0)
+
+    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}')
+
+    websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+    if not websocket_output:
+        if not exitcode: exitcode = 61  # ENODATA
+        return int(exitcode)
+
+    if shellcmd:
+        # shlex.split(shellcmd)
+        # shlex.quote(shellcmd)
+        shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
+        stdout = shell_run.stdout
+        if stdout: print(stdout)
+        stderr = shell_run.stderr
+        if stderr: print(stderr)
+    else:
+        print(websocket_output)
+
+    return int(exitcode)
 
 
 async def JAlien(commands = ''):
@@ -1136,7 +1145,7 @@ async def JAlien(commands = ''):
     if commands:
         cmds_tokens = commands.split(";")
         for token in cmds_tokens: await ProcessInput(websocket, token, None)
-        return
+        return int(AlienSessionInfo['exitcode'])
 
     # Begin Shell-like interaction
     if has_readline:
@@ -1219,6 +1228,7 @@ def main():
     sys.argv.pop(0)  # remove the name of the script(alien.py)
     cmd_string = ' '.join(sys.argv)
     asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
+    os._exit(int(AlienSessionInfo['exitcode']))
 
 
 if __name__ == '__main__':
