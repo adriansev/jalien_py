@@ -1108,17 +1108,14 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         error = json_dict["metadata"]["error"]
         AlienSessionInfo['error'] = error
 
-    exitcode = ''
+    exitcode = '0'  # use a default value for cases where exitcode is missing
     if 'exitcode' in json_dict["metadata"]:
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
     if DEBUG:
         print(json.dumps(json_dict, sort_keys=True, indent=4))
-        if 'exitcode':
-            return int(exitcode)
-        else:
-            return int(0)
+        return int(exitcode)
 
     if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}')
 
