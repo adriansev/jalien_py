@@ -431,7 +431,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                     continue
 
             src = src_filelist[item_idx]
-            meta_fn = tmpdir + "/" + src.replace("/", "%") + ".meta4"
+            meta_fn = tmpdir + "/" + src.replace("/", "%%") + ".meta4"
             create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
             if is_zip:
                 download_link = meta_fn + '?xrdcl.unzip=' + file_in_zip
@@ -635,21 +635,40 @@ def make_tmp_fn(lfn = ''):
     ext = '_' + str(os.getuid()) + '.alienpy_tmp'
     if not lfn:
         return os.getenv('TMPDIR', '/tmp') + '/' + str(uuid.uuid4()) + ext
-    return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", "_") + ext
+    return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", '%%') + ext
 
 
 async def download_tmp(websocket, lfn):
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
-    list_downloaded = await ProcessXrootdCp(websocket, copycmd.split())
-    if list_downloaded: return tmpfile
+    result = await ProcessXrootdCp(websocket, copycmd.split())
+    if result == 0: return tmpfile
 
 
 async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
     # lets recover the lfn from temp file name
     lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
     lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
-    lfn = lfn.replace("_", "/")
+    lfn = lfn.replace("%%", "/")
+
+    envelope_list = await getEnvelope(websocket, [lfn])
+    result = envelope_list[0]["answer"]
+    access_request = json.loads(result.encode('ascii', 'ignore'))
+    replicas = access_request["results"][0]["nSEs"]
+
+    # let's create a backup of old lfn
+    mod_time = f"{datetime.now():%Y%m%d_%H%M%S}"
+    lfn_backup = lfn + "_" + mod_time
+    await websocket.send(CreateJsonCommand('mv', [lfn, lfn_backup]))
+    result = await websocket.recv()
+    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    if json_dict["metadata"]["exitcode"] != '0':
+        print("Could not create backup of lfn : {}", lfn)
+        return 1
+
+    if "disk:" not in upload_specs:
+        upload_specs = "disk:" + replicas
+
     if upload_specs: lfn = lfn + "," + upload_specs
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn
     list_upload = await ProcessXrootdCp(websocket, copycmd.split())
@@ -657,7 +676,8 @@ async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
 
 
 async def DO_cat(websocket, lfn):
-    tmp = make_tmp_fn(lfn)
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('cat ' + tmp)
     else:
@@ -668,7 +688,8 @@ async def DO_cat(websocket, lfn):
 
 
 async def DO_less(websocket, lfn):
-    tmp = make_tmp_fn(lfn)
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('less ' + tmp)
     else:
@@ -679,7 +700,8 @@ async def DO_less(websocket, lfn):
 
 
 async def DO_more(websocket, lfn):
-    tmp = make_tmp_fn(lfn)
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('more ' + tmp)
     else:
@@ -692,7 +714,8 @@ async def DO_more(websocket, lfn):
 async def DO_edit(websocket, lfn, editor='mcedit'):
     if editor == 'mcedit': editor = 'mc -c -e'
     editor = editor + " "
-    tmp = make_tmp_fn(lfn)
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD(editor + tmp, False)
     else:
@@ -702,14 +725,7 @@ async def DO_edit(websocket, lfn, editor='mcedit'):
             AlienSessionInfo['templist'].append(tmp)
             runShellCMD(editor + tmp, False)
             md5_end = md5(tmp)
-            if md5_begin != md5_end:
-                mod_time = f"{datetime.now():%Y%m%d_%H%M%S}"
-                lfn_backup = lfn + "_" + mod_time
-                await websocket.send(CreateJsonCommand('mv', [lfn, lfn_backup]))
-                result = await websocket.recv()
-                json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
-                if json_dict["metadata"]["exitcode"] == '0':
-                    await upload_tmp(websocket, tmp, '')  # we should detect the specs or numer of replicas
+            if md5_begin != md5_end: await upload_tmp(websocket, tmp, '')
 
 
 def cleanup_temp():
