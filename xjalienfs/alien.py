@@ -136,14 +136,14 @@ def expand_path_grid(path):
 
 
 async def ProcessXrootdCp(websocket, xrd_copy_command = []):
-    if not websocket: return
+    if not websocket: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if not AlienSessionInfo:
         print('Session information like home and current directories needed')
-        return
+        return int(126)  # ENOKEY /* Required key not available */
 
     if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
         xrdcp_help()
-        return
+        return int(64)  # EX_USAGE /* command line usage error */
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
@@ -489,7 +489,12 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                         commit_results = await websocket.recv()  # useless return message
                         if XRDDEBUG: print(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
-    return token_list_upload_ok
+    # hard to return a single exitcode for a copy process optionally spanning multiple files
+    # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
+    if token_list_upload_ok:
+        return int(0)
+    else:
+        return int(1)
 
 
 def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
@@ -820,19 +825,20 @@ def CertInfo(fname):
             cert_bytes = f.read()
     except Exception:
         print(f"File >>>{fname}<<< not found")
-        return
+        return int(2)  # ENOENT /* No such file or directory */
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
         print(f"Could not load certificate >>>{fname}<<<")
-        return
+        return int(5)  # EIO /* I/O error */
 
     utc_time_notafter = datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
     utc_time_notbefore = datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
     issuer = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_issuer().get_components()]))
     subject = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_subject().get_components()]))
     print(f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}")
+    return int(0)
 
 
 def create_ssl_context():
@@ -1016,14 +1022,14 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
     if cmd == 'time':
         if not args:
             print("time needs as argument a command")
-            return
+            return int(64)  # EX_USAGE /* command line usage error */
         else:
             cmd = args.pop(0)
             message_begin = datetime.now().timestamp()
 
     if cmd == 'certinfo':
-        CertInfo(usercert)
-        return
+        AlienSessionInfo['exitcode'] = CertInfo(usercert)
+        return AlienSessionInfo['exitcode']
 
     if cmd == 'token':
         if len(args) > 0 and args[0] == 'refresh':
@@ -1034,10 +1040,10 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             except Exception as e:
                 logging.error(traceback.format_exc())
                 websocket = await InitConnection()
-            return
+            return int(0)
         if not args or (len(args) > 0 and args[0] == 'info'):
-            CertInfo(tokencert)
-            return
+            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+            return AlienSessionInfo['exitcode']
 
     if (cmd == "?") or (cmd == "help"):
         if len(args) > 0:
@@ -1047,29 +1053,32 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
                 args.append('-h')
         else:
             print(' '.join(AlienSessionInfo['commandlist']))
-            return
+            return int(0)
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
             await DO_cat(websocket, args[0])
-            return
+            return int(0)
     elif (cmd.startswith("less")):
         if args[0] != '-h':
             await DO_less(websocket, args[0])
-            return
+            return int(0)
     elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
         if args[0] != '-h':
             await DO_edit(websocket, args[0], editor=cmd)
-            return
+            return int(0)
     elif (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
-        if not EDITOR: return
+        if not EDITOR:
+            print('No EDITOR variable set up!')
+            return int(22)  # EINVAL /* Invalid argument */
         cmd = EDITOR
         if args[0] != '-h':
             await DO_edit(websocket, args[0], editor=cmd)
-            return
+            return int(0)
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-        await ProcessXrootdCp(websocket, args)
-        return
+        exitcode = await ProcessXrootdCp(websocket, args)
+        AlienSessionInfo['exitcode'] = exitcode
+        return int(exitcode)
     elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
@@ -1085,7 +1094,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
         print(">>>   Time for send/receive command : {}".format(message_delta))
-    ProcessReceivedMessage(result, shellcmd)
+    return int(ProcessReceivedMessage(result, shellcmd))
 
 
 def ProcessReceivedMessage(message='', shellcmd = None):
