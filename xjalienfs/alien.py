@@ -31,7 +31,7 @@ except ImportError:
     has_readline = False
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This script requires a minimum of Python version 3.6")
+    print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
 
 # environment debug variable
@@ -138,7 +138,7 @@ def expand_path_grid(path):
 async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     if not websocket: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if not AlienSessionInfo:
-        print('Session information like home and current directories needed')
+        print('Session information like home and current directories needed', flush = True)
         return int(126)  # ENOKEY /* Required key not available */
 
     if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
@@ -309,7 +309,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
-        print("The operands cannot specify different source types: one must be local and one grid")
+        print("The operands cannot specify different source types: one must be local and one grid", flush = True)
         return
 
     # if src is directory, then create list of files coresponding with options
@@ -366,10 +366,9 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             dst_filelist.append(dst)
 
     if XRDDEBUG:
-        print("We are going to copy these files:")
+        print("We are going to copy these files:", flush = True)
         for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
-            print("src:{}".format(src_dbg))
-            print("dst:{}\n".format(dst_dbg))
+            print(f"src: {src_dbg}\ndst: {dst_dbg}\n", flush = True)
 
     lfn_list = []
     if isDownload:
@@ -388,10 +387,10 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         if access_request["metadata"]["error"]:
             errors_idx.append(item_idx)
             error = access_request["metadata"]["error"]
-            print(f"lfn: {lfn} --> {error}")
+            print(f"lfn: {lfn} --> {error}", flush = True)
         if XRDDEBUG:
-            print(lfn)
-            print(json.dumps(access_request, sort_keys=True, indent=4))
+            print(lfn, flush = True)
+            print(json.dumps(access_request, sort_keys=True, indent=4), flush = True)
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
     if not envelope_list: return  # if all errors and list empty, just return
@@ -428,7 +427,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 if os.path.isfile(dst):  # if the existent file survived the first check
                     if md5(dst) != md5_4meta: os.remove(dst)
                 if os.path.isfile(dst):  # if the existent file survived the second check
-                    print("File is already downloaded and size and md5 match the remote")
+                    print("File is already downloaded and size and md5 match the remote", flush = True)
                     continue
 
             src = src_filelist[item_idx]
@@ -452,15 +451,14 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 url_list_src.append({"url": src})
 
     if XRDDEBUG:
-        print("List of files:")
+        print("List of files:", flush = True)
         for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
-            print("src:{}".format(src_dbg['url']))
-            print("dst:{}\n".format(dst_dbg['url']))
+            print("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']), flush = True)
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
 
     if not (url_list_src or url_list_dst):
-        print("copy src/dst lists are empty, no copy process to be started")
+        print("copy src/dst lists are empty, no copy process to be started", flush = True)
         return []
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
@@ -487,7 +485,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
                         await websocket.send(CreateJsonCommand('commit', commit_args_list))
                         commit_results = await websocket.recv()  # useless return message
-                        if XRDDEBUG: print(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
+                        if XRDDEBUG: print(json.dumps(json.loads(commit_results), sort_keys=True, indent=4), flush = True)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -547,14 +545,13 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
 
         def begin(self, id, total, source, target):
             self.timestamp_begin = datetime.now().timestamp()
-            print("jobID: {0}/{1} >>> Start".format(id, total))
+            print("jobID: {0}/{1} >>> Start".format(id, total), flush = True)
             self.src = source
             self.dst = target
             self.jobs = int(total)
             self.job_list.append(id)
             if XRDDEBUG:
-                print("CopyProgressHandler.source: {}".format(self.src))
-                print("CopyProgressHandler.target: {}".format(self.dst))
+                print("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst), flush = True)
 
         def end(self, jobId, results):
             results_message = results['status'].message
@@ -579,7 +576,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
                 if int(speed/(1024*1024)) > 1:
                     speed = speed/(1024*1024)
                     unit = mbytes_s
-                print("jobID: {0}/{1} >>> STATUS: {2} ; SPEED = {3:.2f} {4} ; MESSAGE: {5}".format(jobId, self.jobs, status, speed, unit, results_message))
+                print("jobID: {0}/{1} >>> STATUS: {2} ; SPEED = {3:.2f} {4} ; MESSAGE: {5}".format(jobId, self.jobs, status, speed, unit, results_message), flush = True)
                 if self.isDownload:
                     os.remove(urlparse(str(self.src)).path)  # remove the created metalink
                     self.token_list_upload_ok.append(str(self.src))
@@ -588,12 +585,12 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
                     self.token_list_upload_ok.append(str(token))
             else:
-                print("jobID: {0}/{1} >>> STATUS: {2} ; ERRNO: {3} ; CODE: {4} ; MESSAGE: {5}".format(jobId, self.jobs, results_status, results_errno, results_code, results_message))
+                print("jobID: {0}/{1} >>> STATUS: {2} ; ERRNO: {3} ; CODE: {4} ; MESSAGE: {5}".format(jobId, self.jobs, results_status, results_errno, results_code, results_message), flush = True)
 
         def update(self, jobId, processed, total):
             self.total = total
             # perc = float(processed)/float(total)
-            # print("jobID: {0}/{1} >>> Completion = {2:.2f}".format(jobId, self.jobs, perc))
+            # print("jobID: {0}/{1} >>> Completion = {2:.2f}".format(jobId, self.jobs, perc), flush = True)
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
@@ -604,9 +601,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
 
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
-        if XRDDEBUG:
-            print("\nadd copy job with src: {}".format(url_src['url']))
-            print("add copy job with dst: {}\n".format(url_dst['url']))
+        if XRDDEBUG: print("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']), flush = True)
         process.add_job(url_src["url"], url_dst["url"],
                         sourcelimit = sources,
                         force = overwrite,
@@ -775,9 +770,9 @@ def runShellCMD(INPUT = '', captureout = True):
     shcmd_out = subprocess.run(args, capture_output = captureout, shell = captureout, env=os.environ)
 
     stdout = shcmd_out.stdout
-    if stdout: print(stdout.decode())
+    if stdout: print(stdout.decode(), flush = True)
     stderr = shcmd_out.stderr
-    if stderr: print(stderr.decode())
+    if stderr: print(stderr.decode(), flush = True)
 
 
 def CreateJsonCommand(command, options=[]):
@@ -824,20 +819,20 @@ def CertInfo(fname):
         with open(fname) as f:
             cert_bytes = f.read()
     except Exception:
-        print(f"File >>>{fname}<<< not found")
+        print(f"File >>>{fname}<<< not found", flush = True)
         return int(2)  # ENOENT /* No such file or directory */
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
-        print(f"Could not load certificate >>>{fname}<<<")
+        print(f"Could not load certificate >>>{fname}<<<", flush = True)
         return int(5)  # EIO /* I/O error */
 
     utc_time_notafter = datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
     utc_time_notbefore = datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
     issuer = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_issuer().get_components()]))
     subject = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_subject().get_components()]))
-    print(f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}")
+    print(f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}", flush = True)
     return int(0)
 
 
@@ -890,16 +885,16 @@ async def AlienConnect():
 
     if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
-    if DEBUG: print("Connecting to : ", fHostWSUrl)
+    if DEBUG: print("Connecting to : ", fHostWSUrl, flush = True)
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
     websocket = None
     try:
         websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
     except websockets.exceptions.ConnectionClosedError:
-        print("ConnectionError closed")
+        print("ConnectionError closed", flush = True)
     except websockets.exceptions.ConnectionClosed:
-        print("Connection closed")
+        print("Connection closed", flush = True)
     except Exception as e:
         logging.error(traceback.format_exc())
 
@@ -929,7 +924,7 @@ async def InitConnection():
     if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
     if init_begin:
         init_delta = datetime.now().timestamp() - init_begin
-        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta))
+        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta), flush = True)
     return websocket
 
 
@@ -1021,7 +1016,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 
     if cmd == 'time':
         if not args:
-            print("time needs as argument a command")
+            print("time needs as argument a command", flush = True)
             return int(64)  # EX_USAGE /* command line usage error */
         else:
             cmd = args.pop(0)
@@ -1052,7 +1047,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
                 args.clear()
                 args.append('-h')
         else:
-            print(' '.join(AlienSessionInfo['commandlist']))
+            print(' '.join(AlienSessionInfo['commandlist']), flush = True)
             return int(0)
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
@@ -1069,7 +1064,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
     elif (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
         if not EDITOR:
-            print('No EDITOR variable set up!')
+            print('No EDITOR variable set up!', flush = True)
             return int(22)  # EINVAL /* Invalid argument */
         cmd = EDITOR
         if args[0] != '-h':
@@ -1087,13 +1082,13 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 
     if not DEBUG: args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
-    if DEBUG: print(f'send json: {jsoncmd}')
+    if DEBUG: print(f'send json: {jsoncmd}', flush = True)
 
     await websocket.send(jsoncmd)
     result = await websocket.recv()
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
-        print(">>>   Time for send/receive command : {}".format(message_delta))
+        print(">>>   Time for send/receive command : {}".format(message_delta), flush = True)
     return int(ProcessReceivedMessage(result, shellcmd))
 
 
@@ -1114,10 +1109,10 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         AlienSessionInfo['exitcode'] = exitcode
 
     if DEBUG:
-        print(json.dumps(json_dict, sort_keys=True, indent=4))
+        print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
         return int(exitcode)
 
-    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}')
+    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}', flush = True)
 
     websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
     if not websocket_output:
@@ -1129,11 +1124,11 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         # shlex.quote(shellcmd)
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
         stdout = shell_run.stdout
-        if stdout: print(stdout)
+        if stdout: print(stdout, flush = True)
         stderr = shell_run.stderr
-        if stderr: print(stderr)
+        if stderr: print(stderr, flush = True)
     else:
-        print(websocket_output)
+        print(websocket_output, flush = True)
 
     return int(exitcode)
 
@@ -1185,7 +1180,7 @@ async def JAlien(commands = ''):
             if "|" in str(token):  # if we have pipe to shell command
                 input_split_pipe = token.split('|', maxsplit=1)  # split in before pipe (jalien cmd) and after pipe (shell cmd)
                 if not input_split_pipe[0]:
-                    print("You might wanted to run a shell comand with ! not a pipe from AliEn command to shell")
+                    print("You might wanted to run a shell comand with ! not a pipe from AliEn command to shell", flush = True)
                     runShellCMD(input_split_pipe[1])
                     continue
                 else:
@@ -1201,7 +1196,7 @@ async def JAlien(commands = ''):
                 elif len(input_list) > 1 and input_list[1] == 'pwd':
                     AlienSessionInfo['show_lpwd'] = (not AlienSessionInfo['show_lpwd'])
                 else:
-                    print("Arguments supported are : <date> for date information and <pwd> for local directory")
+                    print("Arguments supported are : <date> for date information and <pwd> for local directory", flush = True)
                 input_list.clear()
                 continue
 
