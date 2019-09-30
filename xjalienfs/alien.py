@@ -289,7 +289,9 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         src_specs_remotes = src.split(",", maxsplit = 1)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src_type = await pathtype_grid(websocket, src)
-        if not src_type: return
+        if src_type == "NoValidType":
+            print("Could not determine the type of src argument.. is it missing?")
+            return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
 
     dst = ''
@@ -305,12 +307,14 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         dst_specs_remotes = dst.split(",", maxsplit = 1)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst_type = await pathtype_grid(websocket, dst)
-        if not dst_type: return
+        if dst_type == "NoValidType":
+            print("Could not determine the type of dst argument.. is it missing?")
+            return int(42)  # ENOMSG /* No message of desired type */
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
         print("The operands cannot specify different source types: one must be local and one grid", flush = True)
-        return
+        return int(22)  # EINVAL /* Invalid argument */
 
     # if src is directory, then create list of files coresponding with options
     if isDownload:
@@ -393,7 +397,9 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             print(json.dumps(access_request, sort_keys=True, indent=4), flush = True)
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
-    if not envelope_list: return  # if all errors and list empty, just return
+    if not envelope_list:
+        print("No lfns in envelope list after removing the invalid ones")
+        return int(2)  # ENOENT /* No such file or directory */
 
     url_list_src = []
     url_list_dst = []
@@ -459,7 +465,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
 
     if not (url_list_src or url_list_dst):
         print("copy src/dst lists are empty, no copy process to be started", flush = True)
-        return []
+        return int(2)  # ENOENT /* No such file or directory */
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
@@ -999,7 +1005,9 @@ async def pathtype_grid(websocket, path=''):
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
 
     error = json_dict["metadata"]["error"]
-    if error: return error
+    if error:
+        print(f"Stat cmd for {path} returned: {error}")
+        return str("NoValidType")
     return str(json_dict['results'][0]["type"])
 
 
