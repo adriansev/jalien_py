@@ -409,10 +409,24 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             result = item["answer"]
             access_request = json.loads(result.encode('ascii', 'ignore'))
             if not access_request['results']: continue
+
+            dst = dst_filelist[item_idx]
+            size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
+            md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+
+            # ALWAYS check if exist and valid. There is no scenario where the download is required even if the md5sums match
+            if os.path.isfile(dst):  # first check
+                if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
+            if os.path.isfile(dst):  # if the existent file survived the size check
+                if md5(dst) != md5_4meta: os.remove(dst)
+            if os.path.isfile(dst):  # if the existent file survived the md5sum check
+                print("File is already downloaded and size and md5 match the remote", flush = True)
+                continue
+
             # multiple replicas are downloaded to a single file
-            url_list_4meta = []
             is_zip = False
             file_in_zip = ''
+            url_list_4meta = []
             for server in access_request['results']:
                 url_components = server['url'].rsplit('#', maxsplit = 1)
                 if len(url_components) > 1:
@@ -421,21 +435,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 complete_url = url_components[0] + '?authz=' + server['envelope']
                 url_list_4meta.append(complete_url)
 
-            dst = dst_filelist[item_idx]
             url_list_dst.append({"url": dst})  # the local file destination
-
-            size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
-            md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-            # let's check the destination, if existent, check the validity
-            if not overwrite:
-                if os.path.isfile(dst):  # first check
-                    if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
-                if os.path.isfile(dst):  # if the existent file survived the first check
-                    if md5(dst) != md5_4meta: os.remove(dst)
-                if os.path.isfile(dst):  # if the existent file survived the second check
-                    print("File is already downloaded and size and md5 match the remote", flush = True)
-                    continue
-
             src = src_filelist[item_idx]
             meta_fn = tmpdir + "/" + src.replace("/", "%%") + ".meta4"
             create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
