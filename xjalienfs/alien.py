@@ -894,10 +894,8 @@ def create_ssl_context():
 
 async def AlienConnect():
     ssl_context = None
-    if os.getenv('ALIENPY_JBOX', ''):
-        jalien_server = 'localhost'
-    else:
-        jalien_server = 'alice-jcentral.cern.ch'
+    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')
+    if os.getenv('ALIENPY_JBOX', ''): jalien_server = 'localhost'
 
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
