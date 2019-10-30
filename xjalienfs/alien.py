@@ -16,6 +16,7 @@ import OpenSSL
 import shlex
 import argparse
 # import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from enum import Enum
@@ -864,92 +865,81 @@ def create_ssl_context():
     userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
-
     capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
+
+    # defaults
+    cert = usercert
+    key  = userkey
+
     if IsValidCert(tokencert):
         cert = tokencert
         key  = tokenkey
-    else:
-        cert = usercert
-        key  = userkey
+
+    # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+    verify_mode = ssl.CERT_REQUIRED
+    if os.getenv('ALIENPY_JBOX', ''): verify_mode = ssl.CERT_NONE
 
     ctx = ssl.SSLContext()
-    # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
-    if os.getenv('ALIENPY_JBOX', ''):
-        verify_mode = ssl.CERT_NONE
-    else:
-        verify_mode = ssl.CERT_REQUIRED
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
     ctx.load_verify_locations(capath = capath_default)
     ctx.load_verify_locations(capath = Path(usercert).parent)  # $HOME/.globus
-    if os.getenv('ALIENPY_JBOX', ''):
-        if Path(tokencert).exists() and IsValidCert(tokencert): ctx.load_verify_locations(cafile=tokencert)
-        ctx.load_cert_chain(certfile=usercert, keyfile=userkey)
-        # ctx.load_cert_chain(certfile=cert, keyfile=key)
-    else:
-        ctx.load_cert_chain(certfile=cert, keyfile=key)
+    ctx.load_verify_locations(cafile = usercert)
+    if cert == tokencert: ctx.load_verify_locations(cafile = tokencert)
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+
+    # TODO NO IDEA HOW TO CONNECT TO LOCAL JBOX !!!
+    # if os.getenv('ALIENPY_JBOX', ''):
+    #    if IsValidCert(tokencert): ctx.load_verify_locations(cafile=tokencert)
     return ctx
 
 
 async def AlienConnect():
-    ssl_context = None
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')
     if os.getenv('ALIENPY_JBOX', ''): jalien_server = 'localhost'
 
+    wb_protol = 'wss://'
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
-
-    wb_protol = 'wss://'
     fHostWSUrl = wb_protol + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
 
+    ssl_context = None
     if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
     if DEBUG: print("Connecting to : ", fHostWSUrl, flush = True)
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
+
+    # let's try ad infinitum to get a websocket
     websocket = None
-    try:
-        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
-    except websockets.exceptions.ConnectionClosedError:
-        print("ConnectionError closed", flush = True)
-    except websockets.exceptions.ConnectionClosed:
-        print("Connection closed", flush = True)
-    except Exception as e:
-        logging.error(traceback.format_exc())
+    nr_tries = 1
+    while websocket is None:
+        try:
+            websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
+        except websockets.exceptions.ConnectionClosedError as e:
+            print("ConnectionError closed", flush = True)
+        except websockets.exceptions.ConnectionClosed as e:
+            print("Connection closed", flush = True)
+        except Exception as e:
+            logging.error(traceback.format_exc())
+        if not websocket:
+            time.sleep(0.5)
+            # nr_tries += 1
+            # print(f"Get websocket, try nr {nr_tries}")
 
-    if websocket:
-        return websocket
-    else:
-        await AlienConnect()
-
-
-async def InitConnection():
-    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
-    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
-    # implement a time command for measurement of sent/recv delay
-    init_begin = None
-    init_delta = None
-    if TIME_CONNECT:
-        init_begin = datetime.now().timestamp()
-
-    websocket = await AlienConnect()
-
-    # if the certificate used is not the token, then get one
-    if not IsValidCert(tokencert): await token(websocket, tokencert, tokenkey)
-
-    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
-    if init_begin:
-        init_delta = datetime.now().timestamp() - init_begin
-        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta), flush = True)
+    await token(websocket)  # it will return if token is valid, if not it will request and write it to file
+    # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return websocket
 
 
-async def token(websocket, tokencert, tokenkey):
+async def token(websocket):
     if not websocket: return
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+
+    # if the certificate used is not the token, then get one
+    if IsValidCert(tokencert): return
+
     await websocket.send(CreateJsonCommand('token', ['-nomsg']))
     result = await websocket.recv()
     json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
@@ -964,6 +954,21 @@ async def token(websocket, tokencert, tokenkey):
     if os.path.isfile(tokenkey): os.chmod(tokenkey, 0o700)  # make it writeable
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
+
+
+async def InitConnection():
+    # implement a time command for measurement of sent/recv delay
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT: init_begin = datetime.now().timestamp()
+    websocket = await AlienConnect()
+
+    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
+    if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
+    if init_begin:
+        init_delta = datetime.now().timestamp() - init_begin
+        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta), flush = True)
+    return websocket
 
 
 async def getSessionVars(websocket):
@@ -1158,11 +1163,8 @@ def ProcessReceivedMessage(message='', shellcmd = None):
 async def JAlien(commands = ''):
     global AlienSessionInfo
 
-    try:
-        websocket = await InitConnection()
-    except Exception as e:
-        logging.error(traceback.format_exc())
-        websocket = await InitConnection()
+    websocket = None
+    while websocket is None: websocket = await InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
 
     # Command mode interaction
     if commands:
@@ -1171,8 +1173,7 @@ async def JAlien(commands = ''):
         return int(AlienSessionInfo['exitcode'])
 
     # Begin Shell-like interaction
-    if has_readline:
-        setupHistory()  # enable history saving
+    if has_readline: setupHistory()  # enable history saving
 
     while True:
         signal.signal(signal.SIGINT, signal_handler)
