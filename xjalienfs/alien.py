@@ -421,7 +421,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             if os.path.isfile(dst):  # if the existent file survived the size check
                 if md5(dst) != md5_4meta: os.remove(dst)
             if os.path.isfile(dst):  # if the existent file survived the md5sum check
-                print("File is already downloaded and size and md5 match the remote", flush = True)
+                print(f"{lfn} --> TARGET OK", flush = True)
                 continue
 
             # multiple replicas are downloaded to a single file
@@ -457,16 +457,16 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 url_list_dst.append({"url": complete_url})
                 url_list_src.append({"url": src})
 
+    if not (url_list_src or url_list_dst):
+        if XRDDEBUG: print("copy src/dst lists are empty, no copy process to be started", flush = True)
+        return int(2)  # ENOENT /* No such file or directory */
+
     if XRDDEBUG:
         print("List of files:", flush = True)
         for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
             print("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']), flush = True)
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
-
-    if not (url_list_src or url_list_dst):
-        print("copy src/dst lists are empty, no copy process to be started", flush = True)
-        return int(2)  # ENOENT /* No such file or directory */
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
 
