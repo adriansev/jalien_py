@@ -371,9 +371,9 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             dst_filelist.append(dst)
 
     if XRDDEBUG:
-        print("We are going to copy these files:", flush = True)
+        logging.debug("We are going to copy these files:")
         for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
-            print(f"src: {src_dbg}\ndst: {dst_dbg}\n", flush = True)
+            logging.debug(f"src: {src_dbg}\ndst: {dst_dbg}\n")
 
     lfn_list = []
     if isDownload:
@@ -394,8 +394,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             error = access_request["metadata"]["error"]
             print(f"lfn: {lfn} --> {error}", flush = True)
         if XRDDEBUG:
-            print(lfn, flush = True)
-            print(json.dumps(access_request, sort_keys=True, indent=4), flush = True)
+            logging.debug(lfn)
+            logging.debug(json.dumps(access_request, sort_keys=True, indent=4))
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
     if not envelope_list:
@@ -458,13 +458,13 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                 url_list_src.append({"url": src})
 
     if not (url_list_src or url_list_dst):
-        if XRDDEBUG: print("copy src/dst lists are empty, no copy process to be started", flush = True)
+        if XRDDEBUG: logging.debug("copy src/dst lists are empty, no copy process to be started")
         return int(2)  # ENOENT /* No such file or directory */
 
     if XRDDEBUG:
-        print("List of files:", flush = True)
+        logging.debug("List of files:")
         for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
-            print("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']), flush = True)
+            logging.debug("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']))
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
@@ -492,7 +492,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
                         await websocket.send(CreateJsonCommand('commit', commit_args_list))
                         commit_results = await websocket.recv()  # useless return message
-                        if XRDDEBUG: print(json.dumps(json.loads(commit_results), sort_keys=True, indent=4), flush = True)
+                        if XRDDEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -558,7 +558,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
             self.jobs = int(total)
             self.job_list.append(id)
             if XRDDEBUG:
-                print("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst), flush = True)
+                logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst))
 
         def end(self, jobId, results):
             results_message = results['status'].message
@@ -608,7 +608,7 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
 
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
-        if XRDDEBUG: print("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']), flush = True)
+        if XRDDEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']))
         process.add_job(url_src["url"], url_dst["url"],
                         sourcelimit = sources,
                         force = overwrite,
@@ -798,6 +798,17 @@ def runShellCMD(INPUT = '', captureout = True):
     if stderr: print(stderr.decode(), flush = True)
 
 
+def check_port(address, port):
+    import socket
+    s = socket.socket()  # Create a TCP socket
+    try:
+        s.connect((address, int(port)))
+        return True
+    except Exception as e:
+        # print(e)
+        return False
+
+
 def CreateJsonCommand(command, options=[]):
     cmd_dict = {"command": command, "options": options}
     jcmd = json.dumps(cmd_dict)
@@ -865,7 +876,12 @@ def create_ssl_context():
     userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
-    capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
+    alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
+
+    if os.path.exists(alice_cvmfs_ca_path):
+        capath_default = alice_cvmfs_ca_path
+    else:
+        capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
 
     # defaults
     cert = usercert
@@ -877,44 +893,55 @@ def create_ssl_context():
 
     # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     verify_mode = ssl.CERT_REQUIRED
-    if os.getenv('ALIENPY_JBOX', ''): verify_mode = ssl.CERT_NONE
 
     ctx = ssl.SSLContext()
     ctx.verify_mode = verify_mode
     ctx.check_hostname = False
     ctx.load_verify_locations(capath = capath_default)
-    ctx.load_verify_locations(capath = Path(usercert).parent)  # $HOME/.globus
-    ctx.load_verify_locations(cafile = usercert)
-    if cert == tokencert: ctx.load_verify_locations(cafile = tokencert)
+    # ctx.load_verify_locations(capath = str(Path(usercert).parent))  # $HOME/.globus
+    # ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA.pem')  # $HOME/.globus
     ctx.load_cert_chain(certfile=cert, keyfile=key)
-
-    # TODO NO IDEA HOW TO CONNECT TO LOCAL JBOX !!!
-    # if os.getenv('ALIENPY_JBOX', ''):
-    #    if IsValidCert(tokencert): ctx.load_verify_locations(cafile=tokencert)
+    if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
     return ctx
 
 
 async def AlienConnect():
-    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')
-    if os.getenv('ALIENPY_JBOX', ''): jalien_server = 'localhost'
-
-    wb_protol = 'wss://'
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
-    fHostWSUrl = wb_protol + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
+    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 
-    ssl_context = None
-    if wb_protol == 'wss://': ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+    if not os.getenv("ALIENPY_JCENTRAL"):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
+        # lets check JBOX availability
+        jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
+        jalien_info = {}
+        with open(jclient_env) as myfile:
+            for line in myfile:
+                name, var = line.partition("=")[::2]
+                jalien_info[name.strip()] = str(var.strip())
 
-    if DEBUG: print("Connecting to : ", fHostWSUrl, flush = True)
+        if jalien_info:
+            if check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
+                jalien_server = jalien_info['JALIEN_HOST']
+                jalien_websocket_port = jalien_info['JALIEN_WSPORT']
+
+    fHostWSUrl = 'wss://' + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
+
+    try:
+        ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+    if DEBUG: logging.debug(f"Connecting to : {fHostWSUrl}")
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
 
     # let's try ad infinitum to get a websocket
     websocket = None
-    nr_tries = 1
+    nr_tries = 0
     while websocket is None:
         try:
+            nr_tries += 1
             websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
         except websockets.exceptions.ConnectionClosedError as e:
             print("ConnectionError closed", flush = True)
@@ -923,9 +950,10 @@ async def AlienConnect():
         except Exception as e:
             logging.error(traceback.format_exc())
         if not websocket:
-            time.sleep(0.5)
-            # nr_tries += 1
-            # print(f"Get websocket, try nr {nr_tries}")
+            time.sleep(1)
+            if nr_tries + 1 > 5:
+                print(f"We tried {nr_tries} times, giving up")
+                sys.exit(1)
 
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
@@ -1109,7 +1137,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 
     if not DEBUG: args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
-    if DEBUG: print(f'send json: {jsoncmd}', flush = True)
+    if DEBUG: logging.debug(f'send json: {jsoncmd}')
 
     await websocket.send(jsoncmd)
     result = await websocket.recv()
@@ -1135,7 +1163,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if DEBUG:
+    if DEBUG:  # this will be printed, to have the raw json output, does not need to be in the logger
         print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
         return int(exitcode)
 
@@ -1239,6 +1267,10 @@ def main():
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
+    # alien.py log file
+    alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
+    logging.basicConfig(filename=alienpy_logfile, level=logging.DEBUG)
+
     # Let's start the connection
     logger = logging.getLogger('websockets')
     logger.setLevel(logging.ERROR)
@@ -1248,7 +1280,11 @@ def main():
         logger.setLevel(logging.ERROR)
     logger.addHandler(logging.StreamHandler())
 
-    # args = sys.argv
+    loggerssl = logging.getLogger('ssl')
+    # loggerssl.setLevel(logging.ERROR)
+    loggerssl.setLevel(logging.DEBUG)
+    loggerssl.addHandler(logging.StreamHandler())
+
     sys.argv.pop(0)  # remove the name of the script(alien.py)
     cmd_string = ' '.join(sys.argv)
     asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
@@ -1257,4 +1293,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
