@@ -37,7 +37,6 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 # environment debug variable
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_WS = os.getenv('ALIENPY_DEBUG_WS', '')
 XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
