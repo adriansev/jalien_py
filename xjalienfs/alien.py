@@ -890,7 +890,11 @@ def create_ssl_context():
     if not capath_default and not x509file:
         print("Not CA location or files specified!!! Connection will not be possible!!")
         sys.exit(1)
-    if DEBUG: logging.debug(f"CApath = {capath_default}")
+    if DEBUG:
+        if x509file:
+            logging.debug(f"CAfile = {x509file}")
+        else:
+            logging.debug(f"CApath = {capath_default}")
 
     # defaults
     cert = usercert
@@ -1286,15 +1290,9 @@ def main():
     # alien.py log file
     alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
     if os.path.isfile(alienpy_logfile): os.remove(alienpy_logfile)
-    log = logging.basicConfig(filename=alienpy_logfile, level=logging.DEBUG)
-
-    # logger_ws = logging.getLogger('websockets')
-    # if DEBUG: logger_ws.setLevel(logging.DEBUG)
-    # logger_ws.addHandler(logging.FileHandler(alienpy_logfile))
-
-    # logger_ssl = logging.getLogger('ssl')
-    # if DEBUG: logger_ssl.setLevel(logging.DEBUG)
-    # logger_ssl.addHandler(logging.FileHandler(alienpy_logfile))
+    MSG_LVL = logging.INFO
+    if DEBUG: MSG_LVL = logging.DEBUG
+    log = logging.basicConfig(filename=alienpy_logfile, level=MSG_LVL)
 
     sys.argv.pop(0)  # remove the name of the script(alien.py)
     cmd_string = ' '.join(sys.argv)
