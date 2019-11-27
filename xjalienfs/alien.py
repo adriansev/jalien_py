@@ -891,15 +891,13 @@ def create_ssl_context():
         cert = tokencert
         key  = tokenkey
 
-    # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
-    verify_mode = ssl.CERT_REQUIRED
-
-    ctx = ssl.SSLContext()
-    ctx.verify_mode = verify_mode
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    ctx.options |= ssl.OP_NO_SSLv3
+    ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
     ctx.load_verify_locations(capath = capath_default)
     # ctx.load_verify_locations(capath = str(Path(usercert).parent))  # $HOME/.globus
-    # ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA.pem')  # $HOME/.globus
+    # ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA-NEW.pem')  # $HOME/.globus
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
     return ctx
@@ -909,6 +907,12 @@ async def AlienConnect():
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
+
+    QUEUE_SIZE = int(4)  # maximum length of the queue that holds incoming messages
+    MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
+    PING_INTERVAL = int(10)  # Ping frame is sent every ping_interval seconds
+    PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
+    CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
 
     if not os.getenv("ALIENPY_JCENTRAL"):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
         # lets check JBOX availability
@@ -942,7 +946,7 @@ async def AlienConnect():
     while websocket is None:
         try:
             nr_tries += 1
-            websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=4, max_size=16 * 1024 * 1024, ping_interval=50, ping_timeout=20, close_timeout=20)
+            websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
         except websockets.exceptions.ConnectionClosedError as e:
             print("ConnectionError closed", flush = True)
         except websockets.exceptions.ConnectionClosed as e:
