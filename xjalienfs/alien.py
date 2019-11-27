@@ -875,16 +875,20 @@ def create_ssl_context():
     userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    x509dir = os.getenv('X509_CERT_DIR')
-    x509file = os.getenv('X509_CERT_FILE')
+    x509dir = ''
+    if os.path.isdir(str(os.getenv('X509_CERT_DIR'))): x509dir = os.getenv('X509_CERT_DIR')
+    x509file = ''
+    if os.path.isfile(str(os.getenv('X509_CERT_FILE'))): x509file = os.getenv('X509_CERT_FILE')
 
+    capath_default = ''
     if x509dir:
         capath_default = x509dir
     elif os.path.exists(alice_cvmfs_ca_path):
         capath_default = alice_cvmfs_ca_path
     else:
-        capath_default = '/etc/grid-security/certificates'
+        if os.path.isdir(system_ca_path): capath_default = system_ca_path
 
     if not capath_default and not x509file:
         print("Not CA location or files specified!!! Connection will not be possible!!")
