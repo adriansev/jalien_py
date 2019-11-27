@@ -877,11 +877,17 @@ def create_ssl_context():
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
     alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
+    x509dir = os.getenv('X509_CERT_DIR')
+    x509file = os.getenv('X509_CERT_FILE')
 
-    if os.path.exists(alice_cvmfs_ca_path):
+    if x509dir:
+        capath_default = x509dir
+    elif os.path.exists(alice_cvmfs_ca_path):
         capath_default = alice_cvmfs_ca_path
     else:
-        capath_default = os.getenv('X509_CERT_DIR', '/etc/grid-security/certificates')
+        capath_default = '/etc/grid-security/certificates'
+
+    if DEBUG: logging.debug(f"CApath = {capath_default}")
 
     # defaults
     cert = usercert
@@ -895,9 +901,11 @@ def create_ssl_context():
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
-    ctx.load_verify_locations(capath = capath_default)
-    # ctx.load_verify_locations(capath = str(Path(usercert).parent))  # $HOME/.globus
-    # ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA-NEW.pem')  # $HOME/.globus
+    if x509file:
+        ctx.load_verify_locations(cafile = x509file)
+    else:
+        ctx.load_verify_locations(capath = capath_default)
+    ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA.pem')  # $HOME/.globus
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
     return ctx
@@ -1274,21 +1282,16 @@ def main():
 
     # alien.py log file
     alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
-    logging.basicConfig(filename=alienpy_logfile, level=logging.DEBUG)
+    if os.path.isfile(alienpy_logfile): os.remove(alienpy_logfile)
+    log = logging.basicConfig(filename=alienpy_logfile, level=logging.DEBUG)
 
-    # Let's start the connection
-    logger = logging.getLogger('websockets')
-    logger.setLevel(logging.ERROR)
-    if DEBUG_WS:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.ERROR)
-    logger.addHandler(logging.StreamHandler())
+    # logger_ws = logging.getLogger('websockets')
+    # if DEBUG: logger_ws.setLevel(logging.DEBUG)
+    # logger_ws.addHandler(logging.FileHandler(alienpy_logfile))
 
-    loggerssl = logging.getLogger('ssl')
-    # loggerssl.setLevel(logging.ERROR)
-    loggerssl.setLevel(logging.DEBUG)
-    loggerssl.addHandler(logging.StreamHandler())
+    # logger_ssl = logging.getLogger('ssl')
+    # if DEBUG: logger_ssl.setLevel(logging.DEBUG)
+    # logger_ssl.addHandler(logging.FileHandler(alienpy_logfile))
 
     sys.argv.pop(0)  # remove the name of the script(alien.py)
     cmd_string = ' '.join(sys.argv)
