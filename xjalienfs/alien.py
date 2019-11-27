@@ -887,6 +887,9 @@ def create_ssl_context():
     else:
         capath_default = '/etc/grid-security/certificates'
 
+    if not capath_default and not x509file:
+        print("Not CA location or files specified!!! Connection will not be possible!!")
+        sys.exit(1)
     if DEBUG: logging.debug(f"CApath = {capath_default}")
 
     # defaults
