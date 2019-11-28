@@ -920,16 +920,33 @@ def create_ssl_context():
     return ctx
 
 
-async def AlienConnect():
-    jalien_websocket_port = 8097  # websocket port
-    jalien_websocket_path = '/websocket/json'
-    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-
+async def wb_create(host, port, path):
     QUEUE_SIZE = int(4)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_INTERVAL = int(10)  # Ping frame is sent every ping_interval seconds
     PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
     CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
+
+    fHostWSUrl = 'wss://' + host + ':' + str(port) + path
+
+    ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+
+    if DEBUG: logging.debug(f"Connecting to : {fHostWSUrl}")
+    """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
+    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
+
+    websocket = None
+    try:
+        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+    except Exception as e:
+        logging.error(traceback.format_exc())
+    return websocket
+
+
+async def AlienConnect():
+    jalien_websocket_port = 8097  # websocket port
+    jalien_websocket_path = '/websocket/json'
+    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 
     if not os.getenv("ALIENPY_JCENTRAL"):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
         # lets check JBOX availability
@@ -945,29 +962,13 @@ async def AlienConnect():
                 jalien_server = jalien_info['JALIEN_HOST']
                 jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
-    fHostWSUrl = 'wss://' + jalien_server + ':' + str(jalien_websocket_port) + jalien_websocket_path
-
-    try:
-        ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
-    except Exception as e:
-        print(e)
-        sys.exit(1)
-
-    if DEBUG: logging.debug(f"Connecting to : {fHostWSUrl}")
-    """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
-    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
-
     # let's try ad infinitum to get a websocket
     websocket = None
     nr_tries = 0
     while websocket is None:
         try:
             nr_tries += 1
-            websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
-        except websockets.exceptions.ConnectionClosedError as e:
-            print("ConnectionError closed", flush = True)
-        except websockets.exceptions.ConnectionClosed as e:
-            print("Connection closed", flush = True)
+            websocket = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
         except Exception as e:
             logging.error(traceback.format_exc())
         if not websocket:
