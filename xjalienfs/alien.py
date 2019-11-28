@@ -1225,10 +1225,10 @@ async def JAlien(commands = ''):
     # Begin Shell-like interaction
     if has_readline: setupHistory()  # enable history saving
 
+    print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
     while True:
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
-        print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
         if AlienSessionInfo['show_date']: prompt = prompt + " " + str(datetime.now().replace(microsecond=0).isoformat())
         if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
