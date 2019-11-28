@@ -926,20 +926,18 @@ async def wb_create(host, port, path):
     PING_INTERVAL = int(10)  # Ping frame is sent every ping_interval seconds
     PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
     CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
-
-    fHostWSUrl = 'wss://' + host + ':' + str(port) + path
-
-    ssl_context = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
-
-    if DEBUG: logging.debug(f"Connecting to : {fHostWSUrl}")
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
 
+    fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
+    ctx = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
+
+    if DEBUG: logging.debug(f"Connecting to : {fHostWSUrl}")
     websocket = None
     try:
-        websocket = await websockets.connect(fHostWSUrl, ssl=ssl_context, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+        websocket = await websockets.connect(fHostWSUrl, ssl=ctx, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
     except Exception as e:
-        logging.error(traceback.format_exc())
+        logging.debug(traceback.format_exc())
     return websocket
 
 
@@ -1287,15 +1285,19 @@ async def JAlien(commands = ''):
 
 
 def main():
-    # at exit delete all temporary files
-    atexit.register(cleanup_temp)
-
     # alien.py log file
     alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
-    if os.path.isfile(alienpy_logfile): os.remove(alienpy_logfile)
-    MSG_LVL = logging.INFO
+    # alienpy_logfile_wb = Path.home().as_posix() + '/alien_py_wb.log'
+    # alienpy_logfile_ssl = Path.home().as_posix() + '/alien_py_ssl.log'
+    MSG_LVL = logging.ERROR
     if DEBUG: MSG_LVL = logging.DEBUG
-    log = logging.basicConfig(filename=alienpy_logfile, level=MSG_LVL)
+    log = logging.basicConfig(filename=alienpy_logfile, filemode='w', level=MSG_LVL)
+
+    logger_wb = logging.getLogger('websockets')
+    logger_wb.setLevel(MSG_LVL)
+
+    # at exit delete all temporary files
+    atexit.register(cleanup_temp)
 
     sys.argv.pop(0)  # remove the name of the script(alien.py)
     cmd_string = ' '.join(sys.argv)
