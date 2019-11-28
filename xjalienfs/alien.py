@@ -971,10 +971,27 @@ async def AlienConnect():
             logging.error(traceback.format_exc())
         if not websocket:
             time.sleep(1)
-            if nr_tries + 1 > 5:
-                print(f"We tried {nr_tries} times, giving up")
-                sys.exit(1)
+            if nr_tries + 1 > 3:
+                logging.error(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
+                break
 
+    if jalien_server != 'alice-jcentral.cern.ch' and not websocket:  # we stil do not have a socket
+        jalien_websocket_port = 8097
+        jalien_server = 'alice-jcentral.cern.ch'
+        nr_tries = 0
+        while websocket is None:
+            try:
+                nr_tries += 1
+                websocket = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+            except Exception as e:
+                logging.error(traceback.format_exc())
+            if not websocket:
+                time.sleep(1)
+                if nr_tries + 1 > 3:
+                    logging.error(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
+                    break
+
+    if not websocket: sys.exit(1)
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return websocket
