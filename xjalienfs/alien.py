@@ -915,7 +915,6 @@ def create_ssl_context():
         ctx.load_verify_locations(cafile = x509file)
     else:
         ctx.load_verify_locations(capath = capath_default)
-    ctx.load_verify_locations(cafile = str(Path(usercert).parent) + '/AliEn-CA.pem')  # $HOME/.globus
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
     return ctx
@@ -1083,7 +1082,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
     await cwd_list(websocket)  # let's start knowing what is the content of grid current dir
 
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
-    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
+    # userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
 
