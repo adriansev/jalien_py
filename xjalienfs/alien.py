@@ -819,14 +819,17 @@ def CreateJsonCommand(command, options=[]):
     return jcmd
 
 
-async def AlienSendCmd(wb = None, cmdline = ''):
-    if not wb: return
-    if not cmdline: return
-    cmd_parts = cmdline.split(" ")
-    cmd = cmd_parts.pop(0)
-    await wb.send(CreateJsonCommand(cmd, cmd_parts))
+async def AlienSession(cmd):
+    if not cmd: return ''
+    wb = await AlienConnect()
+    if not wb: return ''
+    await wb.send(cmd)
     result = await wb.recv()
     return json.loads(result.lstrip().encode('ascii', 'ignore'))
+
+
+def AlienSendCmd(cmd):
+    return asyncio.get_event_loop().run_until_complete(AlienSession(cmd))
 
 
 def IsValidCert(fname):
