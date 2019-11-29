@@ -825,7 +825,8 @@ async def AlienSendCmd(wb = None, cmdline = ''):
     cmd_parts = cmdline.split(" ")
     cmd = cmd_parts.pop(0)
     await wb.send(CreateJsonCommand(cmd, cmd_parts))
-    return await wb.recv()
+    result = await wb.recv()
+    return json.loads(result.lstrip().encode('ascii', 'ignore'))
 
 
 def IsValidCert(fname):
