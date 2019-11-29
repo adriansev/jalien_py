@@ -717,6 +717,10 @@ async def DO_more(websocket, lfn):
             runShellCMD('more ' + tmp)
 
 
+async def DO_quota(websocket):
+    print("WIP, waiting for json format")
+
+
 async def DO_edit(websocket, lfn, editor='mcedit'):
     if editor == 'mcedit': editor = 'mc -c -e'
     editor = editor + " "
@@ -946,9 +950,9 @@ async def AlienConnect():
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 
-    if not os.getenv("ALIENPY_JCENTRAL"):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
+    jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
+    if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
         # lets check JBOX availability
-        jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
         jalien_info = {}
         with open(jclient_env) as myfile:
             for line in myfile:
@@ -960,7 +964,7 @@ async def AlienConnect():
                 jalien_server = jalien_info['JALIEN_HOST']
                 jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
-    # let's try ad infinitum to get a websocket
+    # let's try to get a websocket
     websocket = None
     nr_tries = 0
     while websocket is None:
@@ -1141,6 +1145,9 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
         else:
             print(' '.join(AlienSessionInfo['commandlist']), flush = True)
             return int(0)
+    elif (cmd.startswith("quota")):
+        await DO_quota(websocket)
+        return int(0)
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
             await DO_cat(websocket, args[0])
