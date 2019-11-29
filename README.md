@@ -31,14 +31,14 @@ If set these X509 locations will be used:
 X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR or X509_CERT_FILE  
 
 For debugging purposes there are a few environment toggles :  
-ALIENPY_DEBUG - if set, the raw json content will be printed and all debug meesages will be found in $HOME/alien_py.log 
-ALIENPY_XRDDEBUG - if set will activate printouts of XRootD related functions in the same $HOME/alien_py.log
-ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`  
-a `time` command was added that, when prefixed to any other command, will report the time taken for command execution  
-ALIENPY_TIMEOUT - set the value of websocket timeout waiting for server answer; default is 20, increase for large find or ps commands
-ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options
-
-For XRootD operations the native XRootD env toggles are used, see [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")
+ALIENPY_DEBUG - if set, the raw json content will be printed and all debug meesages will be found in $HOME/alien_py.log   
+ALIENPY_XRDDEBUG - if set will activate printouts of XRootD related functions in the same $HOME/alien_py.log   
+ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`     
+a `time` command was added that, when prefixed to any other command, will report the time taken for command execution     
+ALIENPY_TIMEOUT - set the value of websocket timeout waiting for server answer; default is 20, increase for large find or ps commands   
+ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options   
+   
+For XRootD operations the native XRootD env toggles are used, see [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")   
 
 `cat/more/less` will download the target lfn to a temporary file and will act upon it while  
 `vi/nano/mcedit` will, after the modification of downloaded temporary, backup the existing lfn, and upload the modified file  
