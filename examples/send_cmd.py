@@ -9,7 +9,7 @@ import alien
 async def session(cmd = ''):
     if not cmd: sys.exit(0)
     wb = await alien.AlienConnect()
-    res = await alien.AlienSendCmd(wb, 'pwd')
+    res = await alien.AlienSendCmd(wb, cmd)
     print(json.dumps(res, sort_keys=True, indent=4), flush = True)
 
 
