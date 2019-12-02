@@ -38,6 +38,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 # environment debug variable
 JSON_OUT = os.getenv('ALIENPY_JSON', '')
+JSONRAW_OUT = os.getenv('ALIENPY_JSONRAW', '')
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
@@ -328,7 +329,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             if not DEBUG: find_args.insert(0, '-nomsg')
             await websocket.send(CreateJsonCommand('find', find_args))
             result = await websocket.recv()
-            src_list_files_dict = json.loads(result.encode('ascii', 'ignore'))
+            src_list_files_dict = json.loads(result)
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
                 src_path = Path(src)
@@ -389,7 +390,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     for item_idx, item in enumerate(envelope_list):
         lfn = item["lfn"]
         result = item["answer"]
-        access_request = json.loads(result.encode('ascii', 'ignore'))
+        access_request = json.loads(result)
         if access_request["metadata"]["error"]:
             errors_idx.append(item_idx)
             error = access_request["metadata"]["error"]
@@ -409,7 +410,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         for item_idx, item in enumerate(envelope_list):
             lfn = item["lfn"]
             result = item["answer"]
-            access_request = json.loads(result.encode('ascii', 'ignore'))
+            access_request = json.loads(result)
             if not access_request['results']: continue
 
             dst = dst_filelist[item_idx]
@@ -451,7 +452,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             src = src_filelist[item_idx]
             lfn = item["lfn"]
             result = item["answer"]
-            access_request = json.loads(result.encode('ascii', 'ignore'))
+            access_request = json.loads(result)
             for server in access_request['results']:
                 if not server: continue
                 complete_url = server['url'] + "?" + "authz=" + server['envelope']
@@ -474,7 +475,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     if (not isDownload) and token_list_upload_ok:  # it was an upload job that had succesfull uploads
         for item_idx, item in enumerate(envelope_list):
             result = item["answer"]
-            access_request = json.loads(result.encode('ascii', 'ignore'))
+            access_request = json.loads(result)
             src = src_filelist[item_idx]
             dst = dst_filelist[item_idx]
             # common values for all commit commands
@@ -661,7 +662,7 @@ async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
 
     envelope_list = await getEnvelope(websocket, [lfn])
     result = envelope_list[0]["answer"]
-    access_request = json.loads(result.encode('ascii', 'ignore'))
+    access_request = json.loads(result)
     replicas = access_request["results"][0]["nSEs"]
 
     # let's create a backup of old lfn
@@ -669,7 +670,7 @@ async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
     lfn_backup = lfn + "_" + mod_time
     await websocket.send(CreateJsonCommand('mv', [lfn, lfn_backup]))
     result = await websocket.recv()
-    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    json_dict = json.loads(result)
     if json_dict["metadata"]["exitcode"] != '0':
         print("Could not create backup of lfn : {}", lfn)
         return 1
@@ -827,7 +828,7 @@ async def AlienSession(cmd):
     if not wb: return ''
     await wb.send(cmd)
     result = await wb.recv()
-    return json.loads(result.lstrip().encode('ascii', 'ignore'))
+    return json.loads(result)
 
 
 def AlienSendCmd(cmd):
@@ -1029,7 +1030,7 @@ async def token(websocket):
 
     await websocket.send(CreateJsonCommand('token', ['-nomsg']))
     result = await websocket.recv()
-    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    json_dict = json.loads(result)
 
     tokencert_content = json_dict['results'][0]["tokencert"]
     tokenkey_content  = json_dict['results'][0]["tokenkey"]
@@ -1064,7 +1065,7 @@ async def getSessionVars(websocket):
     # get the command list to check validity of commands
     await websocket.send(CreateJsonCommand('commandlist'))
     result = await websocket.recv()
-    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    json_dict = json.loads(result)
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
     cmd_list = json_dict["results"][0]['message'].split()
     regex = re.compile(r'.*_csd$')
@@ -1083,7 +1084,7 @@ async def cwd_list(websocket):
     if not websocket: return
     await websocket.send(CreateJsonCommand('ls', ['-nokeys', '-F']))
     result = await websocket.recv()
-    result_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    result_dict = json.loads(result)
     AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
 
 
@@ -1092,7 +1093,7 @@ async def pathtype_grid(websocket, path=''):
     if not path: return
     await websocket.send(CreateJsonCommand('stat', ['-nomsg', path]))
     result = await websocket.recv()
-    json_dict = json.loads(result.lstrip().encode('ascii', 'ignore'))
+    json_dict = json.loads(result)
 
     error = json_dict["metadata"]["error"]
     if error:
@@ -1197,7 +1198,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             args[i] = expand_path_grid(args[i])
             args[i] = re.sub(r"\/{2,}", "/", args[i])
 
-    if not DEBUG: args.insert(0, '-nokeys')
+    if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
     jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
     if DEBUG: logging.debug(f'send json: {jsoncmd}')
 
@@ -1212,7 +1213,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 def ProcessReceivedMessage(message='', shellcmd = None):
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
-    json_dict = json.loads(message.lstrip().encode('ascii', 'ignore'))
+    json_dict = json.loads(message)
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
     error = ''
@@ -1225,8 +1226,9 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if DEBUG or JSON_OUT:  # this will be printed, to have the raw json output, does not need to be in the logger
-        print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
+    if DEBUG or JSON_OUT or JSONRAW_OUT:  # this will be printed, to have the raw json output, does not need to be in the logger
+        if JSON_OUT: print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
+        if JSONRAW_OUT: print(message, flush = True)
         return int(exitcode)
 
     if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}', flush = True)
@@ -1327,7 +1329,7 @@ async def JAlien(commands = ''):
 
 
 def main():
-    global JSON_OUT
+    global JSON_OUT, JSONRAW_OUT
     # alien.py log file
     alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
     # alienpy_logfile_wb = Path.home().as_posix() + '/alien_py_wb.log'
@@ -1343,9 +1345,13 @@ def main():
     atexit.register(cleanup_temp)
 
     sys.argv.pop(0)  # remove the name of the script(alien.py)
-    if sys.argv[0] == '-json':
-        sys.argv.pop(0)
+    if '-json' in sys.argv:
+        sys.argv.remove('-json')
         JSON_OUT = 1
+    if '-jsonraw' in sys.argv:
+        sys.argv.remove('-jsonraw')
+        JSONRAW_OUT = 1
+
     cmd_string = ' '.join(sys.argv)
     asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
     os._exit(int(AlienSessionInfo['exitcode']))
