@@ -37,6 +37,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     sys.exit(1)
 
 # environment debug variable
+JSON_OUT = os.getenv('ALIENPY_JSON', '')
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
@@ -1224,7 +1225,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if DEBUG:  # this will be printed, to have the raw json output, does not need to be in the logger
+    if DEBUG or JSON_OUT:  # this will be printed, to have the raw json output, does not need to be in the logger
         print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
         return int(exitcode)
 
@@ -1326,6 +1327,7 @@ async def JAlien(commands = ''):
 
 
 def main():
+    global JSON_OUT
     # alien.py log file
     alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
     # alienpy_logfile_wb = Path.home().as_posix() + '/alien_py_wb.log'
@@ -1341,6 +1343,9 @@ def main():
     atexit.register(cleanup_temp)
 
     sys.argv.pop(0)  # remove the name of the script(alien.py)
+    if sys.argv[0] == '-json':
+        sys.argv.pop(0)
+        JSON_OUT = 1
     cmd_string = ' '.join(sys.argv)
     asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
     os._exit(int(AlienSessionInfo['exitcode']))
