@@ -956,7 +956,7 @@ async def wb_create(host, port, path):
     websocket = None
     if socket:
         try:
-            websocket = await websockets.connect(fHostWSUrl, sock=socket, server_hostname=socket.getpeername()[0],
+            websocket = await websockets.connect(fHostWSUrl, sock=socket, server_hostname=host,
                                                  ssl=ctx, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
         except Exception as e:
             logging.debug(traceback.format_exc())
@@ -1226,9 +1226,11 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if DEBUG or JSON_OUT or JSONRAW_OUT:  # this will be printed, to have the raw json output, does not need to be in the logger
-        if JSON_OUT: print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
-        if JSONRAW_OUT: print(message, flush = True)
+    if DEBUG or JSON_OUT:  # print nice json for debug or json mode
+        print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
+        return int(exitcode)
+    if JSONRAW_OUT:  # print the raw byte stream received from the server
+        print(message, flush = True)
         return int(exitcode)
 
     if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}', flush = True)
