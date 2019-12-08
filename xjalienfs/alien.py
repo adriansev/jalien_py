@@ -86,8 +86,8 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
-async def getEnvelope(websocket, lfn_list = [], specs = [], isWrite = bool(False)):
-    if not websocket: return
+async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list = [], specs: list = [], isWrite: bool = False) -> list:
+    if not wb: return
     access_list = []
     if not lfn_list: return access_list
     access_type = 'read'
@@ -96,8 +96,7 @@ async def getEnvelope(websocket, lfn_list = [], specs = [], isWrite = bool(False
         get_envelope_arg_list = [access_type, lfn]
         if not DEBUG: get_envelope_arg_list.insert(0, '-nomsg')
         if specs: get_envelope_arg_list.append(str(",".join(specs)))
-        await websocket.send(CreateJsonCommand('access', get_envelope_arg_list))
-        result = await websocket.recv()
+        result = await SendMsg(wb, 'access', get_envelope_arg_list)
         access_list.append({"lfn": lfn, "answer": result})
     return access_list
 
@@ -882,6 +881,20 @@ def PrintDict(dict):
     print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
 
 
+async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: list = []) -> str:
+    if not wb or not cmd: return ''
+    await wb.send(CreateJsonCommand(cmd, args))
+    result = await wb.recv()
+    return result
+
+
+async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
+    if not wb or not cmd_line: return ''
+    await wb.send(CreateJsonCommand_str(cmd_line))
+    result = await wb.recv()
+    return result
+
+
 async def AlienSession(cmd):
     if not cmd: return ''
     wb = await AlienConnect()
@@ -1259,8 +1272,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
-    await websocket.send(CreateJsonCommand(cmd, args))
-    result = await websocket.recv()
+    result = await SendMsg(websocket, cmd, args)
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
         print(">>>   Time for send/receive command : {}".format(message_delta), flush = True)
