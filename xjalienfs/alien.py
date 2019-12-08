@@ -724,20 +724,20 @@ def make_tmp_fn(lfn = ''):
     return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", '%%') + ext
 
 
-async def download_tmp(websocket, lfn):
+async def download_tmp(wb, lfn):
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
-    result = await ProcessXrootdCp(websocket, copycmd.split())
+    result = await ProcessXrootdCp(wb, copycmd.split())
     if result == 0: return tmpfile
 
 
-async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
+async def upload_tmp(wb, temp_file_name, upload_specs = ''):
     # lets recover the lfn from temp file name
     lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
     lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
     lfn = lfn.replace("%%", "/")
 
-    envelope_list = await getEnvelope(websocket, [lfn])
+    envelope_list = await getEnvelope(wb, [lfn])
     result = envelope_list[0]["answer"]
     access_request = json.loads(result)
     replicas = access_request["results"][0]["nSEs"]
@@ -745,8 +745,7 @@ async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
     # let's create a backup of old lfn
     mod_time = f"{datetime.now():%Y%m%d_%H%M%S}"
     lfn_backup = lfn + "_" + mod_time
-    await websocket.send(CreateJsonCommand('mv', [lfn, lfn_backup]))
-    result = await websocket.recv()
+    result = await SendMsg(wb, 'mv', [lfn, lfn_backup])
     json_dict = json.loads(result)
     if json_dict["metadata"]["exitcode"] != '0':
         print("Could not create backup of lfn : {}", lfn)
@@ -757,7 +756,7 @@ async def upload_tmp(websocket, temp_file_name, upload_specs = ''):
 
     if upload_specs: lfn = lfn + "," + upload_specs
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn
-    list_upload = await ProcessXrootdCp(websocket, copycmd.split())
+    list_upload = await ProcessXrootdCp(wb, copycmd.split())
     if list_upload: return lfn
 
 
@@ -925,12 +924,18 @@ async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: s
     return result
 
 
+async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
+    if not wb or not json: return ''
+    await wb.send(json)
+    result = await wb.recv()
+    return result
+
+
 async def AlienSession(cmd):
     if not cmd: return ''
     wb = await AlienConnect()
     if not wb: return ''
-    await wb.send(cmd)
-    result = await wb.recv()
+    result = await SendMsg_json(wb, json)
     return json.loads(result)
 
 
@@ -1123,16 +1128,15 @@ async def AlienConnect():
     return websocket
 
 
-async def token(websocket):
-    if not websocket: return
+async def token(wb):
+    if not wb: return
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
 
     # if the certificate used is not the token, then get one
     if IsValidCert(tokencert): return
 
-    await websocket.send(CreateJsonCommand('token', ['-nomsg']))
-    result = await websocket.recv()
+    result = await SendMsg(wb, 'token', ['-nomsg'])
     json_dict = json.loads(result)
 
     tokencert_content = json_dict['results'][0]["tokencert"]
@@ -1162,12 +1166,11 @@ async def InitConnection():
     return websocket
 
 
-async def getSessionVars(websocket):
-    if not websocket: return
+async def getSessionVars(wb):
+    if not wb: return
     global AlienSessionInfo
     # get the command list to check validity of commands
-    await websocket.send(CreateJsonCommand('commandlist'))
-    result = await websocket.recv()
+    result = await SendMsg(wb, 'commandlist', [])
     json_dict = json.loads(result)
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
     cmd_list = json_dict["results"][0]['message'].split()
@@ -1178,20 +1181,19 @@ async def getSessionVars(websocket):
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
     if AlienSessionInfo['currentdir'] and not AlienSessionInfo['currentdir'] == json_dict["metadata"]["currentdir"]:
-        await websocket.send(CreateJsonCommand('cd', [AlienSessionInfo['currentdir']]))
+        tmp_res = SendMsg(wb, 'cd', [AlienSessionInfo['currentdir']])
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
     if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
 
 
-async def cwd_list(websocket):
-    if not websocket: return
-    await websocket.send(CreateJsonCommand('ls', ['-nokeys', '-F']))
-    result = await websocket.recv()
+async def cwd_list(wb):
+    if not wb: return
+    result = await SendMsg(wb, 'ls', ['-nokeys', '-F'])
     result_dict = json.loads(result)
     AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
 
 
-async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
+async def ProcessInput(wb, cmd_string = '', shellcmd = None):
     if not cmd_string: return
     global AlienSessionInfo
     args = cmd_string.split(" ")
@@ -1199,7 +1201,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
-    await cwd_list(websocket)  # let's start knowing what is the content of grid current dir
+    await cwd_list(wb)  # let's start knowing what is the content of grid current dir
 
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
     # userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
@@ -1227,10 +1229,10 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             os.remove(tokencert)
             os.remove(tokenkey)
             try:
-                websocket = await InitConnection()
+                wb = await InitConnection()
             except Exception as e:
                 logging.error(traceback.format_exc())
-                websocket = await InitConnection()
+                wb = await InitConnection()
             return int(0)
         if not args or (len(args) > 0 and args[0] == 'info'):
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
@@ -1246,19 +1248,19 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             print(' '.join(AlienSessionInfo['commandlist']), flush = True)
             return int(0)
     elif (cmd.startswith("quota")):
-        await DO_quota(websocket, args)
+        await DO_quota(wb, args)
         return int(0)
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
-            await DO_cat(websocket, args[0])
+            await DO_cat(wb, args[0])
             return int(0)
     elif (cmd.startswith("less")):
         if args[0] != '-h':
-            await DO_less(websocket, args[0])
+            await DO_less(wb, args[0])
             return int(0)
     elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
         if args[0] != '-h':
-            await DO_edit(websocket, args[0], editor=cmd)
+            await DO_edit(wb, args[0], editor=cmd)
             return int(0)
     elif (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
@@ -1267,10 +1269,10 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             return int(22)  # EINVAL /* Invalid argument */
         cmd = EDITOR
         if args[0] != '-h':
-            await DO_edit(websocket, args[0], editor=cmd)
+            await DO_edit(wb, args[0], editor=cmd)
             return int(0)
     elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
-        exitcode = await ProcessXrootdCp(websocket, args)
+        exitcode = await ProcessXrootdCp(wb, args)
         AlienSessionInfo['exitcode'] = exitcode
         return int(exitcode)
     elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
@@ -1280,7 +1282,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
-    result = await SendMsg(websocket, cmd, args)
+    result = await SendMsg(wb, cmd, args)
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
         print(">>>   Time for send/receive command : {}".format(message_delta), flush = True)
