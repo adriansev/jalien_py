@@ -60,6 +60,50 @@ class XrdCpArgs(NamedTuple):
     streams: int
 
 
+def cursor_up(lines = 1):
+    if lines < 1: lines = 1
+    for k in range(lines):
+        sys.stdout.write('\x1b[1A')
+        sys.stdout.flush()
+
+
+def cursor_down(lines = 1):
+    if lines < 1: lines = 1
+    for k in range(lines):
+        sys.stdout.write('\x1b[1B')
+        sys.stdout.flush()
+
+
+def cursor_right(pos = 1):
+    if pos < 1: pos = 1
+    for k in range(pos):
+        sys.stdout.write('\x1b[1C')
+        sys.stdout.flush()
+
+
+def cursor_left(pos = 1):
+    if pos < 1: pos = 1
+    for k in range(pos):
+        sys.stdout.write('\x1b[1D')
+        sys.stdout.flush()
+
+
+def cleanup_temp():
+    if AlienSessionInfo['templist']:
+        for f in AlienSessionInfo['templist']:
+            if os.path.isfile(f): os.remove(f)
+
+
+def signal_handler(sig, frame):
+    print('\nExit')
+    sys.exit(0)
+
+
+def exit_message():
+    print('\nExit')
+    sys.exit(0)
+
+
 def xrdcp_help():
     print('''at least 2 arguments are needed : src dst
 the command is of the form of (with the strict order of arguments):
@@ -159,7 +203,67 @@ def pathtype_local(path: str) -> str:
     return str('')
 
 
-async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: list = []):
+def fileIsValid(file: str, size: Union[str, int], md5: str) -> bool:
+    if os.path.isfile(file):  # first check
+        if int(os.stat(file).st_size) != int(size):
+            os.remove(file)
+            return False
+        if md5(file) != md5:
+            os.remove(file)
+            return False
+
+        print(f"{lfn} --> TARGET VALID", flush = True)
+        return True
+
+
+def create_metafile(meta_filename: str, local_filename: str, size: Union[str, int], md5: str, replica_list: list = []):
+    published = str(datetime.now().replace(microsecond=0).isoformat())
+    with open(meta_filename, 'w') as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
+        f.write("   <published>{}</published>\n".format(published))
+        f.write("   <file name=\"{}\">\n".format(local_filename))
+        f.write("     <size>{}</size>\n".format(size))
+        if md5: f.write("     <hash type=\"md5\">{}</hash>\n".format(md5))
+        for url in replica_list:
+            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
+        f.write('   </file>\n')
+        f.write(' </metalink>\n')
+        f.closed
+
+
+def md5(file: str) -> str:
+    import hashlib
+    BLOCKSIZE = 65536
+    hasher = hashlib.md5()
+    with open(file, 'rb') as f:
+        buf = f.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = f.read(BLOCKSIZE)
+    return hasher.hexdigest()
+
+
+if has_readline:
+    def setupHistory():
+        histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
+        try:
+            readline.read_history_file(histfile)
+            h_len = readline.get_current_history_length()
+        except FileNotFoundError:
+            open(histfile, 'wb').close()
+            h_len = 0
+        readline.set_auto_history(True)
+        atexit.register(readline.write_history_file, histfile)
+
+    def saveHistory(prev_h_len, histfile):
+        new_h_len = readline.get_current_history_length()
+        prev_h_len = readline.get_history_length()
+        readline.set_history_length(1000)
+        readline.append_history_file(new_h_len - prev_h_len, histfile)
+
+
+async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: list = []) -> int:
     if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if not AlienSessionInfo:
         print('Session information like home and current directories needed', flush = True)
@@ -348,8 +452,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             find_args.append(src)
             find_args.append(pattern)
             if not DEBUG: find_args.insert(0, '-nomsg')
-            await wb.send(CreateJsonCommand('find', find_args))
-            result = await wb.recv()
+            result = await SendMsg(wb, 'find', find_args)
             src_list_files_dict = json.loads(result)
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
@@ -360,7 +463,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
                     file_relative_name = file['lfn'].replace(src_root, '')
                 else:
                     file_relative_name = file['lfn']
-                dst_file = dst + "/" + file_relative_name  # setDst(file['lfn'], parent)
+                dst_file = dst + "/" + file_relative_name
                 dst_file = re.sub(r"\/{2,}", "/", dst_file)
                 dst_filelist.append(dst_file)
         else:
@@ -439,13 +542,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
             # ALWAYS check if exist and valid. There is no scenario where the download is required even if the md5sums match
-            if os.path.isfile(dst):  # first check
-                if int(os.stat(dst).st_size) != int(size_4meta): os.remove(dst)
-            if os.path.isfile(dst):  # if the existent file survived the size check
-                if md5(dst) != md5_4meta: os.remove(dst)
-            if os.path.isfile(dst):  # if the existent file survived the md5sum check
-                print(f"{lfn} --> TARGET OK", flush = True)
-                continue
+            if fileIsValid(dst, size_4meta, md5_4meta): continue
 
             # multiple replicas are downloaded to a single file
             is_zip = False
@@ -513,8 +610,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
                         guid = server['guid']
                         # envelope size lfn perm expire pfn se guid md5
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-                        await wb.send(CreateJsonCommand('commit', commit_args_list))
-                        commit_results = await wb.recv()  # useless return message
+                        commit_results = await SendMsg(wb, 'commit', commit_args_list)
                         if XRDDEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
@@ -525,7 +621,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         return int(1)
 
 
-def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
+def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
     if not xrd_cp_args: return
     from XRootD import client
 
@@ -538,30 +634,6 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     posc = xrd_cp_args.posc
     hashtype = xrd_cp_args.hashtype
     streams = xrd_cp_args.streams
-
-    def cursor_up(lines = 1):
-        if lines < 1: lines = 1
-        for k in range(lines):
-            sys.stdout.write('\x1b[1A')
-            sys.stdout.flush()
-
-    def cursor_down(lines = 1):
-        if lines < 1: lines = 1
-        for k in range(lines):
-            sys.stdout.write('\x1b[1B')
-            sys.stdout.flush()
-
-    def cursor_right(pos = 1):
-        if pos < 1: pos = 1
-        for k in range(pos):
-            sys.stdout.write('\x1b[1C')
-            sys.stdout.flush()
-
-    def cursor_left(pos = 1):
-        if pos < 1: pos = 1
-        for k in range(pos):
-            sys.stdout.write('\x1b[1D')
-            sys.stdout.flush()
 
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         isDownload = bool(True)
@@ -643,22 +715,6 @@ def XrdCopy(src, dst, isDownload = bool(True), xrd_cp_args = None):
     process.prepare()
     process.run(handler)
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
-
-
-def create_metafile(meta_filename, local_filename, size, hash_val, replica_list = []):
-    published = str(datetime.now().replace(microsecond=0).isoformat())
-    with open(meta_filename, 'w') as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
-        f.write("   <published>{}</published>\n".format(published))
-        f.write("   <file name=\"{}\">\n".format(local_filename))
-        f.write("     <size>{}</size>\n".format(size))
-        if hash_val: f.write("     <hash type=\"md5\">{}</hash>\n".format(hash_val))
-        for url in replica_list:
-            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
-        f.write('   </file>\n')
-        f.write(' </metalink>\n')
-        f.closed
 
 
 def make_tmp_fn(lfn = ''):
@@ -810,53 +866,6 @@ async def DO_edit(websocket, lfn, editor='mcedit'):
             runShellCMD(editor + tmp, False)
             md5_end = md5(tmp)
             if md5_begin != md5_end: await upload_tmp(websocket, tmp, '')
-
-
-def cleanup_temp():
-    if AlienSessionInfo['templist']:
-        for f in AlienSessionInfo['templist']:
-            if os.path.isfile(f): os.remove(f)
-
-
-def md5(file):
-    import hashlib
-    BLOCKSIZE = 65536
-    hasher = hashlib.md5()
-    with open(file, 'rb') as f:
-        buf = f.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = f.read(BLOCKSIZE)
-    return hasher.hexdigest()
-
-
-def signal_handler(sig, frame):
-    print('\nExit')
-    sys.exit(0)
-
-
-def exit_message():
-    print('\nExit')
-    sys.exit(0)
-
-
-if has_readline:
-    def setupHistory():
-        histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-        try:
-            readline.read_history_file(histfile)
-            h_len = readline.get_current_history_length()
-        except FileNotFoundError:
-            open(histfile, 'wb').close()
-            h_len = 0
-        readline.set_auto_history(True)
-        atexit.register(readline.write_history_file, histfile)
-
-    def saveHistory(prev_h_len, histfile):
-        new_h_len = readline.get_current_history_length()
-        prev_h_len = readline.get_history_length()
-        readline.set_history_length(1000)
-        readline.append_history_file(new_h_len - prev_h_len, histfile)
 
 
 def runShellCMD(INPUT = '', captureout = True):
