@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from typing import Union
 import sys
 import os
 import atexit
@@ -720,8 +721,58 @@ async def DO_more(websocket, lfn):
             runShellCMD('more ' + tmp)
 
 
-async def DO_quota(websocket):
-    print("WIP, waiting for json format")
+async def DO_quota(wb: websockets, quota_args: list):
+    if len(quota_args) > 0:
+        if quota_args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
+            user = quota_args[0]
+            jquota_cmd = CreateJsonCommand_str('jquota -nomsg list ' + user)
+            fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
+        else:
+            print('set functionality not implemented yet')
+    else:
+        user = AlienSessionInfo['user']
+        jquota_cmd = CreateJsonCommand_str('jquota -nomsg list ' + user)
+        fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
+
+    await wb.send(jquota_cmd)
+    jquota = await wb.recv()
+    jquota_dict = json.loads(jquota)
+
+    await wb.send(fquota_cmd)
+    fquota = await wb.recv()
+    fquota_dict = json.loads(fquota)
+
+    username = jquota_dict['results'][0]["username"]
+    running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
+    running_time_max = float(jquota_dict['results'][0]["maxTotalRunningTime"])/3600
+    running_time_perc = (running_time/running_time_max)*100
+    cpucost = float(jquota_dict['results'][0]["totalCpuCostLast24h"])/3600
+    cpucost_max = float(jquota_dict['results'][0]["maxTotalCpuCost"])/3600
+    cpucost_perc = (cpucost/cpucost_max)*100
+    pjobs_nominal = int(jquota_dict['results'][0]["nominalparallelJobs"])
+    pjobs_max = int(jquota_dict['results'][0]["maxparallelJobs"])
+
+    unfinishedjobs_max = int(jquota_dict['results'][0]["maxUnfinishedJobs"])
+    waiting = int(jquota_dict['results'][0]["waiting"])
+
+    size = float(fquota_dict['results'][0]["totalSize"])
+    size_MiB = size/(1024*1024)
+    size_max = float(fquota_dict['results'][0]["maxTotalSize"])
+    size_max_MiB = size_max/(1024*1024)
+    size_perc = (size/size_max)*100
+
+    files = float(fquota_dict['results'][0]["nbFiles"])
+    files_max = float(fquota_dict['results'][0]["maxNbFiles"])
+    files_perc = (files/files_max)*100
+
+    print(f"""Quota report for user : {username}
+Running time (last 24h) :\t{running_time:.2f}/{running_time_max:.2f}(h) --> {running_time_perc:.2f}% used
+CPU Cost :\t\t\t{cpucost:.2f}/{cpucost_max:.2f}(h) --> {cpucost_perc:.2f}% used
+ParallelJobs (nominal/max) :\t{pjobs_nominal}/{pjobs_max}
+Unfinished jobs :\t\tMAX={unfinishedjobs_max}
+Waiting :\t\t\t{waiting}
+Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
+Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
 
 
 async def DO_edit(websocket, lfn, editor='mcedit'):
@@ -815,11 +866,20 @@ def check_port(address, port):
         return False
 
 
-def CreateJsonCommand(command, options=[]):
-    cmd_dict = {"command": command, "options": options}
-    jcmd = json.dumps(cmd_dict)
-    jcmd.encode('ascii', 'ignore')
-    return jcmd
+def CreateJsonCommand(cmd: str, options: list = []) -> str:
+    jsoncmd = {"command": cmd, "options": options}
+    if DEBUG: logging.debug(f'send json: {jsoncmd}')
+    return json.dumps(jsoncmd)
+
+
+def CreateJsonCommand_str(cmd: str) -> str:
+    args = cmd.split(" ")
+    command = args.pop(0)
+    return CreateJsonCommand(command, args)
+
+
+def PrintDict(dict):
+    print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
 
 
 async def AlienSession(cmd):
@@ -1165,7 +1225,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             print(' '.join(AlienSessionInfo['commandlist']), flush = True)
             return int(0)
     elif (cmd.startswith("quota")):
-        await DO_quota(websocket)
+        await DO_quota(websocket, args)
         return int(0)
     elif (cmd.startswith("cat")):
         if args[0] != '-h':
@@ -1199,10 +1259,7 @@ async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
             args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
-    jsoncmd = CreateJsonCommand(cmd, args)  # make json with cmd and the list of arguments
-    if DEBUG: logging.debug(f'send json: {jsoncmd}')
-
-    await websocket.send(jsoncmd)
+    await websocket.send(CreateJsonCommand(cmd, args))
     result = await websocket.recv()
     if message_begin:
         message_delta = datetime.now().timestamp() - message_begin
