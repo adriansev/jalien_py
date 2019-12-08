@@ -113,7 +113,7 @@ def setDst(file: str = '', parent: int = 0) -> str:
         return p.as_posix().replace(basedir, '', 1)
 
 
-def expand_path_local(path):
+def expand_path_local(path: str) -> str:
     exp_path = path.replace("file://", "")
     # exp_path_components = list(filter(None, exp_path.split("/")))
     exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
@@ -125,7 +125,7 @@ def expand_path_local(path):
     return exp_path
 
 
-def expand_path_grid(path):
+def expand_path_grid(path: str) -> str:
     exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
     exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
