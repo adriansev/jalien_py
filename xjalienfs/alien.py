@@ -991,7 +991,7 @@ def create_ssl_context():
     return ctx
 
 
-async def wb_create(host, port, path):
+async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websockets.client.WebSocketClientProtocol, None]:
     QUEUE_SIZE = int(4)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_INTERVAL = int(10)  # Ping frame is sent every ping_interval seconds
