@@ -139,8 +139,28 @@ def expand_path_grid(path: str) -> str:
     return exp_path
 
 
-async def ProcessXrootdCp(websocket, xrd_copy_command = []):
-    if not websocket: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
+async def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> str:
+    if not wb: return
+    if not path: return
+    result = await SendMsg(wb, 'stat', ['-nomsg', path])
+    json_dict = json.loads(result)
+    error = json_dict["metadata"]["error"]
+    if error:
+        print(f"Stat cmd for {path} returned: {error}")
+        return str("NoValidType")
+    return str(json_dict['results'][0]["type"])
+
+
+def pathtype_local(path: str) -> str:
+    if not path: return ''
+    p = Path(path)
+    if p.is_dir(): return str('d')
+    if p.is_file(): return str('f')
+    return str('')
+
+
+async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: list = []):
+    if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if not AlienSessionInfo:
         print('Session information like home and current directories needed', flush = True)
         return int(126)  # ENOKEY /* Required key not available */
@@ -292,7 +312,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         src = expand_path_grid(xrd_copy_command[-2])
         src_specs_remotes = src.split(",", maxsplit = 1)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        src_type = await pathtype_grid(websocket, src)
+        src_type = await pathtype_grid(wb, src)
         if src_type == "NoValidType":
             print("Could not determine the type of src argument.. is it missing?")
             return int(42)  # ENOMSG /* No message of desired type */
@@ -310,7 +330,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
         dst = expand_path_grid(xrd_copy_command[-1])
         dst_specs_remotes = dst.split(",", maxsplit = 1)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        dst_type = await pathtype_grid(websocket, dst)
+        dst_type = await pathtype_grid(wb, dst)
         if dst_type == "NoValidType":
             print("Could not determine the type of dst argument.. is it missing?")
             return int(42)  # ENOMSG /* No message of desired type */
@@ -328,8 +348,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
             find_args.append(src)
             find_args.append(pattern)
             if not DEBUG: find_args.insert(0, '-nomsg')
-            await websocket.send(CreateJsonCommand('find', find_args))
-            result = await websocket.recv()
+            await wb.send(CreateJsonCommand('find', find_args))
+            result = await wb.recv()
             src_list_files_dict = json.loads(result)
             for file in src_list_files_dict['results']:
                 src_filelist.append(file['lfn'])
@@ -384,7 +404,7 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
     else:
         lfn_list = dst_filelist
 
-    envelope_list = await getEnvelope(websocket, lfn_list, specs, isWrite)
+    envelope_list = await getEnvelope(wb, lfn_list, specs, isWrite)
 
     # print errors
     errors_idx = []
@@ -493,8 +513,8 @@ async def ProcessXrootdCp(websocket, xrd_copy_command = []):
                         guid = server['guid']
                         # envelope size lfn perm expire pfn se guid md5
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-                        await websocket.send(CreateJsonCommand('commit', commit_args_list))
-                        commit_results = await websocket.recv()  # useless return message
+                        await wb.send(CreateJsonCommand('commit', commit_args_list))
+                        commit_results = await wb.recv()  # useless return message
                         if XRDDEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
@@ -1160,28 +1180,6 @@ async def cwd_list(websocket):
     result = await websocket.recv()
     result_dict = json.loads(result)
     AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
-
-
-async def pathtype_grid(websocket, path=''):
-    if not websocket: return
-    if not path: return
-    await websocket.send(CreateJsonCommand('stat', ['-nomsg', path]))
-    result = await websocket.recv()
-    json_dict = json.loads(result)
-
-    error = json_dict["metadata"]["error"]
-    if error:
-        print(f"Stat cmd for {path} returned: {error}")
-        return str("NoValidType")
-    return str(json_dict['results'][0]["type"])
-
-
-def pathtype_local(path=''):
-    if not path: return
-    p = Path(path)
-    if p.is_dir(): return str('d')
-    if p.is_file(): return str('f')
-    return str('')
 
 
 async def ProcessInput(websocket, cmd_string = '', shellcmd = None):
