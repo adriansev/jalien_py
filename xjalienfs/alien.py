@@ -101,15 +101,16 @@ async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: l
     return access_list
 
 
-def setDst(file = '', parent = 0):
+def setDst(file: str = '', parent: int = 0) -> str:
     p = Path(file)
     filename = p.parts[0]
-    if parent >= (len(p.parts) - 1): parent = len(p.parts) - 1 - 1
+    path_components = len(p.parts)
+    if parent >= (path_components - 1): parent = path_components - 1 - 1  # IF parent >= number of components without filename THEN make parent = number of component without / and filename
     basedir = p.parents[parent].as_posix()
     if basedir == '/':
         return file
     else:
-        return p.as_posix().replace(p.parents[parent].as_posix(), '', 1)
+        return p.as_posix().replace(basedir, '', 1)
 
 
 def expand_path_local(path):
