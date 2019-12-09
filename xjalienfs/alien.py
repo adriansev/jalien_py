@@ -1176,6 +1176,9 @@ async def getSessionVars(wb):
     cmd_list = json_dict["results"][0]['message'].split()
     regex = re.compile(r'.*_csd$')
     AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
+    AlienSessionInfo['commandlist'].remove('jquota')
+    AlienSessionInfo['commandlist'].remove('fquota')
+    AlienSessionInfo['commandlist'].append('quota')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
