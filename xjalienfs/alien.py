@@ -1114,7 +1114,7 @@ async def AlienConnect():
     nr_tries = 0
     init_begin = None
     init_delta = None
-    if TIME_CONNECT: init_begin = datetime.now().timestamp()
+    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
     while websocket is None:
         try:
             nr_tries += 1
@@ -1147,6 +1147,7 @@ async def AlienConnect():
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
         print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
+        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
 
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
