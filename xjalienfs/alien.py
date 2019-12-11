@@ -1078,6 +1078,11 @@ async def AlienConnect():
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 
     jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
+
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT: init_begin = datetime.now().timestamp()
+
     if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
         # lets check JBOX availability
         jalien_info = {}
@@ -1123,6 +1128,10 @@ async def AlienConnect():
                     break
 
     if not websocket: sys.exit(1)
+    if init_begin:
+        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        print(f">>>   Socket connecting time: {init_delta:.3f} ms", flush = True)
+
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return websocket
@@ -1161,8 +1170,8 @@ async def InitConnection():
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
     if init_begin:
-        init_delta = datetime.now().timestamp() - init_begin
-        print(">>>   Time for websocket initialization + sessionVars : {}".format(init_delta), flush = True)
+        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
     return websocket
 
 
@@ -1287,8 +1296,8 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
     result = await SendMsg(wb, cmd, args)
     if message_begin:
-        message_delta = datetime.now().timestamp() - message_begin
-        print(">>>   Time for send/receive command : {}".format(message_delta), flush = True)
+        message_delta = (datetime.now().timestamp() - message_begin) * 1000
+        print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
     return int(ProcessReceivedMessage(result, shellcmd))
 
 
