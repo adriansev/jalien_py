@@ -9,16 +9,16 @@ import websockets
 import alien
 
 
-DEBUG = 1
-TIME_CONNECT = 1
-
-# alien.py log file
+alien.DEBUG = 1
 alienpy_logfile = Path.home().as_posix() + '/alien_py_connection_time.log'
-MSG_LVL = logging.DEBUG
-log = logging.basicConfig(filename=alienpy_logfile, filemode='w', level=MSG_LVL)
+log = logging.basicConfig(filename=alienpy_logfile, filemode='w', level=logging.DEBUG)
 
+sys.argv.pop(0)  # remove the name of the script(alien.py)
 logger_wb = logging.getLogger('websockets')
-logger_wb.setLevel(MSG_LVL)
+if 'wbdebug' in sys.argv:
+    logger_wb.setLevel(logging.DEBUG)
+else:
+    logger_wb.setLevel(logging.ERROR)
 
 asyncio.get_event_loop().run_until_complete(alien.AlienConnect())
 os._exit(int(0))

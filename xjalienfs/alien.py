@@ -1092,7 +1092,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
                 logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-    if websocket and DEBUG: logging.debug(f"GOT ENDPOINT : {socket.getpeername()[0]}:{socket.getpeername()[1]}")
+    if websocket and DEBUG: logging.debug(f"GOT ENDPOINT: {socket.getpeername()[0]}:{socket.getpeername()[1]}")
     return websocket
 
 
