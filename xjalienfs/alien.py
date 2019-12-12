@@ -910,24 +910,31 @@ def PrintDict(dict):
     print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
 
 
+async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
+    if not wb or not json: return ''
+    if DEBUG:
+        logging.debug(f"SEND COMMAND: {json}")
+        init_begin = datetime.now().timestamp()
+        logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
+    await wb.send(json)
+    result = await wb.recv()
+    if DEBUG:
+        init_end = datetime.now().timestamp()
+        init_delta = (init_end - init_begin) * 1000
+        logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
+        logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
+    return result
+
+
 async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: list = []) -> str:
     if not wb or not cmd: return ''
-    await wb.send(CreateJsonCommand(cmd, args))
-    result = await wb.recv()
+    result = await SendMsg_json(wb, CreateJsonCommand(cmd, args))
     return result
 
 
 async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
     if not wb or not cmd_line: return ''
-    await wb.send(CreateJsonCommand_str(cmd_line))
-    result = await wb.recv()
-    return result
-
-
-async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
-    if not wb or not json: return ''
-    await wb.send(json)
-    result = await wb.recv()
+    result = await SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
     return result
 
 
