@@ -579,7 +579,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     if not (url_list_src or url_list_dst):
         if XRDDEBUG: logging.debug("copy src/dst lists are empty, no copy process to be started")
-        return int(2)  # ENOENT /* No such file or directory */
+        return int(0)  # no error to be reported as nothing happened
 
     if XRDDEBUG:
         logging.debug("List of files:")
