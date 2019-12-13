@@ -203,12 +203,12 @@ def pathtype_local(path: str) -> str:
     return str('')
 
 
-def fileIsValid(file: str, size: Union[str, int], md5: str) -> bool:
+def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
     if os.path.isfile(file):  # first check
         if int(os.stat(file).st_size) != int(size):
             os.remove(file)
             return False
-        if md5(file) != md5:
+        if md5(file) != reported_md5:
             os.remove(file)
             return False
 
