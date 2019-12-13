@@ -1,0 +1,2 @@
+#!/bin/bash
+./connection_timing.py &>/dev/null && awk '/DELTA/ || /total/ { printf($(NF-1)"\t\t");} END{printf ("\n")}' ~/alien_py_connection_time.log
