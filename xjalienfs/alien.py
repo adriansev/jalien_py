@@ -212,7 +212,7 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
             os.remove(file)
             return False
 
-        print(f"{lfn} --> TARGET VALID", flush = True)
+        print(f"{file} --> TARGET VALID", flush = True)
         return True
 
 
