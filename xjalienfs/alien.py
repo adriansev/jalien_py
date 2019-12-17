@@ -174,11 +174,7 @@ def expand_path_grid(path: str) -> str:
     exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
     if not exp_path.startswith('/'):
-        path_components = path.split("/")
-        r = re.compile(path_components[0] + "\\/*")
-        matches = list(filter(r.match, AlienSessionInfo['cwd_list']))
-        if matches:
-            exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path
+        exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -190,7 +186,7 @@ async def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str
     json_dict = json.loads(result)
     error = json_dict["metadata"]["error"]
     if error:
-        print(f"Stat cmd for {path} returned: {error}")
+        if DEBUG: logging.debug(f"Stat cmd for {path} returned: {error}")
         return str("NoValidType")
     return str(json_dict['results'][0]["type"])
 
@@ -404,7 +400,8 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     dst_filelist = []
 
     # clean up and prepare the paths to be used in the xrdcp command
-    src = ''
+    src = None
+    src_type = None
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-2].startswith('file:'):  # second to last argument (should be the source)
         isSrcLocal = True
@@ -422,7 +419,8 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
 
-    dst = ''
+    dst = None
+    dst_type = None
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if xrd_copy_command[-1].startswith('file:'):  # last argument (should be the destination)
         isDstLocal = True
@@ -435,9 +433,14 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         dst_specs_remotes = dst.split(",", maxsplit = 1)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst_type = await pathtype_grid(wb, dst)
-        if dst_type == "NoValidType":
-            print("Could not determine the type of dst argument.. is it missing?")
-            return int(42)  # ENOMSG /* No message of desired type */
+        if dst_type == "NoValidType" and src_type == 'f':
+            # the destination is not present yet and because src is file then dst must be also file
+            base_dir = Path(dst).parent.as_posix()
+            result = await SendMsg_str(wb, 'mkdir -p ' + base_dir)
+            json_dict = json.loads(result)
+            if json_dict["metadata"]["exitcode"] != '0':
+                err = json_dict["metadata"]["error"]
+                print("Could not create directory : {base_dir} !! --> {err}")
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
