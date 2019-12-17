@@ -1317,8 +1317,9 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
     elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
-            args[i] = expand_path_grid(args[i])
-            args[i] = re.sub(r"\/{2,}", "/", args[i])
+            if args[i][0] != '-':
+                args[i] = expand_path_grid(args[i])
+                args[i] = re.sub(r"\/{2,}", "/", args[i])
 
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
     result = await SendMsg(wb, cmd, args)
