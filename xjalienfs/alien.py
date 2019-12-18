@@ -876,9 +876,10 @@ def runShellCMD(INPUT = '', captureout = True):
 
     if captureout:
         args = sh_cmd
+        shcmd_out = subprocess.run(args, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True, env = os.environ)
     else:
         args = shlex.split(sh_cmd)
-    shcmd_out = subprocess.run(args, capture_output = captureout, shell = captureout, env=os.environ)
+        shcmd_out = subprocess.run(args, env = os.environ)
 
     stdout = shcmd_out.stdout
     if stdout: print(stdout.decode(), flush = True)
