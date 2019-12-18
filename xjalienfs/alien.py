@@ -41,7 +41,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 JSON_OUT = os.getenv('ALIENPY_JSON', '')
 JSONRAW_OUT = os.getenv('ALIENPY_JSONRAW', '')
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
-XRDDEBUG = os.getenv('ALIENPY_XRDDEBUG', '')
+DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
@@ -499,7 +499,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
             dst_filelist.append(dst)
 
-    if XRDDEBUG:
+    if DEBUG:
         logging.debug("We are going to copy these files:")
         for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
             logging.debug(f"src: {src_dbg}\ndst: {dst_dbg}\n")
@@ -522,8 +522,8 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             errors_idx.append(item_idx)
             error = access_request["metadata"]["error"]
             print(f"lfn: {lfn} --> {error}", flush = True)
-        if XRDDEBUG:
-            logging.debug(lfn)
+        if DEBUG:
+            logging.debug(f"lfn: {lfn}")
             logging.debug(json.dumps(access_request, sort_keys=True, indent=4))
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
@@ -581,10 +581,10 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
                 url_list_src.append({"url": src})
 
     if not (url_list_src or url_list_dst):
-        if XRDDEBUG: logging.debug("copy src/dst lists are empty, no copy process to be started")
+        if DEBUG: logging.debug("copy src/dst lists are empty, no copy process to be started")
         return int(0)  # no error to be reported as nothing happened
 
-    if XRDDEBUG:
+    if DEBUG:
         logging.debug("List of files:")
         for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
             logging.debug("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']))
@@ -614,7 +614,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
                         # envelope size lfn perm expire pfn se guid md5
                         commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
                         commit_results = await SendMsg(wb, 'commit', commit_args_list)
-                        if XRDDEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
+                        if DEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -655,8 +655,7 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
             self.dst = target
             self.jobs = int(total)
             self.job_list.append(id)
-            if XRDDEBUG:
-                logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst))
+            if DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst))
 
         def end(self, jobId, results):
             results_message = results['status'].message
@@ -706,7 +705,7 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
 
     handler.isDownload = isDownload
     for url_src, url_dst in zip(src, dst):
-        if XRDDEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']))
+        if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']))
         process.add_job(url_src["url"], url_dst["url"],
                         sourcelimit = sources,
                         force = overwrite,
@@ -1157,8 +1156,8 @@ async def AlienConnect():
     if not websocket: sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
-        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
+        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms") 
+        if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
@@ -1346,7 +1345,7 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         exitcode = json_dict["metadata"]["exitcode"]
         AlienSessionInfo['exitcode'] = exitcode
 
-    if DEBUG or JSON_OUT:  # print nice json for debug or json mode
+    if JSON_OUT:  # print nice json for debug or json mode
         print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
         return int(exitcode)
     if JSONRAW_OUT:  # print the raw byte stream received from the server
@@ -1361,8 +1360,6 @@ def ProcessReceivedMessage(message='', shellcmd = None):
         return int(exitcode)
 
     if shellcmd:
-        # shlex.split(shellcmd)
-        # shlex.quote(shellcmd)
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
         stdout = shell_run.stdout
         if stdout: print(stdout, flush = True)
@@ -1452,13 +1449,10 @@ async def JAlien(commands = ''):
 
 def main():
     global JSON_OUT, JSONRAW_OUT
-    # alien.py log file
-    alienpy_logfile = Path.home().as_posix() + '/alien_py.log'
-    # alienpy_logfile_wb = Path.home().as_posix() + '/alien_py_wb.log'
-    # alienpy_logfile_ssl = Path.home().as_posix() + '/alien_py_ssl.log'
+
     MSG_LVL = logging.ERROR
     if DEBUG: MSG_LVL = logging.DEBUG
-    log = logging.basicConfig(filename=alienpy_logfile, filemode='w', level=MSG_LVL)
+    log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
 
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
