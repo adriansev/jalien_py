@@ -1156,7 +1156,7 @@ async def AlienConnect():
     if not websocket: sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms") 
+        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
     await token(websocket)  # it will return if token is valid, if not it will request and write it to file
