@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from enum import Enum
 from urllib.parse import urlparse
+import socket
 import asyncio
 import async_stagger
 import websockets
@@ -1116,7 +1117,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
 
     if DEBUG: logging.debug(f"Request connection to : {host}:{port}{path}")
 
-    socket = None
+    socket_endpoint = None
     # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
     # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
     try:
@@ -1124,7 +1125,10 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
             logging.debug(f"TRY ENDPOINT : {host}:{port}")
             init_begin = datetime.now().timestamp()
             logging.debug(f"TCP SOCKET BEGIN: {init_begin}")
-        socket = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
+        if os.getenv('ALIENPY_NO_STAGGER'):
+            socket_endpoint = socket.create_connection((host, int(port)))
+        else:
+            socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
         if DEBUG:
             init_end = datetime.now().timestamp()
             init_delta = (init_end - init_begin) * 1000
@@ -1134,13 +1138,13 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
         logging.debug(traceback.format_exc())
 
     websocket = None
-    if socket:
+    if socket_endpoint:
         try:
             if DEBUG:
                 init_begin = datetime.now().timestamp()
                 logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
-            websocket = await websockets.connect(fHostWSUrl, sock=socket, server_hostname=host,
-                                                 ssl=ctx, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+            websocket = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
+                                                 max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
             if DEBUG:
                 init_end = datetime.now().timestamp()
                 init_delta = (init_end - init_begin) * 1000
@@ -1148,7 +1152,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
                 logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-    if websocket and DEBUG: logging.debug(f"GOT ENDPOINT: {socket.getpeername()[0]}:{socket.getpeername()[1]}")
+    if websocket and DEBUG: logging.debug(f"GOT ENDPOINT: {socket_endpoint.getpeername()[0]}:{socket_endpoint.getpeername()[1]}")
     return websocket
 
 
