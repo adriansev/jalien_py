@@ -61,28 +61,32 @@ class XrdCpArgs(NamedTuple):
     streams: int
 
 
-def cursor_up(lines = 1):
+def cursor_up(lines: int = 1):
+    """Move the cursor up N lines"""
     if lines < 1: lines = 1
     for k in range(lines):
         sys.stdout.write('\x1b[1A')
         sys.stdout.flush()
 
 
-def cursor_down(lines = 1):
+def cursor_down(lines: int = 1):
+    """Move the cursor down N lines"""
     if lines < 1: lines = 1
     for k in range(lines):
         sys.stdout.write('\x1b[1B')
         sys.stdout.flush()
 
 
-def cursor_right(pos = 1):
+def cursor_right(pos: int = 1):
+    """Move the cursor right N positions"""
     if pos < 1: pos = 1
     for k in range(pos):
         sys.stdout.write('\x1b[1C')
         sys.stdout.flush()
 
 
-def cursor_left(pos = 1):
+def cursor_left(pos: int = 1):
+    """Move the cursor left N positions"""
     if pos < 1: pos = 1
     for k in range(pos):
         sys.stdout.write('\x1b[1D')
@@ -90,6 +94,7 @@ def cursor_left(pos = 1):
 
 
 def cleanup_temp():
+    """Remove from disk all recorded temporary files"""
     if AlienSessionInfo['templist']:
         for f in AlienSessionInfo['templist']:
             if os.path.isfile(f): os.remove(f)
@@ -100,9 +105,9 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def exit_message():
+def exit_message(exitcode: int = 0):
     print('\nExit')
-    sys.exit(0)
+    sys.exit(exitcode)
 
 
 def xrdcp_help():
