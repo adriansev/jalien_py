@@ -1259,6 +1259,8 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].remove('fquota')
     AlienSessionInfo['commandlist'].append('quota')
     AlienSessionInfo['commandlist'].append('prompt')
+    AlienSessionInfo['commandlist'].append('token')
+    AlienSessionInfo['commandlist'].append('certinfo')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
@@ -1313,6 +1315,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     message_begin = None
     message_delta = None
 
+    # first to be processed is the time token, it will start the timing and be removed from command
     if cmd == 'time':
         if not args:
             print("time needs as argument a command", flush = True)
@@ -1320,6 +1323,17 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         else:
             cmd = args.pop(0)
             message_begin = datetime.now().timestamp()
+
+    # then we process the help commands
+    if (cmd == "?") or (cmd == "help"):
+        if len(args) > 0:
+            cmd = args.pop(0)
+            args.clear()
+            args.append('-h')
+        else:
+            print(' '.join(AlienSessionInfo['commandlist']), flush = True)
+            AlienSessionInfo['exitcode'] = int(0)
+            return AlienSessionInfo['exitcode']
 
     if cmd == 'certinfo':
         AlienSessionInfo['exitcode'] = CertInfo(usercert)
@@ -1340,34 +1354,33 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
             return AlienSessionInfo['exitcode']
 
-    if (cmd == "?") or (cmd == "help"):
-        if len(args) > 0:
-            cmd = args.pop(0)
-            if cmd in AlienSessionInfo['commandlist']:
-                args.clear()
-                args.append('-h')
-        else:
-            print(' '.join(AlienSessionInfo['commandlist']), flush = True)
-            AlienSessionInfo['exitcode'] = int(0)
-            return AlienSessionInfo['exitcode']
-    elif cmd == "quota":
+    if cmd == "cp":  # defer cp processing to ProcessXrootdCp
+        exitcode = await ProcessXrootdCp(wb, args)
+        AlienSessionInfo['exitcode'] = exitcode
+        return AlienSessionInfo['exitcode']
+
+    if cmd == "quota":
         await DO_quota(wb, args)
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
-    elif cmd == "cat":
+
+    if cmd == "cat":
         if args[0] != '-h':
             await DO_cat(wb, args[0])
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
-    elif cmd == "less":
+
+    if cmd == "less":
         if args[0] != '-h':
             await DO_less(wb, args[0])
             return int(0)
-    elif (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
+
+    if (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
         if args[0] != '-h':
             await DO_edit(wb, args[0], editor=cmd)
             return int(0)
-    elif (cmd == 'edit' or cmd == 'sensible-editor'):
+
+    if (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
         if not EDITOR:
             print('No EDITOR variable set up!', flush = True)
@@ -1376,11 +1389,8 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         if args[0] != '-h':
             await DO_edit(wb, args[0], editor=cmd)
             return int(0)
-    elif cmd == "cp":  # defer cp processing to ProcessXrootdCp
-        exitcode = await ProcessXrootdCp(wb, args)
-        AlienSessionInfo['exitcode'] = exitcode
-        return AlienSessionInfo['exitcode']
-    elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
+
+    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
             if args[i][0] != '-':
