@@ -131,6 +131,7 @@ for the recursive copy of directories the following options (of the find command
 
 
 async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list = [], specs: list = [], isWrite: bool = False) -> list:
+    """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return
     access_list = []
     if not lfn_list: return access_list
@@ -146,6 +147,7 @@ async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: l
 
 
 def setDst(file: str = '', parent: int = 0) -> str:
+    """For a fiven file path return the file path keeping the <parent> number of components"""
     p = Path(file)
     filename = p.parts[0]
     path_components = len(p.parts)
@@ -158,6 +160,7 @@ def setDst(file: str = '', parent: int = 0) -> str:
 
 
 def expand_path_local(path: str) -> str:
+    """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path.replace("file://", "")
     # exp_path_components = list(filter(None, exp_path.split("/")))
     exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
@@ -170,6 +173,7 @@ def expand_path_local(path: str) -> str:
 
 
 def expand_path_grid(path: str) -> str:
+    """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
     exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
@@ -180,6 +184,7 @@ def expand_path_grid(path: str) -> str:
 
 
 async def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> str:
+    """Query if a lfn is a file or directory, return f, d or NoValidType"""
     if not wb: return
     if not path: return
     result = await SendMsg(wb, 'stat', ['-nomsg', path])
@@ -192,14 +197,16 @@ async def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str
 
 
 def pathtype_local(path: str) -> str:
+    """Query if a local path is a file or directory, return f, d or NoValidType"""
     if not path: return ''
     p = Path(path)
     if p.is_dir(): return str('d')
     if p.is_file(): return str('f')
-    return str('')
+    return str("NoValidType")
 
 
 def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
+    """Check if the file path is consistent with the size and md5 argument. N.B.! the local file will be deleted with size,md5 not match"""
     if os.path.isfile(file):  # first check
         if int(os.stat(file).st_size) != int(size):
             os.remove(file)
@@ -207,12 +214,12 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
         if md5(file) != reported_md5:
             os.remove(file)
             return False
-
         print(f"{file} --> TARGET VALID", flush = True)
         return True
 
 
 def create_metafile(meta_filename: str, local_filename: str, size: Union[str, int], md5: str, replica_list: list = []):
+    """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     published = str(datetime.now().replace(microsecond=0).isoformat())
     with open(meta_filename, 'w') as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -229,6 +236,7 @@ def create_metafile(meta_filename: str, local_filename: str, size: Union[str, in
 
 
 def md5(file: str) -> str:
+    """Compute the md5 digest of the specified file"""
     import hashlib
     BLOCKSIZE = 65536
     hasher = hashlib.md5()
@@ -260,6 +268,7 @@ if has_readline:
 
 
 async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: list = []) -> int:
+    """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if not AlienSessionInfo:
         print('Session information like home and current directories needed', flush = True)
@@ -625,6 +634,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
 
 def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
+    """XRootD copy command :: the actual XRootD copy process"""
     if not xrd_cp_args: return
     from XRootD import client
 
@@ -719,21 +729,24 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
-def make_tmp_fn(lfn = ''):
+def make_tmp_fn(lfn: str = '') -> str:
+    """make temporary file path string either random or based on grid lfn string"""
     ext = '_' + str(os.getuid()) + '.alienpy_tmp'
     if not lfn:
         return os.getenv('TMPDIR', '/tmp') + '/' + str(uuid.uuid4()) + ext
     return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", '%%') + ext
 
 
-async def download_tmp(wb, lfn):
+async def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
+    """Download a lfn to a temporary file, it will return the file path of temporary"""
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
     result = await ProcessXrootdCp(wb, copycmd.split())
     if result == 0: return tmpfile
 
 
-async def upload_tmp(wb, temp_file_name, upload_specs = ''):
+async def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
+    """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the oirginal lfn"""
     # lets recover the lfn from temp file name
     lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
     lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
@@ -762,43 +775,47 @@ async def upload_tmp(wb, temp_file_name, upload_specs = ''):
     if list_upload: return lfn
 
 
-async def DO_cat(websocket, lfn):
+async def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+    """cat lfn :: download lfn as a temporary file and cat"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('cat ' + tmp)
     else:
-        tmp = await download_tmp(websocket, lfn)
+        tmp = await download_tmp(wb, lfn)
         if tmp:
             AlienSessionInfo['templist'].append(tmp)
             runShellCMD('cat ' + tmp)
 
 
-async def DO_less(websocket, lfn):
+async def DO_less(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+    """cat lfn :: download lfn as a temporary file and less"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('less ' + tmp)
     else:
-        tmp = await download_tmp(websocket, lfn)
+        tmp = await download_tmp(wb, lfn)
         if tmp:
             AlienSessionInfo['templist'].append(tmp)
             runShellCMD('less ' + tmp)
 
 
-async def DO_more(websocket, lfn):
+async def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+    """cat lfn :: download lfn as a temporary file and more"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
         runShellCMD('more ' + tmp)
     else:
-        tmp = await download_tmp(websocket, lfn)
+        tmp = await download_tmp(wb, lfn)
         if tmp:
             AlienSessionInfo['templist'].append(tmp)
             runShellCMD('more ' + tmp)
 
 
-async def DO_quota(wb: websockets, quota_args: list):
+async def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: list):
+    """quota : put togheter both job and file quota"""
     if len(quota_args) > 0:
         if quota_args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
             user = quota_args[0]
@@ -852,7 +869,8 @@ Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
 Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
 
 
-async def DO_edit(websocket, lfn, editor='mcedit'):
+async def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, editor: str = 'mcedit'):
+    """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if editor == 'mcedit': editor = 'mc -c -e'
     editor = editor + " "
     lfn_path = expand_path_grid(lfn)
@@ -860,16 +878,17 @@ async def DO_edit(websocket, lfn, editor='mcedit'):
     if tmp in AlienSessionInfo['templist']:
         runShellCMD(editor + tmp, False)
     else:
-        tmp = await download_tmp(websocket, lfn)
+        tmp = await download_tmp(wb, lfn)
         if tmp:
             md5_begin = md5(tmp)
             AlienSessionInfo['templist'].append(tmp)
             runShellCMD(editor + tmp, False)
             md5_end = md5(tmp)
-            if md5_begin != md5_end: await upload_tmp(websocket, tmp, '')
+            if md5_begin != md5_end: await upload_tmp(wb, tmp, '')
 
 
-def runShellCMD(INPUT = '', captureout = True):
+def runShellCMD(INPUT: str = '', captureout: bool = True):
+    """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return
     sh_cmd = re.sub(r'^!', '', INPUT)
 
@@ -886,35 +905,48 @@ def runShellCMD(INPUT = '', captureout = True):
     if stderr: print(stderr.decode(), flush = True)
 
 
-def check_port(address, port):
+def check_port(address: str, port: Union[str, int]) -> bool:
+    """Check TCP connection to address:port"""
     import socket
     s = socket.socket()  # Create a TCP socket
     try:
         s.connect((address, int(port)))
-        return True
     except Exception as e:
         # print(e)
+        s.close()
         return False
+    if s:
+        s.close()
+        return True
 
 
 def CreateJsonCommand(cmd: str, options: list = []) -> str:
+    """Return a json with command and argument list"""
     jsoncmd = {"command": cmd, "options": options}
     if DEBUG: logging.debug(f'send json: {jsoncmd}')
     return json.dumps(jsoncmd)
 
 
 def CreateJsonCommand_str(cmd: str) -> str:
+    """Return a json by spliting the input string in first element(command) and the rest asa a list of arguments"""
     args = cmd.split(" ")
     command = args.pop(0)
     return CreateJsonCommand(command, args)
 
 
-def PrintDict(dict):
+def PrintDict(dict: dict) -> str:
+    """Print a dictionary in a nice format"""
     print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
 
 
 async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
-    if not wb or not json: return ''
+    """Send a json message to the specified websocket; it will return the server answer"""
+    if not wb:
+        logging.debug(f"SendMsg_json:: websocket is invalid")
+        return ''
+    if not json:
+        logging.debug(f"SendMsg_json:: json message is empty or invalid")
+        return ''
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
         init_begin = datetime.now().timestamp()
@@ -930,21 +962,38 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
 
 
 async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: list = []) -> str:
-    if not wb or not cmd: return ''
+    """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
+    if not wb:
+        logging.debug(f"SendMsg:: websocket is invalid")
+        return ''
+    if not cmd:
+        logging.debug(f"SendMsg:: command is not specified")
+        return ''
     result = await SendMsg_json(wb, CreateJsonCommand(cmd, args))
     return result
 
 
 async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
-    if not wb or not cmd_line: return ''
+    """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
+    if not wb:
+        logging.debug(f"SendMsg_str:: websocket is invalid")
+        return ''
+    if not cmd_line:
+        logging.debug(f"SendMsg_str:: command line is not specified")
+        return ''
     result = await SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
     return result
 
 
-async def AlienSession(cmd):
-    if not cmd: return ''
+async def AlienSession(cmd: str) -> dict:
+    """Create a connection to AliEn central services, send a json message and return the decoded to dictionary message"""
+    if not cmd:
+        logging.debug(f"AlienSession:: cmd string is not specified")
+        return None
     wb = await AlienConnect()
-    if not wb: return ''
+    if not wb:
+        logging.debug(f"AlienSession:: websocket could not be aquired")
+        return None
     result = await SendMsg_json(wb, json)
     return json.loads(result)
 
@@ -953,7 +1002,8 @@ def AlienSendCmd(cmd):
     return asyncio.get_event_loop().run_until_complete(AlienSession(cmd))
 
 
-def IsValidCert(fname):
+def IsValidCert(fname: str):
+    """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
     try:
         with open(fname) as f:
             cert_bytes = f.read()
@@ -976,7 +1026,8 @@ def IsValidCert(fname):
         return False
 
 
-def CertInfo(fname):
+def CertInfo(fname: str):
+    """Print certificate information (subject, issuer, notbefore, notafter)"""
     try:
         with open(fname) as f:
             cert_bytes = f.read()
@@ -999,6 +1050,7 @@ def CertInfo(fname):
 
 
 def create_ssl_context():
+    """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     # SSL SETTINGS
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
     userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
@@ -1050,6 +1102,7 @@ def create_ssl_context():
 
 
 async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websockets.client.WebSocketClientProtocol, None]:
+    """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     QUEUE_SIZE = int(4)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_INTERVAL = int(10)  # Ping frame is sent every ping_interval seconds
@@ -1099,7 +1152,8 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     return websocket
 
 
-async def AlienConnect():
+async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
+    """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
@@ -1153,7 +1207,9 @@ async def AlienConnect():
                     logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
                     break
 
-    if not websocket: sys.exit(1)
+    if not websocket:
+        logging.debug("Could not get a websocket connection, exiting..")
+        sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
         if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
@@ -1164,7 +1220,8 @@ async def AlienConnect():
     return websocket
 
 
-async def token(wb):
+async def token(wb: websockets.client.WebSocketClientProtocol):
+    """(Re)create the tokencert and tokenkey files"""
     if not wb: return
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
@@ -1187,25 +1244,11 @@ async def token(wb):
     os.chmod(tokenkey, 0o400)  # make it readonly
 
 
-async def InitConnection():
-    # implement a time command for measurement of sent/recv delay
-    init_begin = None
-    init_delta = None
-    if TIME_CONNECT: init_begin = datetime.now().timestamp()
-    websocket = await AlienConnect()
-
-    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if not AlienSessionInfo['commandlist']: await getSessionVars(websocket)
-    if init_begin:
-        init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
-    return websocket
-
-
-async def getSessionVars(wb):
+async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
+    """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
     if not wb: return
     global AlienSessionInfo
-    # get the command list to check validity of commands
+    # get the command list
     result = await SendMsg(wb, 'commandlist', [])
     json_dict = json.loads(result)
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
@@ -1215,6 +1258,7 @@ async def getSessionVars(wb):
     AlienSessionInfo['commandlist'].remove('jquota')
     AlienSessionInfo['commandlist'].remove('fquota')
     AlienSessionInfo['commandlist'].append('quota')
+    AlienSessionInfo['commandlist'].append('prompt')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
@@ -1225,14 +1269,32 @@ async def getSessionVars(wb):
     if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
 
 
-async def cwd_list(wb):
+async def InitConnection() -> websockets.client.WebSocketClientProtocol:
+    """Create a session to AliEn services, including session globals"""
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
+    wb = await AlienConnect()
+
+    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
+    if not AlienSessionInfo['commandlist']: await getSessionVars(wb)
+    if init_begin:
+        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        if DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
+        if TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
+    return wb
+
+
+async def cwd_list(wb: websockets.client.WebSocketClientProtocol):
+    """Save into global cwd_list the content of current directory"""
     if not wb: return
     result = await SendMsg(wb, 'ls', ['-nokeys', '-F'])
     result_dict = json.loads(result)
     AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
 
 
-async def ProcessInput(wb, cmd_string = '', shellcmd = None):
+async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None):
+    """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
     global AlienSessionInfo
     args = cmd_string.split(" ")
@@ -1272,7 +1334,8 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
             except Exception as e:
                 logging.debug(traceback.format_exc())
                 wb = await InitConnection()
-            return int(0)
+            AlienSessionInfo['exitcode'] = int(0)
+            return AlienSessionInfo['exitcode']
         if not args or (len(args) > 0 and args[0] == 'info'):
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
             return AlienSessionInfo['exitcode']
@@ -1285,15 +1348,18 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
                 args.append('-h')
         else:
             print(' '.join(AlienSessionInfo['commandlist']), flush = True)
-            return int(0)
-    elif (cmd.startswith("quota")):
+            AlienSessionInfo['exitcode'] = int(0)
+            return AlienSessionInfo['exitcode']
+    elif cmd == "quota":
         await DO_quota(wb, args)
-        return int(0)
-    elif (cmd.startswith("cat")):
+        AlienSessionInfo['exitcode'] = int(0)
+        return AlienSessionInfo['exitcode']
+    elif cmd == "cat":
         if args[0] != '-h':
             await DO_cat(wb, args[0])
-            return int(0)
-    elif (cmd.startswith("less")):
+            AlienSessionInfo['exitcode'] = int(0)
+            return AlienSessionInfo['exitcode']
+    elif cmd == "less":
         if args[0] != '-h':
             await DO_less(wb, args[0])
             return int(0)
@@ -1310,10 +1376,10 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
         if args[0] != '-h':
             await DO_edit(wb, args[0], editor=cmd)
             return int(0)
-    elif cmd.startswith("cp"):  # defer cp processing to ProcessXrootdCp
+    elif cmd == "cp":  # defer cp processing to ProcessXrootdCp
         exitcode = await ProcessXrootdCp(wb, args)
         AlienSessionInfo['exitcode'] = exitcode
-        return int(exitcode)
+        return AlienSessionInfo['exitcode']
     elif cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
@@ -1329,21 +1395,18 @@ async def ProcessInput(wb, cmd_string = '', shellcmd = None):
     return int(ProcessReceivedMessage(result, shellcmd))
 
 
-def ProcessReceivedMessage(message='', shellcmd = None):
+def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None):
+    """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
     json_dict = json.loads(message)
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    error = ''
-    if 'error' in json_dict["metadata"]:
-        error = json_dict["metadata"]["error"]
-        AlienSessionInfo['error'] = error
+    error = json_dict.get("metadata").get("error", '')
+    AlienSessionInfo['error'] = error
 
-    exitcode = '0'  # use a default value for cases where exitcode is missing
-    if 'exitcode' in json_dict["metadata"]:
-        exitcode = json_dict["metadata"]["exitcode"]
-        AlienSessionInfo['exitcode'] = exitcode
+    exitcode = json_dict.get("metadata").get("exitcode", '0')
+    AlienSessionInfo['exitcode'] = exitcode
 
     if JSON_OUT:  # print nice json for debug or json mode
         print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
@@ -1371,11 +1434,11 @@ def ProcessReceivedMessage(message='', shellcmd = None):
     return int(exitcode)
 
 
-async def JAlien(commands = ''):
+async def JAlien(commands: str = ''):
+    """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo
 
-    wb = None
-    while wb is None: wb = await InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+    wb = await InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
 
     # Command mode interaction
     if commands:
@@ -1391,7 +1454,7 @@ async def JAlien(commands = ''):
         signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
-        if AlienSessionInfo['show_date']: prompt = prompt + " " + str(datetime.now().replace(microsecond=0).isoformat())
+        if AlienSessionInfo['show_date']: prompt = str(datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
         if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
         prompt = prompt + ' >'
 
@@ -1431,7 +1494,7 @@ async def JAlien(commands = ''):
                 elif len(input_list) > 1 and input_list[1] == 'pwd':
                     AlienSessionInfo['show_lpwd'] = (not AlienSessionInfo['show_lpwd'])
                 else:
-                    print("Arguments supported are : <date> for date information and <pwd> for local directory", flush = True)
+                    print("Toggle the following in the command prompt : <date> for date information and <pwd> for local directory", flush = True)
                 input_list.clear()
                 continue
 
