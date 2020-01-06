@@ -1,0 +1,31 @@
+#!/bin/bash
+
+help () {
+echo "${0} read|write lfn specs"
+exit
+}
+
+[[ -z "${1}" ]] && help
+[[ ! "${1}" =~ read|write ]] && help
+[[ -z "${2}" ]] && help
+
+TYPE="${1}"
+shift
+LFN="${1}"
+shift
+SPECS="${@}"
+
+OUTPUT="$(alien.py -jsonraw "access ${TYPE} ${LFN} ${SPECS}")"
+echo "${OUTPUT}" | python3 -c '
+import sys,os,json;
+INPUT = sys.stdin.read();
+json_dict = json.loads(INPUT);
+selection = [ [ item.get("url"), item.get("envelope")] for item in json_dict["results"] ];
+[ print("URL{0}=\"{1}\"\nTOKEN{0}={2}\n".format(idx,str(endpoint[0]).replace("root://",""),repr(str(endpoint[1])))) for idx,endpoint in enumerate(selection) ];
+'
+
+# One can do :
+# eval "$(alien_envelope read lfn)"
+# and then construct something with URL,TOKEN pairs (numbered from 0) like below:
+# for PFN in $(compgen -A variable URL); do TOKEN="${PFN/"URL"/"TOKEN"}"; echo "http://${!PFN}?authz=${!TOKEN}";echo; done; unset PFN
+
