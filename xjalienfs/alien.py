@@ -26,13 +26,18 @@ import socket
 import asyncio
 import async_stagger
 import websockets
-# import websockets.speedups
 
 try:
     import readline
     has_readline = True
 except ImportError:
     has_readline = False
+
+try:  # let's fail fast if the xrootd python bindings are not present
+    from XRootD import client
+    has_xrootd = True
+except ImportError:
+    has_xrootd = False
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
@@ -283,6 +288,10 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
         xrdcp_help()
         return int(64)  # EX_USAGE /* command line usage error */
+
+    if not has_xrootd:
+        print('python XRootD module cannot be found, the copy process cannot continue')
+        return int(1)
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
@@ -642,7 +651,6 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not xrd_cp_args: return
-    from XRootD import client
 
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
