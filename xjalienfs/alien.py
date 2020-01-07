@@ -303,7 +303,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
     # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
     hashtype = str('md5')
-    batch = int(8)   # from a list of copy jobs, start <batch> number of downloads
+    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
     sources = int(1)  # max number of download sources
     streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
     chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
@@ -368,9 +368,11 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     elif os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
         streams = int(os.getenv('XRD_SUBSTREAMSPERCHANNEL'))
 
+    batch_user_setup = False
     if '-T' in xrd_copy_command:
         batch_idx = xrd_copy_command.index('-T')
         batch = int(xrd_copy_command.pop(batch_idx + 1))
+        batch_user_setup = True
         xrd_copy_command.pop(batch_idx)
 
     if '-chunks' in xrd_copy_command:
@@ -417,7 +419,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '*'  # default pattern
+    pattern = ''  # just a placeholder; if used in cmdline the user must do distinction between alien find pattern (download files from remote) and regex for local files (upload to remote)
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
@@ -446,6 +448,16 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             print("Could not determine the type of src argument.. is it missing?")
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
+
+    if not pattern and src_type == 'd':
+        if isSrcLocal:
+            pattern = '.*'
+        else:
+            pattern = '*'
+
+    # For all download use a default of 8 simultaneous downloads;
+    # the parralel uploads does not work yet because of return confirmations needed to commit writes to catalog
+    if isDownload and not batch_user_setup : batch = 8
 
     dst = None
     dst_type = None
@@ -1409,6 +1421,9 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         if args[0] != '-h':
             await DO_edit(wb, args[0], editor=cmd)
             return int(0)
+
+    # default to print / after directories
+    if cmd == 'ls': args.insert(0, '-F')
 
     if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
