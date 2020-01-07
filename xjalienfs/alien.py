@@ -502,8 +502,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         specs = dst_specs_remotes
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
             regex = re.compile(pattern)
-            list = []
-            for root, dirs, files in os.walk(src[:-1]):
+            for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
                     if regex.match(filepath):
