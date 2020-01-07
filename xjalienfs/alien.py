@@ -417,7 +417,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '.*'  # default pattern
+    pattern = '*'  # default pattern
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
