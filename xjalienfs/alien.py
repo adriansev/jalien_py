@@ -295,8 +295,36 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
+    # XRootD copy parameters
+    # inittimeout: copy initialization timeout(int)
+    # tpctimeout: timeout for a third-party copy to finish(int)
+    # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
+    # :param checksummode: checksum mode to be used #:type    checksummode: string
+    # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+    # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+    hashtype = str('md5')
+    batch = int(8)   # from a list of copy jobs, start <batch> number of downloads
+    sources = int(1)  # max number of download sources
+    streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
+    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
+    chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
+    makedir = bool(True)  # create the parent directories when creating a file
+    overwrite = bool(False)  # overwrite target if it exists
+    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+
+    isSrcLocal = bool(False)
+    isDstLocal = bool(False)
+    isSrcDir = bool(False)
+    isDstDir = bool(False)
+    isDownload = bool(True)
+    file_name = ''
+
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
+
     # xrdcp parameters (used by ALICE tests)
     # http://xrootd.org/doc/man/xrdcp.1.html
+    # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
     # Override the application name reported to the server.
     os.environ["XRD_APPNAME"] = "alien.py"
@@ -315,36 +343,6 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): os.environ["XRD_PREFERIPV4"] = "1"
-
-    # Size of a single data chunk handled by xrdcp / XrdCl::CopyProcess.
-    if not os.getenv('XRD_CPCHUNKSIZE'): os.environ["XRD_CPCHUNKSIZE"] = "128"
-
-    # XRootD copy parameters
-    # inittimeout: copy initialization timeout(int)
-    # tpctimeout: timeout for a third-party copy to finish(int)
-    # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
-    # :param checksummode: checksum mode to be used #:type    checksummode: string
-    # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
-    # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
-    hashtype = str('md5')
-    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-    sources = int(1)  # max number of download sources
-    streams = int(0)  # uses num additional parallel streams to do the transfer. The maximum value is 15. The default is 0 (i.e., use only the main stream).
-    chunks = int(1)  # number of chunks that should be requested in parallel
-    chunksize = int(4194304)  # chunk size for remote transfers
-    makedir = bool(True)  # create the parent directories when creating a file
-    overwrite = bool(False)  # overwrite target if it exists
-    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
-
-    isSrcLocal = bool(False)
-    isDstLocal = bool(False)
-    isSrcDir = bool(False)
-    isDstDir = bool(False)
-    isDownload = bool(True)
-    file_name = ''
-
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
 
     if '-f' in xrd_copy_command:
         overwrite = True
@@ -367,6 +365,8 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         s_idx = xrd_copy_command.index('-S')
         streams = int(xrd_copy_command.pop(s_idx + 1))
         xrd_copy_command.pop(y_idx)
+    elif os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
+        streams = int(os.getenv('XRD_SUBSTREAMSPERCHANNEL'))
 
     if '-T' in xrd_copy_command:
         batch_idx = xrd_copy_command.index('-T')
@@ -377,11 +377,15 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         chunks_nr_idx = xrd_copy_command.index('-chunks')
         chunks_nr = int(xrd_copy_command.pop(chunks_nr_idx + 1))
         xrd_copy_command.pop(chunks_nr_idx)
+    elif os.getenv('XRD_CPPARALLELCHUNKS'):
+        chunks_nr = int(os.getenv('XRD_CPPARALLELCHUNKS'))
 
     if '-chunksz' in xrd_copy_command:
         chksz_idx = xrd_copy_command.index('-chunksz')
         chunksize = int(xrd_copy_command.pop(chksz_idx + 1))
         xrd_copy_command.pop(chksz_idx)
+    elif os.getenv('XRD_CPCHUNKSIZE'):
+        chunksize = int(os.getenv('XRD_CPCHUNKSIZE'))
 
     # find options for recursive copy of directories
     find_args = []
