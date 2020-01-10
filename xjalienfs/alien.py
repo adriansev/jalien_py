@@ -111,7 +111,7 @@ def signal_handler(sig, frame):
 
 
 def exit_message(exitcode: int = 0):
-    print('\nExit')
+    print('Exit')
     sys.exit(exitcode)
 
 
@@ -457,7 +457,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     # For all download use a default of 8 simultaneous downloads;
     # the parralel uploads does not work yet because of return confirmations needed to commit writes to catalog
-    if isDownload and not batch_user_setup : batch = 8
+    if isDownload and not batch_user_setup: batch = 8
 
     dst = None
     dst_type = None
@@ -1293,6 +1293,9 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('prompt')
     AlienSessionInfo['commandlist'].append('token')
     AlienSessionInfo['commandlist'].append('certinfo')
+    AlienSessionInfo['commandlist'].append('quit')
+    AlienSessionInfo['commandlist'].append('exit')
+    AlienSessionInfo['commandlist'].append('logout')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
@@ -1542,6 +1545,8 @@ async def JAlien(commands: str = ''):
                     print("Toggle the following in the command prompt : <date> for date information and <pwd> for local directory", flush = True)
                 input_list.clear()
                 continue
+
+            if input_list[0] == 'exit' or input_list[0] == 'quit' or input_list[0] == 'logout': exit_message()
 
             # make sure we have with whom to talk to; if not, lets redo the connection
             # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
