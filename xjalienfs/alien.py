@@ -1669,7 +1669,15 @@ def main():
         JSONRAW_OUT = 1
 
     cmd_string = ' '.join(sys.argv)
-    asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
+    try:
+        asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
+    except KeyboardInterrupt:
+        print("Received keyboard intrerupt, exiting..")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Exception encountered, it will be logged to {DEBUG_FILE}")
+        logging.error(traceback.format_exc())
+        sys.exit(1)
     os._exit(int(AlienSessionInfo['exitcode']))
 
 
