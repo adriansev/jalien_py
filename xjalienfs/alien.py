@@ -1027,7 +1027,8 @@ async def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
     rtt_max = max(results)
     rtt_avg = statistics.mean(results)
     rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
-    print(f"wb {count} ping/pong(s) rtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
+    endpoint = wb.remote_address[0]
+    print(f"Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
 
 
 async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
@@ -1287,40 +1288,40 @@ async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
                 jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
     # let's try to get a websocket
-    websocket = None
+    wb = None
     nr_tries = 0
     init_begin = None
     init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
-    while websocket is None:
+    while wb is None:
         try:
             nr_tries += 1
-            websocket = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+            wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
         except Exception as e:
             logging.debug(traceback.format_exc())
-        if not websocket:
+        if not wb:
             time.sleep(1)
             if nr_tries + 1 > 3:
                 logging.debug(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
                 break
 
-    if jalien_server != 'alice-jcentral.cern.ch' and not websocket:  # we stil do not have a socket
+    if jalien_server != 'alice-jcentral.cern.ch' and not wb:  # we stil do not have a socket
         jalien_websocket_port = 8097
         jalien_server = 'alice-jcentral.cern.ch'
         nr_tries = 0
-        while websocket is None:
+        while wb is None:
             try:
                 nr_tries += 1
-                websocket = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+                wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
             except Exception as e:
                 logging.debug(traceback.format_exc())
-            if not websocket:
+            if not wb:
                 time.sleep(1)
                 if nr_tries + 1 > 3:
                     logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
                     break
 
-    if not websocket:
+    if not wb:
         logging.debug("Could not get a websocket connection, exiting..")
         sys.exit(1)
     if init_begin:
@@ -1328,9 +1329,9 @@ async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
         if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
-    await token(websocket)  # it will return if token is valid, if not it will request and write it to file
+    await token(wb)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
-    return websocket
+    return wb
 
 
 async def token(wb: websockets.client.WebSocketClientProtocol):
