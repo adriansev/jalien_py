@@ -1034,10 +1034,10 @@ async def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
 async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.debug(f"SendMsg_json:: websocket not initialized")
+        logging.info(f"SendMsg_json:: websocket not initialized")
         return ''
     if not json:
-        logging.debug(f"SendMsg_json:: json message is empty or invalid")
+        logging.info(f"SendMsg_json:: json message is empty or invalid")
         return ''
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
@@ -1074,10 +1074,10 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
 async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None) -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.debug(f"SendMsg:: websocket is invalid")
+        logging.info(f"SendMsg:: websocket is invalid")
         return ''
     if not cmd:
-        logging.debug(f"SendMsg:: command is not specified")
+        logging.info(f"SendMsg:: command is not specified")
         return ''
     if not args: args = []
     result = await SendMsg_json(wb, CreateJsonCommand(cmd, args))
@@ -1087,10 +1087,10 @@ async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args:
 async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.debug(f"SendMsg_str:: websocket is invalid")
+        logging.info(f"SendMsg_str:: websocket is invalid")
         return ''
     if not cmd_line:
-        logging.debug(f"SendMsg_str:: command line is not specified")
+        logging.info(f"SendMsg_str:: command line is not specified")
         return ''
     result = await SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
     return result
@@ -1099,11 +1099,11 @@ async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: s
 async def AlienSession(cmd: str) -> dict:
     """Create a connection to AliEn central services, send a json message and return the decoded to dictionary message"""
     if not cmd:
-        logging.debug(f"AlienSession:: cmd string is not specified")
+        logging.info(f"AlienSession:: cmd string is not specified")
         return None
     wb = await AlienConnect()
     if not wb:
-        logging.debug(f"AlienSession:: websocket could not be aquired")
+        logging.info(f"AlienSession:: websocket could not be aquired")
         return None
     result = await SendMsg_json(wb, json)
     return json.loads(result)
@@ -1225,7 +1225,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
     ctx = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
 
-    if DEBUG: logging.debug(f"Request connection to : {host}:{port}{path}")
+    logging.info(f"Request connection to : {host}:{port}{path}")
 
     socket_endpoint = None
     # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
@@ -1247,14 +1247,14 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     except Exception as e:
         logging.debug(traceback.format_exc())
 
-    websocket = None
+    wb = None
     if socket_endpoint:
         try:
             if DEBUG:
                 init_begin = datetime.now().timestamp()
                 logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
-            websocket = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
-                                                 max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+            wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
+                                          max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
             if DEBUG:
                 init_end = datetime.now().timestamp()
                 init_delta = (init_end - init_begin) * 1000
@@ -1262,8 +1262,10 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
                 logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-    if websocket and DEBUG: logging.debug(f"GOT ENDPOINT: {socket_endpoint.getpeername()[0]}:{socket_endpoint.getpeername()[1]}")
-    return websocket
+    endpoint_addr = wb.remote_address[0]
+    endpoint_port = wb.remote_address[1]
+    if wb: logging.info(f"CONNECTED: {endpoint_addr}:{endpoint_port}")
+    return wb
 
 
 async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
@@ -1322,12 +1324,13 @@ async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
                     break
 
     if not wb:
-        logging.debug("Could not get a websocket connection, exiting..")
+        logging.error("Could not get a websocket connection, exiting..")
+        print("Could not get a websocket connection, exiting..")
         sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
-        if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
+        if DEBUG: logging.debug(f">>>   Endpoint {endpoint} total connecting time: {init_delta:.3f} ms")
+        if TIME_CONNECT: print(f">>>   Endpoint {endpoint} total connecting time: {init_delta:.3f} ms", flush = True)
 
     await token(wb)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
@@ -1650,7 +1653,7 @@ async def JAlien(commands: str = ''):
 def main():
     global JSON_OUT, JSONRAW_OUT
 
-    MSG_LVL = logging.ERROR
+    MSG_LVL = logging.INFO
     if DEBUG: MSG_LVL = logging.DEBUG
     log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
 
