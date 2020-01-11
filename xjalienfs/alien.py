@@ -12,6 +12,7 @@ import traceback
 import logging
 import ssl
 import uuid
+import statistics
 from typing import NamedTuple
 import OpenSSL
 import shlex
@@ -988,6 +989,47 @@ async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
     return True
 
 
+async def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
+    """Websocket ping function, it will return rtt in ms"""
+    init_delta = float(-999.0)
+    init_begin = datetime.now().timestamp()
+    try:
+        pong_waiter = await wb.ping()
+        await pong_waiter
+    except Exception as e:
+        logging.debug(f"ping/pong failed!!!")
+        logging.exception(e)
+    init_end = datetime.now().timestamp()
+    init_delta = float((init_end - init_begin) * 1000)
+    return init_delta
+
+
+async def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
+    """Command implementation for ping functionality"""
+    count = int(1)
+    if not arg:
+        count = int(3)
+    elif arg.isdigit():
+        count = int(arg)
+        if count < 1: count = 1
+    elif arg == '-h':
+        print("ping <count>\nwhere count is integer")
+    else:
+        print("Unrecognized argument")
+        return
+
+    results = []
+    for i in range(count):
+        p = await wb_ping(wb)
+        results.append(p)
+
+    rtt_min = min(results)
+    rtt_max = max(results)
+    rtt_avg = statistics.mean(results)
+    rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
+    print(f"wb {count} ping/pong(s) rtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
+
+
 async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
@@ -1437,6 +1479,11 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         await DO_quota(wb, args)
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
+
+    if cmd == "ping":
+        ping_arg = args[0] if len(args) > 0 else ''
+        await DO_ping(wb, ping_arg)
+        return int(0)
 
     if cmd == "cat":
         if args[0] != '-h':
