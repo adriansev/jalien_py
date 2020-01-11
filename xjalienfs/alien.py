@@ -968,10 +968,26 @@ def PrintDict(dict: dict) -> str:
     print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
 
 
+async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
+    try:
+        pong_waiter = await wb.ping()
+    except Exception as e:
+        logging.debug(f"WB ping failed!!!")
+        logging.exception(e)
+        return False
+    try:
+        await pong_waiter
+    except Exception as e:
+        logging.debug(f"WB pong failed!!!")
+        logging.exception(e)
+        return False
+    return True
+
+
 async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.debug(f"SendMsg_json:: websocket is invalid")
+        logging.debug(f"SendMsg_json:: websocket not initialized")
         return ''
     if not json:
         logging.debug(f"SendMsg_json:: json message is empty or invalid")
@@ -980,8 +996,26 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
         logging.debug(f"SEND COMMAND: {json}")
         init_begin = datetime.now().timestamp()
         logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
-    await wb.send(json)
-    result = await wb.recv()
+
+    try:
+        await wb.send(json)
+    except Exception as e:
+        logging.exception(e)
+        logging.debug("SendMsg_json:: error sending the message")
+        print("SendMsg_json:: error sending the message")
+        wb_status = await IsWbConnected(wb)
+        if not wb_status: wb = await InitConnection()
+        return ''
+
+    try:
+        result = await wb.recv()
+    except Exception as e:
+        logging.exception(e)
+        logging.debug("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
+        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
+        wb_status = await IsWbConnected(wb)
+        if not wb_status: wb = await InitConnection()
+        return ''
     if DEBUG:
         init_end = datetime.now().timestamp()
         init_delta = (init_end - init_begin) * 1000
