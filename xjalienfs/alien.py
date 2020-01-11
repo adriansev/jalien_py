@@ -141,11 +141,12 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
-async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list = [], specs: list = [], isWrite: bool = False) -> list:
+async def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return
     access_list = []
     if not lfn_list: return access_list
+    if not specs: specs = []
     access_type = 'read'
     if isWrite: access_type = 'write'
     for lfn in lfn_list:
@@ -229,8 +230,9 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
         return True
 
 
-def create_metafile(meta_filename: str, local_filename: str, size: Union[str, int], md5: str, replica_list: list = []):
+def create_metafile(meta_filename: str, local_filename: str, size: Union[str, int], md5: str, replica_list: Union[None, list] = None):
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
+    if not replica_list: return
     published = str(datetime.now().replace(microsecond=0).isoformat())
     with open(meta_filename, 'w') as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -278,16 +280,16 @@ if has_readline:
         readline.append_history_file(new_h_len - prev_h_len, histfile)
 
 
-async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: list = []) -> int:
+async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
+    if (not xrd_copy_command) or len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
+        xrdcp_help()
+        return int(64)  # EX_USAGE /* command line usage error */
+
     if not AlienSessionInfo:
         print('Session information like home and current directories needed', flush = True)
         return int(126)  # ENOKEY /* Required key not available */
-
-    if len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
-        xrdcp_help()
-        return int(64)  # EX_USAGE /* command line usage error */
 
     if not has_xrootd:
         print('python XRootD module cannot be found, the copy process cannot continue')
@@ -843,8 +845,9 @@ async def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str):
             runShellCMD('more ' + tmp)
 
 
-async def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: list):
+async def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[None, list] = None):
     """quota : put togheter both job and file quota"""
+    if not quota_args: quota_args = []
     if len(quota_args) > 0:
         if quota_args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
             user = quota_args[0]
@@ -949,8 +952,9 @@ def check_port(address: str, port: Union[str, int]) -> bool:
         return True
 
 
-def CreateJsonCommand(cmd: str, options: list = []) -> str:
+def CreateJsonCommand(cmd: str, options: Union[None, list] = None) -> str:
     """Return a json with command and argument list"""
+    if not options: options = []
     jsoncmd = {"command": cmd, "options": options}
     if DEBUG: logging.debug(f'send json: {jsoncmd}')
     return json.dumps(jsoncmd)
@@ -1024,7 +1028,7 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
     return result
 
 
-async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: list = []) -> str:
+async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None) -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     if not wb:
         logging.debug(f"SendMsg:: websocket is invalid")
@@ -1032,6 +1036,7 @@ async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args:
     if not cmd:
         logging.debug(f"SendMsg:: command is not specified")
         return ''
+    if not args: args = []
     result = await SendMsg_json(wb, CreateJsonCommand(cmd, args))
     return result
 
@@ -1112,7 +1117,7 @@ def CertInfo(fname: str):
     return int(0)
 
 
-def create_ssl_context():
+def create_ssl_context() -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     # SSL SETTINGS
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
