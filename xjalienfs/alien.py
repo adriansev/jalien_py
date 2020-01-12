@@ -1232,7 +1232,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
     try:
         if DEBUG:
-            logging.debug(f"TRY ENDPOINT : {host}:{port}")
+            logging.debug(f"TRY ENDPOINT: {host}:{port}")
             init_begin = datetime.now().timestamp()
             logging.debug(f"TCP SOCKET BEGIN: {init_begin}")
         if os.getenv('ALIENPY_NO_STAGGER'):
@@ -1246,9 +1246,14 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
             logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
     except Exception as e:
         logging.debug(traceback.format_exc())
+        logging.info(f"Could NOT create socket connection to {host}:{port}")
+        return None
 
     wb = None
     if socket_endpoint:
+        socket_endpoint_addr = socket_endpoint.getpeername()[0]
+        socket_endpoint_port = socket_endpoint.getpeername()[1]
+        logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
         try:
             if DEBUG:
                 init_begin = datetime.now().timestamp()
@@ -1262,9 +1267,9 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
                 logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-    endpoint_addr = wb.remote_address[0]
-    endpoint_port = wb.remote_address[1]
-    if wb: logging.info(f"CONNECTED: {endpoint_addr}:{endpoint_port}")
+            logging.info(f"Could NOT establish websocket connection to {socket_endpoint_addr}:{socket_endpoint_port}")
+            return None
+    if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
     return wb
 
 
@@ -1329,8 +1334,8 @@ async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
         sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Endpoint {endpoint} total connecting time: {init_delta:.3f} ms")
-        if TIME_CONNECT: print(f">>>   Endpoint {endpoint} total connecting time: {init_delta:.3f} ms", flush = True)
+        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
+        if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
     await token(wb)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
