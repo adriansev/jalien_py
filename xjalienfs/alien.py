@@ -1377,6 +1377,7 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     if not wb: return
     global AlienSessionInfo
     # get the command list
+    AlienSessionInfo['commandlist'].clear()
     result = await SendMsg(wb, 'commandlist', [])
     json_dict = json.loads(result)
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
@@ -1393,13 +1394,16 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('exit')
     AlienSessionInfo['commandlist'].append('logout')
     AlienSessionInfo['commandlist'].sort()
-    AlienSessionInfo['user'] = json_dict["metadata"]["user"]
+
+    AlienSessionInfo['user'] = json_dict['metadata']['user']
+    if not AlienSessionInfo['alienHome']:  # if this is first query then current dir is alienHOME
+        AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
-    if AlienSessionInfo['currentdir'] and not AlienSessionInfo['currentdir'] == json_dict["metadata"]["currentdir"]:
-        tmp_res = SendMsg(wb, 'cd', [AlienSessionInfo['currentdir']])
-    AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
-    if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']  # this is first query so current dir is alienHOME
+    if AlienSessionInfo['currentdir'] and (AlienSessionInfo['currentdir'] != json_dict['metadata']['currentdir']):
+        tmp_res = await SendMsg(wb, 'cd', [AlienSessionInfo['currentdir']])
+    else:
+        AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
 
 async def InitConnection() -> websockets.client.WebSocketClientProtocol:
@@ -1410,7 +1414,7 @@ async def InitConnection() -> websockets.client.WebSocketClientProtocol:
     wb = await AlienConnect()
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if not AlienSessionInfo['commandlist']: await getSessionVars(wb)
+    await getSessionVars(wb)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
         if DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
