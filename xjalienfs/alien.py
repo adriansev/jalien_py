@@ -223,9 +223,15 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
     if os.path.isfile(file):  # first check
         if int(os.stat(file).st_size) != int(size):
             os.remove(file)
+            if DEBUG:
+                print(f"Removed file (invalid size): {file}")
+                logging.debug(f"Removed file (invalid size): {file}")
             return False
         if md5(file) != reported_md5:
             os.remove(file)
+            if DEBUG:
+                print(f"Removed file (invalid md5): {file}")
+                logging.debug(f"Removed file (invalid md5): {file}")
             return False
         print(f"{file} --> TARGET VALID", flush = True)
         return True
