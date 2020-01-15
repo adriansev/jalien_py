@@ -1574,18 +1574,19 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
         print(message, flush = True)
         return exitcode
 
+    if exitcode != "0": print(f'{error}', file=sys.stderr, flush = True)
+
     websocket_output = ''
     if json_dict['results']: websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-    if websocket_output and shellcmd:
-        shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
-        stdout = shell_run.stdout
-        if stdout: print(stdout, flush = True)
-        stderr = shell_run.stderr
-        if stderr: print(stderr, flush = True)
-    else:
-        if websocket_output: print(websocket_output, flush = True)
-
-    if exitcode != "0": print(f'{error}', file=sys.stderr, flush = True)
+    if websocket_output:
+        if shellcmd:
+            shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
+            stdout = shell_run.stdout
+            if stdout: print(stdout, flush = True)
+            stderr = shell_run.stderr
+            if stderr: print(stderr, flush = True)
+        else:
+            print(websocket_output, flush = True)
     return exitcode
 
 
