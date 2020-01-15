@@ -1477,7 +1477,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     # first to be processed is the time token, it will start the timing and be removed from command
     if cmd == 'time':
         if not args:
-            print("time needs as argument a command", flush = True)
+            print("time precede the command that should be timed", flush = True)
             return int(64)  # EX_USAGE /* command line usage error */
         else:
             cmd = args.pop(0)
