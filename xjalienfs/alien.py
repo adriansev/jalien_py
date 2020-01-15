@@ -1561,38 +1561,32 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
     json_dict = json.loads(message)
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    error = json_dict.get("metadata").get("error", '')
+    error = str(json_dict.get("metadata").get("error", ''))
     AlienSessionInfo['error'] = error
 
-    exitcode = json_dict.get("metadata").get("exitcode", '0')
+    exitcode = int(json_dict.get("metadata").get("exitcode", '0'))
     AlienSessionInfo['exitcode'] = exitcode
 
     if JSON_OUT:  # print nice json for debug or json mode
         print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
-        return int(exitcode)
+        return exitcode
     if JSONRAW_OUT:  # print the raw byte stream received from the server
         print(message, flush = True)
-        return int(exitcode)
+        return exitcode
 
-    if error and (exitcode != "0"):  # under the assumption that if error there is no stdout message, we print error and return the exitcode
-        print(f'{error}', file=sys.stderr, flush = True)
-        return int(exitcode)
-
-    websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-    if not websocket_output:
-        if not exitcode: exitcode = 61  # ENODATA
-        return int(exitcode)
-
-    if shellcmd:
+    websocket_output = ''
+    if json_dict['results']: websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+    if websocket_output and shellcmd:
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
         stdout = shell_run.stdout
         if stdout: print(stdout, flush = True)
         stderr = shell_run.stderr
         if stderr: print(stderr, flush = True)
     else:
-        print(websocket_output, flush = True)
+        if websocket_output: print(websocket_output, flush = True)
 
-    return int(exitcode)
+    if exitcode != "0": print(f'{error}', file=sys.stderr, flush = True)
+    return exitcode
 
 
 async def JAlien(commands: str = ''):
