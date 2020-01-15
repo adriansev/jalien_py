@@ -1437,16 +1437,40 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     args = cmd_string.split(" ")
     cmd = args.pop(0)
 
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
-    await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
-
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
     # userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
 
-    # implement a time command for measurement of sent/recv delay
+    if cmd == 'certinfo':
+        AlienSessionInfo['exitcode'] = CertInfo(usercert)
+        return AlienSessionInfo['exitcode']
+
+    if cmd == 'exitcode':
+        print(AlienSessionInfo['exitcode'])
+        return int(0)
+
+    if cmd == 'token':
+        if len(args) > 0 and args[0] == 'refresh':
+            os.remove(tokencert)
+            os.remove(tokenkey)
+            try:
+                wb = await InitConnection()
+            except Exception as e:
+                logging.debug(traceback.format_exc())
+                wb = await InitConnection()
+            AlienSessionInfo['exitcode'] = int(0)
+            return AlienSessionInfo['exitcode']
+        else:
+            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+            return AlienSessionInfo['exitcode']
+
+    if cmd == "ping":
+        ping_arg = args[0] if len(args) > 0 else ''
+        await DO_ping(wb, ping_arg)
+        return int(0)
+
+    # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
     message_begin = None
     message_delta = None
 
@@ -1470,39 +1494,20 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
 
-    if cmd == 'certinfo':
-        AlienSessionInfo['exitcode'] = CertInfo(usercert)
-        return AlienSessionInfo['exitcode']
-
-    if cmd == 'token':
-        if len(args) > 0 and args[0] == 'refresh':
-            os.remove(tokencert)
-            os.remove(tokenkey)
-            try:
-                wb = await InitConnection()
-            except Exception as e:
-                logging.debug(traceback.format_exc())
-                wb = await InitConnection()
-            AlienSessionInfo['exitcode'] = int(0)
-            return AlienSessionInfo['exitcode']
-        if not args or (len(args) > 0 and args[0] == 'info'):
-            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
-            return AlienSessionInfo['exitcode']
-
-    if cmd == "cp":  # defer cp processing to ProcessXrootdCp
-        exitcode = await ProcessXrootdCp(wb, args)
-        AlienSessionInfo['exitcode'] = exitcode
-        return AlienSessionInfo['exitcode']
-
     if cmd == "quota":
         await DO_quota(wb, args)
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
 
-    if cmd == "ping":
-        ping_arg = args[0] if len(args) > 0 else ''
-        await DO_ping(wb, ping_arg)
-        return int(0)
+    # for commands that use lfns we need the current used paths and current directory content
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
+    await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
+
+    if cmd == "cp":  # defer cp processing to ProcessXrootdCp
+        exitcode = await ProcessXrootdCp(wb, args)
+        AlienSessionInfo['exitcode'] = exitcode
+        return AlienSessionInfo['exitcode']
 
     if cmd == "cat":
         if args[0] != '-h':
