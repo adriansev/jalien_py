@@ -1452,16 +1452,22 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         return int(0)
 
     if cmd == 'token':
-        if len(args) > 0 and args[0] == 'refresh':
-            os.remove(tokencert)
-            os.remove(tokenkey)
-            try:
-                wb = await InitConnection()
-            except Exception as e:
-                logging.debug(traceback.format_exc())
-                wb = await InitConnection()
-            AlienSessionInfo['exitcode'] = int(0)
-            return AlienSessionInfo['exitcode']
+        if len(args) > 0:
+            if args[0] == 'refresh':
+                os.remove(tokencert)
+                os.remove(tokenkey)
+                try:
+                    wb = await InitConnection()
+                except Exception as e:
+                    logging.debug(traceback.format_exc())
+                    wb = await InitConnection()
+                AlienSessionInfo['exitcode'] = int(0)
+                return AlienSessionInfo['exitcode']
+            #if args[0] == '-h' or args[0] == 'help' or args[0] == '-help':
+                #print("Use <refresh> for deleting previous token and reinitialize it")
+            elif args[0] == 'info':
+                AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+                return AlienSessionInfo['exitcode']
         else:
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
             return AlienSessionInfo['exitcode']
