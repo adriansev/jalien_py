@@ -1430,7 +1430,7 @@ async def cwd_list(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
 
 
-async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None):
+async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
     global AlienSessionInfo
@@ -1545,10 +1545,10 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     if message_begin:
         message_delta = (datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
-    return int(ProcessReceivedMessage(result, shellcmd))
+    return int(ProcessReceivedMessage(result, shellcmd, cmd_mode))
 
 
-def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None):
+def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
@@ -1568,7 +1568,9 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None)
         print(message, flush = True)
         return int(exitcode)
 
-    if error and exitcode and (exitcode != "0"): print(f'exitcode: {exitcode} ; err: {error}', flush = True)
+    if error and (exitcode != "0"):  # under the assumption that if error there is no stdout message, we print error and return the exitcode
+        print(f'{error}', file=sys.stderr, flush = True)
+        return int(exitcode)
 
     websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
     if not websocket_output:
@@ -1596,8 +1598,8 @@ async def JAlien(commands: str = ''):
     # Command mode interaction
     if commands:
         cmds_tokens = commands.split(";")
-        for token in cmds_tokens: await ProcessInput(wb, token, None)
-        return int(AlienSessionInfo['exitcode'])
+        for token in cmds_tokens: await ProcessInput(wb, token, None, True)
+        return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
 
     # Begin Shell-like interaction
     if has_readline: setupHistory()  # enable history saving
