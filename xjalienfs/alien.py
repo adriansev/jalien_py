@@ -1392,6 +1392,7 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('certinfo')
     AlienSessionInfo['commandlist'].append('quit')
     AlienSessionInfo['commandlist'].append('exit')
+    AlienSessionInfo['commandlist'].append('exitcode')
     AlienSessionInfo['commandlist'].append('logout')
     AlienSessionInfo['commandlist'].sort()
 
