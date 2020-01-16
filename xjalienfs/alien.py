@@ -1279,7 +1279,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     return wb
 
 
-async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
+async def AlienConnect(token_args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
@@ -1343,12 +1343,12 @@ async def AlienConnect() -> websockets.client.WebSocketClientProtocol:
         if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
-    await token(wb)  # it will return if token is valid, if not it will request and write it to file
+    await token(wb, token_args)  # it will return if token is valid, if not it will request and write it to file
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return wb
 
 
-async def token(wb: websockets.client.WebSocketClientProtocol):
+async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None):
     """(Re)create the tokencert and tokenkey files"""
     if not wb: return
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
@@ -1357,11 +1357,30 @@ async def token(wb: websockets.client.WebSocketClientProtocol):
     # if the certificate used is not the token, then get one
     if IsValidCert(tokencert): return
 
-    result = await SendMsg(wb, 'token', ['-nomsg'])
+    if not args: args = []
+    args.insert(0, '-nomsg')
+
+    result = await SendMsg(wb, 'token', args)
     json_dict = json.loads(result)
 
-    tokencert_content = json_dict['results'][0]["tokencert"]
-    tokenkey_content  = json_dict['results'][0]["tokenkey"]
+    error = str(json_dict.get("metadata").get("error", ''))
+    AlienSessionInfo['error'] = error
+    if error: print(error)
+
+    exitcode = int(json_dict.get("metadata").get("exitcode", '0'))
+    AlienSessionInfo['exitcode'] = exitcode
+
+    # tokencert_content = json_dict['results'][0]["tokencert"]
+    # tokenkey_content  = json_dict['results'][0]["tokenkey"]
+    tokencert_content = json_dict.get('results')[0].get('tokencert', '')
+    if not tokencert_content:
+        print("No token returned")
+        return exitcode
+
+    tokenkey_content = json_dict.get('results')[0].get('tokenkey', '')
+    if not tokenkey_content:
+        print("No token returned")
+        return exitcode
 
     if os.path.isfile(tokencert): os.chmod(tokencert, 0o700)  # make it writeable
     with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file=tcert)  # write the tokencert
@@ -1370,6 +1389,7 @@ async def token(wb: websockets.client.WebSocketClientProtocol):
     if os.path.isfile(tokenkey): os.chmod(tokenkey, 0o700)  # make it writeable
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
+    return exitcode
 
 
 async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
@@ -1407,12 +1427,12 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
         AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
 
-async def InitConnection() -> websockets.client.WebSocketClientProtocol:
+async def InitConnection(token_args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
     """Create a session to AliEn services, including session globals"""
     init_begin = None
     init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
-    wb = await AlienConnect()
+    wb = await AlienConnect(token_args)
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     await getSessionVars(wb)
@@ -1454,20 +1474,31 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     if cmd == 'token':
         if len(args) > 0:
             if args[0] == 'refresh':
-                os.remove(tokencert)
-                os.remove(tokenkey)
+                if os.path.exists(tokencert): os.remove(tokencert)
+                if os.path.exists(tokenkey): os.remove(tokenkey)
+                args.pop(0)
                 try:
-                    wb = await InitConnection()
+                    wb = await InitConnection(args)
                 except Exception as e:
                     logging.debug(traceback.format_exc())
-                    wb = await InitConnection()
-                AlienSessionInfo['exitcode'] = int(0)
-                return AlienSessionInfo['exitcode']
-            #if args[0] == '-h' or args[0] == 'help' or args[0] == '-help':
-                #print("Use <refresh> for deleting previous token and reinitialize it")
+                if os.path.exists(tokencert) and os.path.exists(tokenkey):
+                    AlienSessionInfo['exitcode'] = int(0)
+                    return AlienSessionInfo['exitcode']
+                else:
+                    AlienSessionInfo['exitcode'] = int(1)
+                    return AlienSessionInfo['exitcode']
             elif args[0] == 'info':
                 AlienSessionInfo['exitcode'] = CertInfo(tokencert)
                 return AlienSessionInfo['exitcode']
+            elif args[0] in ['-h', 'help', '-help']:
+                print("Client side arguments:\n\t-h|-help|help\t: print help message\n"
+                      "\tinfo\t\t: print certificate information\n"
+                      "\tprint\t\t: print the server message for any other options after the print (see options below)\n"
+                      "\trefresh\t\t: Delete the current token and re-initialize the connection with usercert \n"
+                      )
+                args[0] = '-h'
+            elif args[0] == 'print':
+                args.pop(0)
         else:
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
             return AlienSessionInfo['exitcode']
@@ -1580,10 +1611,12 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
         print(message, flush = True)
         return exitcode
 
-    if exitcode != "0": print(f'{error}', file=sys.stderr, flush = True)
+    if exitcode != 0: print(f'{error}', file=sys.stderr, flush = True)
 
     websocket_output = ''
-    if json_dict['results']: websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+    if json_dict['results']:
+        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+        websocket_output.lstrip()
     if websocket_output:
         if shellcmd:
             shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
