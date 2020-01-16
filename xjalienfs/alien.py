@@ -1663,7 +1663,16 @@ async def JAlien(commands: str = ''):
         return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
 
     # Begin Shell-like interaction
-    if has_readline: setupHistory()  # enable history saving
+    if has_readline:
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer_delims(" ")
+
+        def complete(text, state):
+            results = [x+" " for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
+            return results[state]
+
+        readline.set_completer(complete)
+        setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
     while True:
