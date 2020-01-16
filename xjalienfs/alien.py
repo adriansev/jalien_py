@@ -1363,11 +1363,11 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     answer = await SendMsg(wb, 'token', args)
     json_dict = json.loads(answer)
 
-    error = str(json_dict.get("metadata").get("error", ''))
+    error = str(json_dict["metadata"]["error"])
     AlienSessionInfo['error'] = error
     if error: print(error)
 
-    exitcode = int(json_dict.get("metadata").get("exitcode", '0'))
+    exitcode = int(json_dict["metadata"]["exitcode"])
     AlienSessionInfo['exitcode'] = exitcode
 
     # tokencert_content = json_dict['results'][0]["tokencert"]
@@ -1598,10 +1598,10 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
     json_dict = json.loads(message)
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
-    error = str(json_dict.get("metadata").get("error", ''))
+    error = str(json_dict["metadata"]["error"])
     AlienSessionInfo['error'] = error
 
-    exitcode = int(json_dict.get("metadata").get("exitcode", '0'))
+    exitcode = int(json_dict["metadata"]["exitcode"])
     AlienSessionInfo['exitcode'] = exitcode
 
     if JSON_OUT:  # print nice json for debug or json mode
