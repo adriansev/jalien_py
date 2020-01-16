@@ -1408,8 +1408,10 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].remove('fquota')
     AlienSessionInfo['commandlist'].append('quota')
     AlienSessionInfo['commandlist'].append('prompt')
-    AlienSessionInfo['commandlist'].append('token')
-    AlienSessionInfo['commandlist'].append('certinfo')
+    AlienSessionInfo['commandlist'].append('token-init')
+    AlienSessionInfo['commandlist'].append('token-info')
+    AlienSessionInfo['commandlist'].append('token-destroy')
+    AlienSessionInfo['commandlist'].append('cert-info')
     AlienSessionInfo['commandlist'].append('quit')
     AlienSessionInfo['commandlist'].append('exit')
     AlienSessionInfo['commandlist'].append('exitcode')
@@ -1463,8 +1465,36 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
 
-    if cmd == 'certinfo':
+    if cmd == 'cert-info':
+        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+            print("Print user certificate information")
+            AlienSessionInfo['exitcode'] = 0
+            return AlienSessionInfo['exitcode']
         AlienSessionInfo['exitcode'] = CertInfo(usercert)
+        return AlienSessionInfo['exitcode']
+
+    if cmd == 'token-info':
+        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+            print("Print token certificate information")
+            AlienSessionInfo['exitcode'] = 0
+            return AlienSessionInfo['exitcode']
+        if os.path.exists(tokencert):
+            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+        else:
+            print(f"Token >{tokencert}< not found/created")
+            AlienSessionInfo['exitcode'] = 1
+        return AlienSessionInfo['exitcode']
+
+    if cmd == 'token-destroy':
+        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+            print("Delete the token{cert,key}.pem files")
+            AlienSessionInfo['exitcode'] = 0
+            return AlienSessionInfo['exitcode']
+        if os.path.exists(tokencert): os.remove(tokencert)
+        if os.path.exists(tokenkey): os.remove(tokenkey)
+        if not cmd_mode:
+            print("Token was destroyed! Exit and re-connect for token re-creation.")
+        AlienSessionInfo['exitcode'] = 0
         return AlienSessionInfo['exitcode']
 
     if cmd == 'exitcode':
@@ -1472,35 +1502,26 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         return int(0)
 
     if cmd == 'token':
-        if len(args) > 0:
-            if args[0] == 'refresh':
-                if os.path.exists(tokencert): os.remove(tokencert)
-                if os.path.exists(tokenkey): os.remove(tokenkey)
-                args.pop(0)
-                try:
-                    wb = await InitConnection(args)
-                except Exception as e:
-                    logging.debug(traceback.format_exc())
-                if os.path.exists(tokencert) and os.path.exists(tokenkey):
-                    AlienSessionInfo['exitcode'] = int(0)
-                    return AlienSessionInfo['exitcode']
-                else:
-                    AlienSessionInfo['exitcode'] = int(1)
-                    return AlienSessionInfo['exitcode']
-            elif args[0] == 'info':
-                AlienSessionInfo['exitcode'] = CertInfo(tokencert)
-                return AlienSessionInfo['exitcode']
-            elif args[0] in ['-h', 'help', '-help']:
-                print("Client side arguments:\n\t-h|-help|help\t: print help message\n"
-                      "\tinfo\t\t: print certificate information\n"
-                      "\tprint\t\t: print the server message for any other options after the print (see options below)\n"
-                      "\trefresh\t\t: Delete the current token and re-initialize the connection with usercert \n"
-                      )
-                args[0] = '-h'
-            elif args[0] == 'print':
-                args.pop(0)
+        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+            args[0] = '-h'
+            print("Print only command!!! see below the arguments")
+
+    if cmd == 'token-init':
+        if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
+            cmd = 'token'
+            args[0] = '-h'
+            print("Use >token-init args< for token (re)creation, see below the arguments")
         else:
-            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+            if os.path.exists(tokencert): os.remove(tokencert)
+            if os.path.exists(tokenkey): os.remove(tokenkey)
+            try:
+                wb = await InitConnection(args)
+            except Exception as e:
+                logging.debug(traceback.format_exc())
+            if os.path.exists(tokencert) and os.path.exists(tokenkey):
+                AlienSessionInfo['exitcode'] = int(0)
+            else:
+                AlienSessionInfo['exitcode'] = int(1)
             return AlienSessionInfo['exitcode']
 
     if cmd == "ping":
