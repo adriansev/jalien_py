@@ -1360,8 +1360,8 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     if not args: args = []
     args.insert(0, '-nomsg')
 
-    result = await SendMsg(wb, 'token', args)
-    json_dict = json.loads(result)
+    answer = await SendMsg(wb, 'token', args)
+    json_dict = json.loads(answer)
 
     error = str(json_dict.get("metadata").get("error", ''))
     AlienSessionInfo['error'] = error
