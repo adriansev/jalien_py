@@ -52,7 +52,7 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False}
 
 
 class XrdCpArgs(NamedTuple):
@@ -1166,7 +1166,8 @@ def CertInfo(fname: str):
     return int(0)
 
 
-def create_ssl_context() -> ssl.SSLContext:
+def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
+    global AlienSessionInfo
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     # SSL SETTINGS
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
@@ -1200,10 +1201,12 @@ def create_ssl_context() -> ssl.SSLContext:
     # defaults
     cert = usercert
     key  = userkey
+    AlienSessionInfo['use_usercert'] = True
 
-    if IsValidCert(tokencert):
+    if IsValidCert(tokencert) and not use_usercert:
         cert = tokencert
         key  = tokenkey
+        AlienSessionInfo['use_usercert'] = False
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
     ctx.options |= ssl.OP_NO_SSLv3
@@ -1218,7 +1221,7 @@ def create_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websockets.client.WebSocketClientProtocol, None]:
+async def wb_create(host: str, port: Union[str, int], path: str, use_usercert: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     QUEUE_SIZE = int(4)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
@@ -1229,8 +1232,7 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
 
     fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
-    ctx = create_ssl_context()  # will check validity of token and if invalid cert will be usercert
-
+    ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
     logging.info(f"Request connection to : {host}:{port}{path}")
 
     socket_endpoint = None
@@ -1279,12 +1281,11 @@ async def wb_create(host: str, port: Union[str, int], path: str) -> Union[websoc
     return wb
 
 
-async def AlienConnect(token_args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
+async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = 8097  # websocket port
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-
     jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
 
     if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
@@ -1309,7 +1310,7 @@ async def AlienConnect(token_args: Union[None, list] = None) -> websockets.clien
     while wb is None:
         try:
             nr_tries += 1
-            wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+            wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
         except Exception as e:
             logging.debug(traceback.format_exc())
         if not wb:
@@ -1343,7 +1344,7 @@ async def AlienConnect(token_args: Union[None, list] = None) -> websockets.clien
         if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
-    await token(wb, token_args)  # it will return if token is valid, if not it will request and write it to file
+    if AlienSessionInfo['use_usercert']: await token(wb, token_args)  # if we connect with usercert then let get a default token
     # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return wb
 
@@ -1353,9 +1354,6 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     if not wb: return
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
-
-    # if the certificate used is not the token, then get one
-    if IsValidCert(tokencert): return
 
     if not args: args = []
     args.insert(0, '-nomsg')
@@ -1382,11 +1380,15 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
         print("No token returned")
         return exitcode
 
-    if os.path.isfile(tokencert): os.chmod(tokencert, 0o700)  # make it writeable
+    if os.path.isfile(tokencert):
+        os.chmod(tokencert, 0o700)  # make it writeable
+        os.remove(tokencert)
     with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file=tcert)  # write the tokencert
     os.chmod(tokencert, 0o400)  # make it readonly
 
-    if os.path.isfile(tokenkey): os.chmod(tokenkey, 0o700)  # make it writeable
+    if os.path.isfile(tokenkey):
+        os.chmod(tokenkey, 0o700)  # make it writeable
+        os.remove(tokenkey)
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
     return exitcode
@@ -1429,12 +1431,12 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
         AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
 
-async def InitConnection(token_args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
+async def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a session to AliEn services, including session globals"""
     init_begin = None
     init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
-    wb = await AlienConnect(token_args)
+    wb = await AlienConnect(token_args, use_usercert)
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     await getSessionVars(wb)
@@ -1512,12 +1514,18 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             args[0] = '-h'
             print("Use >token-init args< for token (re)creation, see below the arguments")
         else:
-            if os.path.exists(tokencert): os.remove(tokencert)
-            if os.path.exists(tokenkey): os.remove(tokenkey)
-            try:
-                wb = await InitConnection(args)
-            except Exception as e:
-                logging.debug(traceback.format_exc())
+            if AlienSessionInfo['use_usercert']:
+                await token(wb, args)
+                try:
+                    wb = await InitConnection(args)
+                except Exception as e:
+                    logging.debug(traceback.format_exc())
+            else:
+                try:
+                    wb = await InitConnection(args, use_usercert = True)
+                except Exception as e:
+                    logging.debug(traceback.format_exc())
+
             if os.path.exists(tokencert) and os.path.exists(tokenkey):
                 AlienSessionInfo['exitcode'] = int(0)
             else:
