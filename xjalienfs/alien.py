@@ -29,7 +29,7 @@ import async_stagger
 import websockets
 
 try:
-    import readline
+    import gnureadline as readline
     has_readline = True
 except ImportError:
     has_readline = False

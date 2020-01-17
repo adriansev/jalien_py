@@ -1,3 +1,4 @@
+gnureadline
 async-stagger
 websockets
 pyOpenSSL

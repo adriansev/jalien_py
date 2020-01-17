@@ -5,6 +5,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 alibuild_requirements = [
+        'gnureadline',
         'async-stagger',
         'websockets',
         'pyOpenSSL',
