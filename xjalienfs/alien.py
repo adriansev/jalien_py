@@ -32,7 +32,11 @@ try:
     import gnureadline as readline
     has_readline = True
 except ImportError:
-    has_readline = False
+    try:
+        import readline
+        has_readline = True
+    except ImportError:
+        has_readline = False
 
 try:  # let's fail fast if the xrootd python bindings are not present
     from XRootD import client
@@ -1288,6 +1292,13 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
 
+    # let's try to get a websocket
+    wb = None
+    nr_tries = 0
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
+
     if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
         # lets check JBOX availability
         jalien_info = {}
@@ -1301,12 +1312,6 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
                 jalien_server = jalien_info['JALIEN_HOST']
                 jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
-    # let's try to get a websocket
-    wb = None
-    nr_tries = 0
-    init_begin = None
-    init_delta = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
     while wb is None:
         try:
             nr_tries += 1
@@ -1314,12 +1319,13 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
         except Exception as e:
             logging.debug(traceback.format_exc())
         if not wb:
-            time.sleep(1)
             if nr_tries + 1 > 3:
                 logging.debug(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
                 break
+            time.sleep(1)
 
-    if jalien_server != 'alice-jcentral.cern.ch' and not wb:  # we stil do not have a socket
+    # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
+    if not wb and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
         jalien_websocket_port = 8097
         jalien_server = 'alice-jcentral.cern.ch'
         nr_tries = 0
@@ -1330,10 +1336,10 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
             except Exception as e:
                 logging.debug(traceback.format_exc())
             if not wb:
-                time.sleep(1)
                 if nr_tries + 1 > 3:
                     logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
                     break
+                time.sleep(1)
 
     if not wb:
         logging.error("Could not get a websocket connection, exiting..")
