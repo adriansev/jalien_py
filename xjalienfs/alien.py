@@ -1059,7 +1059,7 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
     except Exception as e:
         logging.exception(e)
         logging.debug("SendMsg_json:: error sending the message")
-        print("SendMsg_json:: error sending the message")
+        print("SendMsg_json:: error sending the message", file=sys.stderr, flush = True)
         wb_status = await IsWbConnected(wb)
         if not wb_status: wb = await InitConnection()
         return ''
@@ -1069,7 +1069,7 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
     except Exception as e:
         logging.exception(e)
         logging.debug("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
-        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
+        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s", file=sys.stderr, flush = True)
         wb_status = await IsWbConnected(wb)
         if not wb_status: wb = await InitConnection()
         return ''
@@ -1153,13 +1153,13 @@ def CertInfo(fname: str):
         with open(fname) as f:
             cert_bytes = f.read()
     except Exception:
-        print(f"File >>>{fname}<<< not found", flush = True)
+        print(f"File >>>{fname}<<< not found", file=sys.stderr, flush = True)
         return int(2)  # ENOENT /* No such file or directory */
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
-        print(f"Could not load certificate >>>{fname}<<<", flush = True)
+        print(f"Could not load certificate >>>{fname}<<<", file=sys.stderr, flush = True)
         return int(5)  # EIO /* I/O error */
 
     utc_time_notafter = datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
@@ -1194,7 +1194,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         if os.path.isdir(system_ca_path): capath_default = system_ca_path
 
     if not capath_default and not x509file:
-        print("Not CA location or files specified!!! Connection will not be possible!!")
+        print("Not CA location or files specified!!! Connection will not be possible!!", file=sys.stderr, flush = True)
         sys.exit(1)
     if DEBUG:
         if x509file:
@@ -1343,7 +1343,7 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
 
     if not wb:
         logging.error("Could not get a websocket connection, exiting..")
-        print("Could not get a websocket connection, exiting..")
+        print("Could not get a websocket connection, exiting..", file=sys.stderr, flush = True)
         sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
@@ -1369,7 +1369,7 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
 
     error = str(json_dict["metadata"]["error"])
     AlienSessionInfo['error'] = error
-    if error: print(error)
+    if error: print(error, file=sys.stderr, flush = True)
 
     exitcode = int(json_dict["metadata"]["exitcode"])
     AlienSessionInfo['exitcode'] = exitcode
@@ -1378,12 +1378,12 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     # tokenkey_content  = json_dict['results'][0]["tokenkey"]
     tokencert_content = json_dict.get('results')[0].get('tokencert', '')
     if not tokencert_content:
-        print("No token returned")
+        print("No token returned", file=sys.stderr, flush = True)
         return exitcode
 
     tokenkey_content = json_dict.get('results')[0].get('tokenkey', '')
     if not tokenkey_content:
-        print("No token returned")
+        print("No token returned", file=sys.stderr, flush = True)
         return exitcode
 
     if os.path.isfile(tokencert):
@@ -1489,7 +1489,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         if os.path.exists(tokencert):
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
         else:
-            print(f"Token >{tokencert}< not found/created")
+            print(f"Token >{tokencert}< not found/created", file=sys.stderr, flush = True)
             AlienSessionInfo['exitcode'] = 1
         return AlienSessionInfo['exitcode']
 
@@ -1601,7 +1601,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     if (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
         if not EDITOR:
-            print('No EDITOR variable set up!', flush = True)
+            print('No EDITOR variable set up!', file=sys.stderr, flush = True)
             return int(22)  # EINVAL /* Invalid argument */
         cmd = EDITOR
         if args[0] != '-h':
@@ -1658,7 +1658,7 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
             stdout = shell_run.stdout
             if stdout: print(stdout, flush = True)
             stderr = shell_run.stderr
-            if stderr: print(stderr, flush = True)
+            if stderr: print(stderr, file=sys.stderr, flush = True)
         else:
             print(websocket_output, flush = True)
     return exitcode
@@ -1779,7 +1779,7 @@ def main():
         print("Received keyboard intrerupt, exiting..")
         sys.exit(0)
     except Exception as e:
-        print(f"Exception encountered, it will be logged to {DEBUG_FILE}")
+        print(f"Exception encountered, it will be logged to {DEBUG_FILE}", file=sys.stderr, flush = True)
         logging.error(traceback.format_exc())
         sys.exit(1)
     os._exit(int(AlienSessionInfo['exitcode']))
