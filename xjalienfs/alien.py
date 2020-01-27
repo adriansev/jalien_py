@@ -1106,7 +1106,7 @@ async def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: s
     return result
 
 
-async def AlienSession(cmd: str) -> dict:
+async def AlienSession(cmd: str) -> str:
     """Create a connection to AliEn central services, send a json message and return the decoded to dictionary message"""
     if not cmd:
         logging.info(f"AlienSession:: cmd string is not specified")
@@ -1115,8 +1115,8 @@ async def AlienSession(cmd: str) -> dict:
     if not wb:
         logging.info(f"AlienSession:: websocket could not be aquired")
         return None
-    result = await SendMsg_json(wb, json)
-    return json.loads(result)
+    result = await SendMsg_json(wb, cmd)
+    return result
 
 
 def AlienSendCmd(cmd):
