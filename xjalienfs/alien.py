@@ -1645,6 +1645,7 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
     global AlienSessionInfo
     json_dict = json.loads(message)
     AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
+    AlienSessionInfo['user'] = json_dict["metadata"]["user"]
 
     error = str(json_dict["metadata"]["error"])
     AlienSessionInfo['error'] = error
