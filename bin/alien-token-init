@@ -1,2 +1,3 @@
 #!/bin/bash
-echo "WARNING: This is a no-op call. The alien-token-init isn't needed for JAliEn"
+echo "INFO: jalien clients automatically create tokens, running alien-token-init is no longer required"
+alien.py token-init $@
