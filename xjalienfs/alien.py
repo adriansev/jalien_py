@@ -1551,21 +1551,6 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
                 AlienSessionInfo['exitcode'] = int(1)
             return AlienSessionInfo['exitcode']
 
-    if cmd == 'user':
-        if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
-            cmd = 'user'
-            args[0] = '-h'
-        else:
-            user_args = ['-u']
-            user_args.append(args[0])
-            wb = await token_regen(wb, user_args)
-
-            if os.path.exists(tokencert) and os.path.exists(tokenkey):
-                AlienSessionInfo['exitcode'] = int(0)
-            else:
-                AlienSessionInfo['exitcode'] = int(1)
-            return AlienSessionInfo['exitcode']
-
     if cmd == "ping":
         ping_arg = args[0] if len(args) > 0 else ''
         await DO_ping(wb, ping_arg)
