@@ -1360,6 +1360,7 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     if not wb: return
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    global AlienSessionInfo
 
     if not args: args = []
     args.insert(0, '-nomsg')
@@ -1398,6 +1399,27 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
     return exitcode
+
+
+async def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None):
+    global AlienSessionInfo
+    if not AlienSessionInfo['use_usercert']:
+        await wb.close(code = 1000, reason = 'Lets connect with usercert to be able to generate token')
+        try:
+            # we have to reconnect with the new token
+            wb = await InitConnection()
+        except Exception as e:
+            logging.debug(traceback.format_exc())
+
+    # now we are connected with usercert, so we can generate token
+    await token(wb, args)
+    # we have to reconnect with the new token
+    await wb.close(code = 1000, reason = 'Re-initialize the connection with the new token')
+    try:
+        wb = await InitConnection()
+    except Exception as e:
+        logging.debug(traceback.format_exc())
+    return wb
 
 
 async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
@@ -1520,17 +1542,22 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             args[0] = '-h'
             print("Use >token-init args< for token (re)creation, see below the arguments")
         else:
-            if AlienSessionInfo['use_usercert']:
-                await token(wb, args)
-                try:
-                    wb = await InitConnection(args)
-                except Exception as e:
-                    logging.debug(traceback.format_exc())
+            wb = await token_regen(wb, args)
+
+            if os.path.exists(tokencert) and os.path.exists(tokenkey):
+                AlienSessionInfo['exitcode'] = int(0)
             else:
-                try:
-                    wb = await InitConnection(args, use_usercert = True)
-                except Exception as e:
-                    logging.debug(traceback.format_exc())
+                AlienSessionInfo['exitcode'] = int(1)
+            return AlienSessionInfo['exitcode']
+
+    if cmd == 'user':
+        if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
+            cmd = 'user'
+            args[0] = '-h'
+        else:
+            user_args = ['-u']
+            user_args.append(args[0])
+            wb = await token_regen(wb, user_args)
 
             if os.path.exists(tokencert) and os.path.exists(tokenkey):
                 AlienSessionInfo['exitcode'] = int(0)
