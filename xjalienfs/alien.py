@@ -458,7 +458,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src_type = await pathtype_grid(wb, src)
         if src_type == "NoValidType":
-            print("Could not determine the type of src argument.. is it missing?")
+            print("Could not determine the type of src argument.. is it missing?", file=sys.stderr, flush = True)
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
 
@@ -493,11 +493,11 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             json_dict = json.loads(result)
             if json_dict["metadata"]["exitcode"] != '0':
                 err = json_dict["metadata"]["error"]
-                print("Could not create directory : {base_dir} !! --> {err}")
+                print(f"Could not create directory : {base_dir} !! --> {err}", file=sys.stderr, flush = True)
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
-        print("The operands cannot specify different source types: one must be local and one grid", flush = True)
+        print("The operands cannot specify different source types: one must be local and one grid", file=sys.stderr, flush = True)
         return int(22)  # EINVAL /* Invalid argument */
 
     # if src is directory, then create list of files coresponding with options
@@ -580,7 +580,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
     if not envelope_list:
-        print("No lfns in envelope list after removing the invalid ones")
+        print("No lfns in envelope list after removing the invalid ones", file=sys.stderr)
         return int(2)  # ENOENT /* No such file or directory */
 
     url_list_src = []
@@ -916,18 +916,20 @@ async def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, edito
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if editor == 'mcedit': editor = 'mc -c -e'
     editor = editor + " "
+    specs = ''
+    lfn_specs = lfn.split(",", maxsplit = 1)
+    if len(lfn_specs) > 1:
+        lfn = lfn_specs[0]
+        specs = lfn_specs[1]
     lfn_path = expand_path_grid(lfn)
-    tmp = make_tmp_fn(lfn_path)
-    if tmp in AlienSessionInfo['templist']:
+    tmp = await download_tmp(wb, lfn)
+    if tmp:
+        md5_begin = md5(tmp)
         runShellCMD(editor + tmp, False)
-    else:
-        tmp = await download_tmp(wb, lfn)
-        if tmp:
-            md5_begin = md5(tmp)
-            AlienSessionInfo['templist'].append(tmp)
-            runShellCMD(editor + tmp, False)
-            md5_end = md5(tmp)
-            if md5_begin != md5_end: await upload_tmp(wb, tmp, '')
+        md5_end = md5(tmp)
+        if md5_begin != md5_end: await upload_tmp(wb, tmp, specs)
+        # clean up the temporary file not matter if the upload was succesful or not
+        os.remove(tmp)
 
 
 def runShellCMD(INPUT: str = '', captureout: bool = True):
