@@ -1545,6 +1545,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             wb = await token_regen(wb, args)
 
             if os.path.exists(tokencert) and os.path.exists(tokenkey):
+                CertInfo(tokencert)
                 AlienSessionInfo['exitcode'] = int(0)
             else:
                 AlienSessionInfo['exitcode'] = int(1)
