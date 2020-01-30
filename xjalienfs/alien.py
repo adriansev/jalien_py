@@ -180,22 +180,20 @@ def expand_path_local(path: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path.replace("file://", "")
     # exp_path_components = list(filter(None, exp_path.split("/")))
+    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
     exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
-    exp_path = re.sub(r"^\/*\.{2}", Path.cwd().parents[0].as_posix() + "/", exp_path)
-    exp_path = re.sub(r"^\/*\.{1}", Path.cwd().as_posix() + "/", exp_path)
-    if not exp_path.startswith('/'):
-        exp_path = Path.cwd().as_posix() + "/" + exp_path
+    exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path.cwd().parents[0].as_posix() + "/", exp_path)
+    exp_path = re.sub(r"^\/*\.{1}[\/\s]", Path.cwd().as_posix() + "/", exp_path)
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
 
 def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = re.sub(r"\/*\%ALIEN", AlienSessionInfo['alienHome'], path)
-    exp_path = re.sub(r"^\/*\.{2}", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
-    exp_path = re.sub(r"^\/*\.{1}", AlienSessionInfo['currentdir'], exp_path)
-    if not exp_path.startswith('/'):
-        exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path
+    exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], path)  # replace %ALIEN token with user grid home directory
+    if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
+    exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
+    exp_path = re.sub(r"^\/*\.{1}[\/\s]", AlienSessionInfo['currentdir'], exp_path)
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -1498,6 +1496,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     global AlienSessionInfo
     args = cmd_string.split(" ")
     cmd = args.pop(0)
+    args[:] = [x for x in args if x.strip()]
 
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
     # userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
@@ -1636,9 +1635,7 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
-            if args[i][0] != '-':
-                args[i] = expand_path_grid(args[i])
-                args[i] = re.sub(r"\/{2,}", "/", args[i])
+            if args[i][0] != '-': args[i] = expand_path_grid(args[i])
 
     if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
     result = await SendMsg(wb, cmd, args)
