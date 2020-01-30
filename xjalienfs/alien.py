@@ -674,29 +674,24 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         return int(1)
 
 
-def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
-    """XRootD copy command :: the actual XRootD copy process"""
-    if not xrd_cp_args: return
-
-    overwrite = xrd_cp_args.overwrite
-    batch = xrd_cp_args.batch
-    sources = xrd_cp_args.sources
-    chunks = xrd_cp_args.chunks
-    chunksize = xrd_cp_args.chunksize
-    makedir = xrd_cp_args.makedir
-    posc = xrd_cp_args.posc
-    hashtype = xrd_cp_args.hashtype
-    streams = xrd_cp_args.streams
-
+if has_xrootd:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
-        isDownload = bool(True)
-        src = ''  # pass the source from begin to end
-        dst = ''  # pass the target from begin to end
-        token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
-        timestamp_begin = None
-        total = None
-        jobs = None
-        job_list = []
+        def __init__(self):
+            self.isDownload = bool(True)
+            self.src = ''  # pass the source from begin to end
+            self.dst = ''  # pass the target from begin to end
+            self.token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+            self.timestamp_begin = None
+            self.total = None
+            self.jobs = None
+            self.processed = int(0)
+            self.job_list = []
+            # signal.signal(signal.SIGINT, self.catch)
+            # signal.siginterrupt(signal.SIGINT, False)
+
+        def catch(self, signum, frame):
+            for i in range(self.processed):
+                self.should_cancel(i)
 
         def begin(self, id, total, source, target):
             self.timestamp_begin = datetime.now().timestamp()
@@ -743,8 +738,29 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
 
         def update(self, jobId, processed, total):
             self.total = total
+            self.processed = processed
             # perc = float(processed)/float(total)
             # print("jobID: {0}/{1} >>> Completion = {2:.2f}".format(jobId, self.jobs, perc), flush = True)
+
+
+def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
+    """XRootD copy command :: the actual XRootD copy process"""
+    if not has_xrootd:
+        print("XRootD not found", file=sys.stderr, flush = True)
+        return []
+    if not xrd_cp_args:
+        print("cp arguments are not set, XrdCpArgs tuple missing", file=sys.stderr, flush = True)
+        return []
+
+    overwrite = xrd_cp_args.overwrite
+    batch = xrd_cp_args.batch
+    sources = xrd_cp_args.sources
+    chunks = xrd_cp_args.chunks
+    chunksize = xrd_cp_args.chunksize
+    makedir = xrd_cp_args.makedir
+    posc = xrd_cp_args.posc
+    hashtype = xrd_cp_args.hashtype
+    streams = xrd_cp_args.streams
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
