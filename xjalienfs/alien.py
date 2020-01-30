@@ -784,7 +784,10 @@ async def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) 
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
     result = await ProcessXrootdCp(wb, copycmd.split())
-    if result == 0: return tmpfile
+    if result == 0:
+        return tmpfile
+    else:
+        return ''
 
 
 async def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
@@ -794,27 +797,31 @@ async def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_na
     lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
     lfn = lfn.replace("%%", "/")
 
-    envelope_list = await getEnvelope(wb, [lfn])
+    envelope_list = await getEnvelope(wb, [lfn], [upload_specs], isWrite = True)
     result = envelope_list[0]["answer"]
     access_request = json.loads(result)
     replicas = access_request["results"][0]["nSEs"]
 
     # let's create a backup of old lfn
-    mod_time = f"{datetime.now():%Y%m%d_%H%M%S}"
-    lfn_backup = lfn + "_" + mod_time
+    lfn_backup = lfn + "~"
+    result = await SendMsg(wb, 'rm', ['-f', lfn_backup])
     result = await SendMsg(wb, 'mv', [lfn, lfn_backup])
     json_dict = json.loads(result)
     if json_dict["metadata"]["exitcode"] != '0':
-        print("Could not create backup of lfn : {}", lfn)
-        return 1
+        print(f"Could not create backup of lfn : {lfn}", file=sys.stderr, flush = True)
+        return ''
 
     if "disk:" not in upload_specs:
         upload_specs = "disk:" + replicas
 
-    if upload_specs: lfn = lfn + "," + upload_specs
-    copycmd = "-f " + 'file://' + temp_file_name + " " + lfn
+    if upload_specs: upload_specs = "," + upload_specs
+    copycmd = "-f " + 'file://' + temp_file_name + " " + lfn + upload_specs
     list_upload = await ProcessXrootdCp(wb, copycmd.split())
-    if list_upload: return lfn
+    if list_upload == 0:
+        return lfn
+    else:
+        result = await SendMsg(wb, 'mv', [lfn_backup, lfn])
+        return ''
 
 
 async def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str):
