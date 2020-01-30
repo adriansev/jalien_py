@@ -1631,6 +1631,21 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
 
     # default to print / after directories
     if cmd == 'ls': args.insert(0, '-F')
+    if cmd == 'll':
+        cmd = 'ls'
+        args.insert(0, '-l')
+        args.insert(0, '-F')
+
+    if cmd == 'la':
+        cmd = 'ls'
+        args.insert(0, '-a')
+        args.insert(0, '-F')
+
+    if cmd == 'lla':
+        cmd = 'ls'
+        args.insert(0, '-a')
+        args.insert(0, '-l')
+        args.insert(0, '-F')
 
     if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
