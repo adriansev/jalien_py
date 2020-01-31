@@ -28,6 +28,10 @@ import asyncio
 import async_stagger
 import websockets
 
+if sys.version_info[0] != 3 or sys.version_info[1] < 6:
+    print("This script requires a minimum of Python version 3.6", flush = True)
+    sys.exit(1)
+
 try:
     import gnureadline as readline
     has_readline = True
@@ -44,9 +48,8 @@ try:  # let's fail fast if the xrootd python bindings are not present
 except ImportError:
     has_xrootd = False
 
-if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This script requires a minimum of Python version 3.6", flush = True)
-    sys.exit(1)
+hasColor = False
+if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
 
 # environment debug variable
 JSON_OUT = os.getenv('ALIENPY_JSON', '')
@@ -59,6 +62,66 @@ TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False}
 
 
+class COLORS:
+    ColorReset = '\033[00m'     # Text Reset
+    Black = '\033[0;30m'        # Black
+    Red = '\033[0;31m'          # Red
+    Green = '\033[0;32m'        # Green
+    Yellow = '\033[0;33m'       # Yellow
+    Blue = '\033[0;34m'         # Blue
+    Purple = '\033[0;35m'       # Purple
+    Cyan = '\033[0;36m'         # Cyan
+    White = '\033[0;37m'        # White
+    BBlack = '\033[1;30m'       # Bold Black
+    BRed = '\033[1;31m'         # Bold Red
+    BGreen = '\033[1;32m'       # Bold Green
+    BYellow = '\033[1;33m'      # Bold Yellow
+    BBlue = '\033[1;34m'        # Bold Blue
+    BPurple = '\033[1;35m'      # Bold Purple
+    BCyan = '\033[1;36m'        # Bold Cyan
+    BWhite = '\033[1;37m'       # Bold White
+    UBlack = '\033[4;30m'       # Underline Black
+    URed = '\033[4;31m'         # Underline Red
+    UGreen = '\033[4;32m'       # Underline Green
+    UYellow = '\033[4;33m'      # Underline Yellow
+    UBlue = '\033[4;34m'        # Underline Blue
+    UPurple = '\033[4;35m'      # Underline Purple
+    UCyan = '\033[4;36m'        # Underline Cyan
+    UWhite = '\033[4;37m'       # Underline White
+    IBlack = '\033[0;90m'       # High Intensity Black
+    IRed = '\033[0;91m'         # High Intensity Red
+    IGreen = '\033[0;92m'       # High Intensity Green
+    IYellow = '\033[0;93m'      # High Intensity Yellow
+    IBlue = '\033[0;94m'        # High Intensity Blue
+    IPurple = '\033[0;95m'      # High Intensity Purple
+    ICyan = '\033[0;96m'        # High Intensity Cyan
+    IWhite = '\033[0;97m'       # High Intensity White
+    BIBlack = '\033[1;90m'      # Bold High Intensity Black
+    BIRed = '\033[1;91m'        # Bold High Intensity Red
+    BIGreen = '\033[1;92m'      # Bold High Intensity Green
+    BIYellow = '\033[1;93m'     # Bold High Intensity Yellow
+    BIBlue = '\033[1;94m'       # Bold High Intensity Blue
+    BIPurple = '\033[1;95m'     # Bold High Intensity Purple
+    BICyan = '\033[1;96m'       # Bold High Intensity Cyan
+    BIWhite = '\033[1;97m'      # Bold High Intensity White
+    On_Black = '\033[40m'       # Background Black
+    On_Red = '\033[41m'         # Background Red
+    On_Green = '\033[42m'       # Background Green
+    On_Yellow = '\033[43m'      # Background Yellow
+    On_Blue = '\033[44m'        # Background Blue
+    On_Purple = '\033[45m'      # Background Purple
+    On_Cyan = '\033[46m'        # Background Cyan
+    On_White = '\033[47m'       # Background White
+    On_IBlack = '\033[0;100m'   # High Intensity backgrounds Black
+    On_IRed = '\033[0;101m'     # High Intensity backgrounds Red
+    On_IGreen = '\033[0;102m'   # High Intensity backgrounds Green
+    On_IYellow = '\033[0;103m'  # High Intensity backgrounds Yellow
+    On_IBlue = '\033[0;104m'    # High Intensity backgrounds Blue
+    On_IPurple = '\033[0;105m'  # High Intensity backgrounds Purple
+    On_ICyan = '\033[0;106m'    # High Intensity backgrounds Cyan
+    On_IWhite = '\033[0;107m'   # High Intensity backgrounds White
+
+
 class XrdCpArgs(NamedTuple):
     overwrite: bool
     batch: int
@@ -69,6 +132,11 @@ class XrdCpArgs(NamedTuple):
     posc: bool
     hashtype: str
     streams: int
+
+
+def PrintColor(color: str) -> str:
+    if hasColor: return color
+    return ''
 
 
 def cursor_up(lines: int = 1):
@@ -674,33 +742,36 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         return int(1)
 
 
+def GetHumanReadable(size, precision = 2):
+    suffixes = ['B', 'KiB', 'MiB']
+    suffixIndex = 0
+    while size > 1024 and suffixIndex < 4:
+        suffixIndex += 1  # increment the index of the suffix
+        size = size/1024.0  # apply the division
+    return "%.*f %s" % (precision, size, suffixes[suffixIndex])
+
+
 if has_xrootd:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         def __init__(self):
             self.isDownload = bool(True)
-            self.src = ''  # pass the source from begin to end
-            self.dst = ''  # pass the target from begin to end
             self.token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
-            self.timestamp_begin = None
-            self.total = None
-            self.jobs = None
-            self.processed = int(0)
+            self.jobs = int(0)
             self.job_list = []
-            # signal.signal(signal.SIGINT, self.catch)
-            # signal.siginterrupt(signal.SIGINT, False)
+            self.sigint = False
+            signal.signal(signal.SIGINT, self.catch)
+            signal.siginterrupt(signal.SIGINT, False)
 
         def catch(self, signum, frame):
-            for i in range(self.processed):
-                self.should_cancel(i)
+            self.sigint = True
 
-        def begin(self, id, total, source, target):
-            self.timestamp_begin = datetime.now().timestamp()
-            print("jobID: {0}/{1} >>> Start".format(id, total), flush = True)
-            self.src = source
-            self.dst = target
+        def begin(self, jobId, total, source, target):
+            timestamp_begin = datetime.now().timestamp()
+            print("jobID: {0}/{1} >>> Start".format(jobId, total), flush = True)
             self.jobs = int(total)
-            self.job_list.append(id)
-            if DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(self.src, self.dst))
+            jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
+            self.job_list.insert(jobId - 1, jobInfo)
+            if DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target))
 
         def end(self, jobId, results):
             results_message = results['status'].message
@@ -708,39 +779,30 @@ if has_xrootd:
             results_errno = results['status'].errno
             results_code = results['status'].code
             status = ''
-            if results['status'].ok: status = 'OK'
-            if results['status'].error: status = 'ERROR'
-            if results['status'].fatal: status = 'FATAL'
+            if results['status'].ok: status = PrintColor(COLORS.Green) + 'OK' + PrintColor(COLORS.ColorReset)
+            if results['status'].error: status = PrintColor(COLORS.BRed) + 'ERROR' + PrintColor(COLORS.ColorReset)
+            if results['status'].fatal: status = PrintColor(COLORS.BIRed) + 'FATAL' + PrintColor(COLORS.ColorReset)
 
+            speed_str = '0 B/s'
             if results['status'].ok:
-                deltaT = datetime.now().timestamp() - self.timestamp_begin
-                speed = self.total/deltaT
-                bytes_s = 'bytes/s'
-                kbytes_s = 'kB/s'
-                mbytes_s = 'MB/s'
-                unit = bytes_s
-                if int(speed/1024) > 1:
-                    speed = speed/1024
-                    unit = kbytes_s
-                if int(speed/(1024*1024)) > 1:
-                    speed = speed/(1024*1024)
-                    unit = mbytes_s
-                print("jobID: {0}/{1} >>> STATUS: {2} ; SPEED = {3:.2f} {4} ; MESSAGE: {5}".format(jobId, self.jobs, status, speed, unit, results_message), flush = True)
+                deltaT = datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
+                speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
+                speed_str = str(GetHumanReadable(speed)) + '/s'
                 if self.isDownload:
-                    os.remove(urlparse(str(self.src)).path)  # remove the created metalink
-                    self.token_list_upload_ok.append(str(self.src))
+                    os.remove(urlparse(str(self.job_list[jobId - 1]['src'])).path)  # remove the created metalink
+                    self.token_list_upload_ok.append(str(self.job_list[jobId - 1]['src']))
                 else:  # isUpload
-                    link = urlparse(str(self.dst))
+                    link = urlparse(str(self.job_list[jobId - 1]['tgt']))
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
                     self.token_list_upload_ok.append(str(token))
-            else:
-                print("jobID: {0}/{1} >>> STATUS: {2} ; ERRNO: {3} ; CODE: {4} ; MESSAGE: {5}".format(jobId, self.jobs, results_status, results_errno, results_code, results_message), flush = True)
+            print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
 
         def update(self, jobId, processed, total):
-            self.total = total
-            self.processed = processed
-            # perc = float(processed)/float(total)
-            # print("jobID: {0}/{1} >>> Completion = {2:.2f}".format(jobId, self.jobs, perc), flush = True)
+            self.job_list[jobId - 1]['bytes_processed'] = processed
+            self.job_list[jobId - 1]['bytes_total'] = total
+
+        def should_cancel(self, jobId):
+            return self.sigint
 
 
 def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
