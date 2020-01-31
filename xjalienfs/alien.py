@@ -246,10 +246,11 @@ def setDst(file: str = '', parent: int = 0) -> str:
 
 def expand_path_local(path: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = path.replace("file://", "")
-    # exp_path_components = list(filter(None, exp_path.split("/")))
+    exp_path = path
+    exp_path = exp_path.replace("file://", "")  # there are only 2 cases : either file:// and the remainder is the path
+    exp_path = exp_path.replace("file:", "")  # or just file: ; the unspoken contract is that no one will do file:/ + /full_local_path
+    exp_path = re.sub(r"^\~\/", Path.home().as_posix() + "/", exp_path)
     if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
-    exp_path = re.sub(r"^\~", Path.home().as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path.cwd().parents[0].as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{1}[\/\s]", Path.cwd().as_posix() + "/", exp_path)
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
@@ -258,7 +259,8 @@ def expand_path_local(path: str) -> str:
 
 def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], path)  # replace %ALIEN token with user grid home directory
+    exp_path = path
+    exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
     exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
     exp_path = re.sub(r"^\/*\.{1}[\/\s]", AlienSessionInfo['currentdir'], exp_path)
@@ -623,12 +625,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
             logging.debug(f"src: {src_dbg}\ndst: {dst_dbg}\n")
 
-    lfn_list = []
-    if isDownload:
-        lfn_list = src_filelist
-    else:
-        lfn_list = dst_filelist
-
+    lfn_list = src_filelist if isDownload else dst_filelist
     envelope_list = await getEnvelope(wb, lfn_list, specs, isWrite)
 
     # print errors
