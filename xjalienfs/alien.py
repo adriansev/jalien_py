@@ -307,7 +307,7 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
         return True
 
 
-def create_metafile(meta_filename: str, local_filename: str, size: Union[str, int], md5: str, replica_list: Union[None, list] = None):
+def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5: str, replica_list: Union[None, list] = None):
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not replica_list: return
     published = str(datetime.now().replace(microsecond=0).isoformat())
@@ -316,6 +316,7 @@ def create_metafile(meta_filename: str, local_filename: str, size: Union[str, in
         f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
         f.write("   <published>{}</published>\n".format(published))
         f.write("   <file name=\"{}\">\n".format(local_filename))
+        f.write("     <lfn>{}</lfn>\n".format(lfn))
         f.write("     <size>{}</size>\n".format(size))
         if md5: f.write("     <hash type=\"md5\">{}</hash>\n".format(md5))
         for url in replica_list:
@@ -680,7 +681,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             url_list_dst.append({"url": dst})  # the local file destination
             src = src_filelist[item_idx]
             meta_fn = tmpdir + "/" + src.replace("/", "%%") + ".meta4"
-            create_metafile(meta_fn, dst, size_4meta, md5_4meta, url_list_4meta)
+            create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
             if is_zip:
                 download_link = meta_fn + '?xrdcl.unzip=' + file_in_zip
             else:
@@ -789,8 +790,12 @@ if has_xrootd:
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
                 speed_str = str(GetHumanReadable(speed)) + '/s'
                 if self.isDownload:
-                    os.remove(urlparse(str(self.job_list[jobId - 1]['src'])).path)  # remove the created metalink
-                    self.token_list_upload_ok.append(str(self.job_list[jobId - 1]['src']))
+                    meta_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
+                    import xml.dom.minidom
+                    content = xml.dom.minidom.parse(meta_file)
+                    lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
+                    os.remove(meta_file)  # remove the created metalink
+                    self.token_list_upload_ok.append(str(lfn))  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     link = urlparse(str(self.job_list[jobId - 1]['tgt']))
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
