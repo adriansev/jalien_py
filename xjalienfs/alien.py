@@ -1319,7 +1319,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
 async def wb_create(host: str, port: Union[str, int], path: str, use_usercert: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     QUEUE_SIZE = int(2)  # maximum length of the queue that holds incoming messages
-    MSG_SIZE = int(16 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
+    MSG_SIZE = int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
     PING_INTERVAL = PING_TIMEOUT  # Ping frame is sent every ping_interval seconds
     CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
