@@ -249,10 +249,10 @@ def expand_path_local(path: str) -> str:
     exp_path = path
     exp_path = exp_path.replace("file://", "")  # there are only 2 cases : either file:// and the remainder is the path
     exp_path = exp_path.replace("file:", "")  # or just file: ; the unspoken contract is that no one will do file:/ + /full_local_path
-    exp_path = re.sub(r"^\~\/", Path.home().as_posix() + "/", exp_path)
-    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
+    exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path.cwd().parents[0].as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{1}[\/\s]", Path.cwd().as_posix() + "/", exp_path)
+    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -261,9 +261,10 @@ def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
+    exp_path = re.sub(r"^\.{2}\/*$", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)  # single .. to be replaced with parent of current dir
+    if re.search(r"^\/*.*\.{2}\/*\/*", exp_path): exp_path = exp_path.replace("../", "")  # if .. is a within path just remove it
+    exp_path = re.sub(r"^\.{1}\/*$", AlienSessionInfo['currentdir'], exp_path)
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
-    exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)
-    exp_path = re.sub(r"^\/*\.{1}[\/\s]", AlienSessionInfo['currentdir'], exp_path)
     exp_path = re.sub(r"\/{2,}", "/", exp_path)
     return exp_path
 
@@ -522,9 +523,9 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
-        src = expand_path_grid(xrd_copy_command[-2])
-        src_specs_remotes = src.split(",", maxsplit = 1)
+        src_specs_remotes = xrd_copy_command[-2].split(",", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        src = expand_path_grid(src)
         src_type = await pathtype_grid(wb, src)
         if src_type == "NoValidType":
             print("Could not determine the type of src argument.. is it missing?", file=sys.stderr, flush = True)
@@ -551,9 +552,9 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         if dst_type == 'd': isDstDir = bool(True)
     else:
         isDownload = False
-        dst = expand_path_grid(xrd_copy_command[-1])
-        dst_specs_remotes = dst.split(",", maxsplit = 1)
+        dst_specs_remotes = xrd_copy_command[-1].split(",", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        dst = expand_path_grid(dst)
         dst_type = await pathtype_grid(wb, dst)
         if dst_type == "NoValidType" and src_type == 'f':
             # the destination is not present yet and because src is file then dst must be also file
@@ -603,7 +604,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
-                    if regex.match(filepath):
+                    if regex.search(filepath):
                         src_filelist.append(filepath)
                         src_path = Path(src)
                         if parent > (len(src_path.parents) - 1): parent = len(src_path.parents) - 1  # make sure maximum parent var point to first dir in path
@@ -716,7 +717,6 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             src = src_filelist[item_idx]
             dst = dst_filelist[item_idx]
             # common values for all commit commands
-            lfn = dst
             size = os.path.getsize(src)
             md5sum = md5(src)
             perm = '644'
@@ -724,20 +724,23 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             for token in token_list_upload_ok:  # for each succesful token
                 for server in access_request['results']:  # go over all received servers
                     if token in server['envelope']:  # for the server that have the succesful uploaded token
-                        pfn = server['url']
-                        se = server['se']
-                        guid = server['guid']
-                        # envelope size lfn perm expire pfn se guid md5
-                        commit_args_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-                        commit_results = await SendMsg(wb, 'commit', commit_args_list)
-                        if DEBUG: logging.debug(json.dumps(json.loads(commit_results), sort_keys=True, indent=4))
+                        exitcode = await commit(wb, token, int(size), dst, perm, expire, server['url'], server['se'], server['guid'], md5sum)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
-    if token_list_upload_ok:
-        return int(0)
-    else:
-        return int(1)
+    return int(0) if token_list_upload_ok else int(1)
+
+
+async def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> int:
+    if not wb: return 1
+    arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
+    commit_results = await SendMsg(wb, 'commit', arg_list)
+    result_dict = json.loads(commit_results)
+    if DEBUG: logging.debug(json.dumps(result_dict, sort_keys=True, indent=4))
+    error = str(result_dict["metadata"]["error"])
+    exitcode = int(result_dict["metadata"]["exitcode"])
+    if error: print(error, file=sys.stderr, flush = True)
+    return exitcode
 
 
 def GetHumanReadable(size, precision = 2):
