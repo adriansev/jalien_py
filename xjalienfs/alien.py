@@ -27,6 +27,7 @@ import socket
 import asyncio
 import async_stagger
 import websockets
+from websockets.extensions import permessage_deflate
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
@@ -1360,8 +1361,10 @@ async def wb_create(host: str, port: Union[str, int], path: str, use_usercert: b
             if DEBUG:
                 init_begin = datetime.now().timestamp()
                 logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
+
+            deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(server_max_window_bits=14, client_max_window_bits=14, compress_settings={'memLevel': 6},)
             wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
-                                          max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+                                          max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT, extensions=[deflateFact,])
             if DEBUG:
                 init_end = datetime.now().timestamp()
                 init_delta = (init_end - init_begin) * 1000
