@@ -2,9 +2,7 @@
 
 import sys
 import os
-import atexit
 import re
-import subprocess
 import signal
 import logging
 import traceback
@@ -15,32 +13,43 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 import alien
+import daemon
+import lockfile
 
+DEBUG = os.getenv('JBOXPY_DEBUG', '')
 DEBUG_FILE = os.getenv('JBOXPY_DEBUG_FILE', Path.home().as_posix() + '/jboxpy.log')
-socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.sock'
-pid_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.pid'
+socket_fn = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.sock'
+pid_fn = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.pid'
+lock_fn = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid())
 
+UMASK = 0  # File mode creation mask of the daemon.
+WORKDIR = os.getenv('TMPDIR', '/tmp')  # Default working directory for the daemon.
+MAXFD = 1024  # Default maximum for the number of available file descriptors.
 
-def cleanup_temp():
-    """Remove from disk all recorded temporary files"""
-    if os.path.isfile(socket_filename): os.remove(socket_filename)
-    if os.path.isfile(pid_filename): os.remove(pid_filename)
+context = daemon.DaemonContext(
+    working_directory=WORKDIR,
+    umask=UMASK,
+    pidfile=lockfile.FileLock(lock_fn),
+    files_preserve = [DEBUG_FILE, ],
+    )
+
+context.signal_map = {
+    signal.SIGTERM: 'terminate',
+    signal.SIGHUP: 'terminate',
+    }
 
 
 def main():
     MSG_LVL = logging.INFO
-    if alien.DEBUG: MSG_LVL = logging.DEBUG
+    if DEBUG: MSG_LVL = logging.DEBUG
     log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
 
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
-    # at exit delete all temporary files
-    atexit.register(cleanup_temp)
-
     my_pid = os.getpid()
-    with open(pid_filename, "w") as f: print(f"{my_pid}", file = f)
-    start_server = websockets.unix_serve(alien.msg_proxy, socket_filename)
+    with open(pid_fn, "w") as f: print(f"{my_pid}", file = f)
+    start_server = websockets.unix_serve(alien.msg_proxy, socket_fn)
 
     try:
         asyncio.get_event_loop().run_until_complete(start_server)
@@ -56,4 +65,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with context:
+        main()
