@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import atexit
+import re
+import subprocess
+import signal
+import logging
+import traceback
+from datetime import datetime
+from pathlib import Path
+import asyncio
+import async_stagger
+import websockets
+from websockets.extensions import permessage_deflate
+import alien
+
+DEBUG_FILE = os.getenv('JBOXPY_DEBUG_FILE', Path.home().as_posix() + '/jboxpy.log')
+socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.sock'
+pid_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.pid'
+
+
+def cleanup_temp():
+    """Remove from disk all recorded temporary files"""
+    if os.path.isfile(socket_filename): os.remove(socket_filename)
+    if os.path.isfile(pid_filename): os.remove(pid_filename)
+
+
+def main():
+    MSG_LVL = logging.INFO
+    if alien.DEBUG: MSG_LVL = logging.DEBUG
+    log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
+
+    logger_wb = logging.getLogger('websockets')
+    logger_wb.setLevel(MSG_LVL)
+
+    # at exit delete all temporary files
+    atexit.register(cleanup_temp)
+
+    my_pid = os.getpid()
+    with open(pid_filename, "w") as f: print(f"{my_pid}", file = f)
+    start_server = websockets.unix_serve(alien.msg_proxy, socket_filename)
+
+    try:
+        asyncio.get_event_loop().run_until_complete(start_server)
+    except KeyboardInterrupt:
+        print("Received keyboard intrerupt, exiting..")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Exception encountered, it will be logged to {DEBUG_FILE}", file=sys.stderr, flush = True)
+        logging.error(traceback.format_exc())
+        sys.exit(1)
+
+    asyncio.get_event_loop().run_forever()
+
+
+if __name__ == '__main__':
+    main()

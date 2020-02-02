@@ -1316,7 +1316,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     return ctx
 
 
-async def wb_create(host: str, port: Union[str, int], path: str, use_usercert: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
+async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     QUEUE_SIZE = int(2)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
@@ -1326,59 +1326,74 @@ async def wb_create(host: str, port: Union[str, int], path: str, use_usercert: b
     """https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol"""
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
 
-    fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
-    ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
-    logging.info(f"Request connection to : {host}:{port}{path}")
-
-    socket_endpoint = None
-    # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
-    # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
-    try:
-        if DEBUG:
-            logging.debug(f"TRY ENDPOINT: {host}:{port}")
-            init_begin = datetime.now().timestamp()
-            logging.debug(f"TCP SOCKET BEGIN: {init_begin}")
-        if os.getenv('ALIENPY_NO_STAGGER'):
-            socket_endpoint = socket.create_connection((host, int(port)))
-        else:
-            socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
-        if DEBUG:
-            init_end = datetime.now().timestamp()
-            init_delta = (init_end - init_begin) * 1000
-            logging.debug(f"TCP SOCKET END: {init_end}")
-            logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
-    except Exception as e:
-        logging.debug(traceback.format_exc())
-        logging.info(f"Could NOT create socket connection to {host}:{port}")
-        return None
-
     wb = None
-    if socket_endpoint:
-        socket_endpoint_addr = socket_endpoint.getpeername()[0]
-        socket_endpoint_port = socket_endpoint.getpeername()[1]
-        logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
+    ctx = None
+    if localConnect:
+        fHostWSUrl = 'ws://localhost/'
+        logging.info(f"Request connection to : {fHostWSUrl}")
+        socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid() + '.sock')
+        wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+    else:
+        fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
+        ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
+        logging.info(f"Request connection to : {host}:{port}{path}")
+
+        socket_endpoint = None
+        # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
+        # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
         try:
             if DEBUG:
+                logging.debug(f"TRY ENDPOINT: {host}:{port}")
                 init_begin = datetime.now().timestamp()
-                logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
-
-            deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(server_max_window_bits=14, client_max_window_bits=14, compress_settings={'memLevel': 6},)
-            wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
-                                          max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT, extensions=[deflateFact, ])
+                logging.debug(f"TCP SOCKET BEGIN: {init_begin}")
+            if os.getenv('ALIENPY_NO_STAGGER'):
+                socket_endpoint = socket.create_connection((host, int(port)))
+            else:
+                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
             if DEBUG:
                 init_end = datetime.now().timestamp()
                 init_delta = (init_end - init_begin) * 1000
-                logging.debug(f"WEBSOCKET END: {init_end}")
-                logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
+                logging.debug(f"TCP SOCKET END: {init_end}")
+                logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-            logging.info(f"Could NOT establish websocket connection to {socket_endpoint_addr}:{socket_endpoint_port}")
+            logging.info(f"Could NOT create socket connection to {host}:{port}")
             return None
-    if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
+
+        if socket_endpoint:
+            socket_endpoint_addr = socket_endpoint.getpeername()[0]
+            socket_endpoint_port = socket_endpoint.getpeername()[1]
+            logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
+            try:
+                if DEBUG:
+                    init_begin = datetime.now().timestamp()
+                    logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
+
+                deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(server_max_window_bits=14, client_max_window_bits=14, compress_settings={'memLevel': 6},)
+                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
+                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+                if DEBUG:
+                    init_end = datetime.now().timestamp()
+                    init_delta = (init_end - init_begin) * 1000
+                    logging.debug(f"WEBSOCKET END: {init_end}")
+                    logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
+            except Exception as e:
+                logging.debug(traceback.format_exc())
+                logging.info(f"Could NOT establish websocket connection to {socket_endpoint_addr}:{socket_endpoint_port}")
+                return None
+        if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
     return wb
 
 
-async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
+async def msg_proxy(websocket, path, use_usercert = False):
+    # start client to upstream
+    wb_jalien = await AlienConnect(None, use_usercert)
+    local_query = await websocket.recv()
+    jalien_answer = await SendMsg_json(wb_jalien, local_query)
+    await websocket.send(jalien_answer)
+
+
+async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
@@ -1392,47 +1407,50 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
     init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
 
-    if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
-        # lets check JBOX availability
-        jalien_info = {}
-        with open(jclient_env) as myfile:
-            for line in myfile:
-                name, var = line.partition("=")[::2]
-                jalien_info[name.strip()] = str(var.strip())
+    if localConnect:
+        wb = await wb_create(localConnect = True)
+    else:
+        if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
+            # lets check JBOX availability
+            jalien_info = {}
+            with open(jclient_env) as myfile:
+                for line in myfile:
+                    name, var = line.partition("=")[::2]
+                    jalien_info[name.strip()] = str(var.strip())
 
-        if jalien_info:
-            if check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
-                jalien_server = jalien_info['JALIEN_HOST']
-                jalien_websocket_port = jalien_info['JALIEN_WSPORT']
+            if jalien_info:
+                if check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
+                    jalien_server = jalien_info['JALIEN_HOST']
+                    jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
-    while wb is None:
-        try:
-            nr_tries += 1
-            wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
-        except Exception as e:
-            logging.debug(traceback.format_exc())
-        if not wb:
-            if nr_tries + 1 > 3:
-                logging.debug(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
-                break
-            time.sleep(1)
-
-    # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
-    if not wb and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
-        jalien_websocket_port = 8097
-        jalien_server = 'alice-jcentral.cern.ch'
-        nr_tries = 0
         while wb is None:
             try:
                 nr_tries += 1
-                wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+                wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
             except Exception as e:
                 logging.debug(traceback.format_exc())
             if not wb:
                 if nr_tries + 1 > 3:
-                    logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
+                    logging.debug(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
                     break
                 time.sleep(1)
+
+        # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
+        if not wb and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
+            jalien_websocket_port = 8097
+            jalien_server = 'alice-jcentral.cern.ch'
+            nr_tries = 0
+            while wb is None:
+                try:
+                    nr_tries += 1
+                    wb = await wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+                except Exception as e:
+                    logging.debug(traceback.format_exc())
+                if not wb:
+                    if nr_tries + 1 > 3:
+                        logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
+                        break
+                    time.sleep(1)
 
     if not wb:
         logging.error("Could not get a websocket connection, exiting..")
@@ -1554,8 +1572,11 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
 
 async def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a session to AliEn services, including session globals"""
+    socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.sock'
+    pid_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.pid'
     init_begin = None
     init_delta = None
+    wb = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
     wb = await AlienConnect(token_args, use_usercert)
 
