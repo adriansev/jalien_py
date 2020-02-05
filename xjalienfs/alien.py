@@ -485,6 +485,10 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         find_args.append('-a')
         xrd_copy_command.remove('-a')
 
+    if '-v' in xrd_copy_command:
+        # print("Verbose mode not implemented, ignored")
+        xrd_copy_command.remove('-v')
+
     if '-j' in xrd_copy_command:
         qid_idx = xrd_copy_command.index('-j')
         find_args.append('-j')
