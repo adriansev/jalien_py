@@ -524,7 +524,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
-        src_specs_remotes = xrd_copy_command[-2].split(",", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        src_specs_remotes = xrd_copy_command[-2].split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = expand_path_grid(src)
         src_type = await pathtype_grid(wb, src)
@@ -553,7 +553,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         if dst_type == 'd': isDstDir = bool(True)
     else:
         isDownload = False
-        dst_specs_remotes = xrd_copy_command[-1].split(",", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        dst_specs_remotes = xrd_copy_command[-1].split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = await pathtype_grid(wb, dst)
@@ -896,7 +896,7 @@ async def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_na
     if "disk:" not in upload_specs:
         upload_specs = "disk:" + replicas
 
-    if upload_specs: upload_specs = "," + upload_specs
+    if upload_specs: upload_specs = "@" + upload_specs
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn + upload_specs
     list_upload = await ProcessXrootdCp(wb, copycmd.split())
     if list_upload == 0:
@@ -1006,7 +1006,7 @@ async def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, edito
     if editor == 'mcedit': editor = 'mc -c -e'
     editor = editor + " "
     specs = ''
-    lfn_specs = lfn.split(",", maxsplit = 1)
+    lfn_specs = lfn.split("@", maxsplit = 1)
     if len(lfn_specs) > 1:
         lfn = lfn_specs[0]
         specs = lfn_specs[1]
