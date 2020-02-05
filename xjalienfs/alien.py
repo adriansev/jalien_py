@@ -442,7 +442,9 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        sources = int(xrd_copy_command.pop(y_idx + 1))
+        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored")
+        # sources = int(xrd_copy_command.pop(y_idx + 1))
+        xrd_copy_command.pop(y_idx + 1)
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
