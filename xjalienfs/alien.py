@@ -517,18 +517,22 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     src_filelist = []
     dst_filelist = []
 
+    arg_source = xrd_copy_command[-2]
+    arg_target = xrd_copy_command[-1]
+
     # clean up and prepare the paths to be used in the xrdcp command
     src = None
     src_type = None
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-2].startswith('file:'):  # second to last argument (should be the source)
+    if arg_source.startswith('file:'):  # second to last argument (should be the source)
         isSrcLocal = True
         isDownload = False
-        src = expand_path_local(xrd_copy_command[-2])
+        src = expand_path_local(arg_source)
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
-        src_specs_remotes = xrd_copy_command[-2].split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "")
+        src_specs_remotes = arg_source.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = expand_path_grid(src)
         src_type = await pathtype_grid(wb, src)
@@ -550,14 +554,15 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
     dst = None
     dst_type = None
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if xrd_copy_command[-1].startswith('file:'):  # last argument (should be the destination)
+    if arg_target.startswith('file:'):  # last argument (should be the destination)
         isDstLocal = True
-        dst = expand_path_local(xrd_copy_command[-1])
+        dst = expand_path_local(arg_target)
         dst_type = pathtype_local(dst)
         if dst_type == 'd': isDstDir = bool(True)
     else:
         isDownload = False
-        dst_specs_remotes = xrd_copy_command[-1].split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "")
+        dst_specs_remotes = arg_target.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = await pathtype_grid(wb, dst)
