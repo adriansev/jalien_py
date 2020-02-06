@@ -190,7 +190,7 @@ def exit_message(exitcode: int = 0):
 
 
 def xrdcp_help():
-    print('''at least 2 arguments are needed : src dst
+    print(f'''at least 2 arguments are needed : src dst
 the command is of the form of (with the strict order of arguments):
 cp args src dst
 where src|dst are local files if prefixed with file:// or grid files otherwise
@@ -206,7 +206,8 @@ args are the following :
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
 
 for the recursive copy of directories the following options (of the find command) can be used:
--select <pattern> : select only these files (AliEn find semantics) to be copied; defaults to all "."
+-select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-select all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
@@ -509,11 +510,13 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = ''  # just a placeholder; if used in cmdline the user must do distinction between alien find pattern (download files from remote) and regex for local files (upload to remote)
+    pattern = '.*'  # default regex selection for find
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
+        if pattern.startswith('all_'):
+            pattern = '.*\\.' + pattern.replace('all_', '', 1)
 
     # list of src files and coresponding dst names
     src_filelist = []
@@ -542,12 +545,6 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
             print("Could not determine the type of src argument.. is it missing?", file=sys.stderr, flush = True)
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
-
-    if not pattern and src_type == 'd':
-        if isSrcLocal:
-            pattern = '.*'
-        else:
-            pattern = '*'
 
     # For all download use a default of 8 simultaneous downloads;
     # the parralel uploads does not work yet because of return confirmations needed to commit writes to catalog
@@ -587,6 +584,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         isWrite = bool(False)
         specs = src_specs_remotes
         if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
+            find_args.append('-r')
             find_args.append(src)
             find_args.append(pattern)
             if not DEBUG: find_args.insert(0, '-nomsg')
