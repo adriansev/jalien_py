@@ -516,7 +516,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
         if pattern.startswith('all_'):
-            pattern = '.*\\.' + pattern.replace('all_', '', 1)
+            pattern = '.*\\.' + pattern.replace('all_', '', 1) + '$'
 
     # list of src files and coresponding dst names
     src_filelist = []
