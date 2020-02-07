@@ -1364,7 +1364,14 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
         socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid() + '.sock')
-        wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+        try:
+            wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+        except Exception as e:
+            logging.debug(traceback.format_exc())
+            msg = f"Could NOT create socket connection to local socket {socket_filename}"
+            logging.error(msg)
+            print(msg, file=sys.stderr, flush = True)
+            return None
     else:
         fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
         ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
@@ -1389,7 +1396,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                 logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
-            logging.info(f"Could NOT create socket connection to {host}:{port}")
+            logging.error(f"Could NOT create socket connection to {host}:{port}")
             return None
 
         if socket_endpoint:
@@ -1411,7 +1418,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
             except Exception as e:
                 logging.debug(traceback.format_exc())
-                logging.info(f"Could NOT establish websocket connection to {socket_endpoint_addr}:{socket_endpoint_port}")
+                logging.error(f"Could NOT establish websocket connection to {socket_endpoint_addr}:{socket_endpoint_port}")
                 return None
         if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
     return wb
@@ -1485,8 +1492,9 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
                     time.sleep(1)
 
     if not wb:
-        logging.error("Could not get a websocket connection, exiting..")
-        print("Could not get a websocket connection, exiting..", file=sys.stderr, flush = True)
+        msg = "Could not get a websocket connection, exiting.."
+        logging.error(msg)
+        print(msg, file=sys.stderr, flush = True)
         sys.exit(1)
     if init_begin:
         init_delta = (datetime.now().timestamp() - init_begin) * 1000
@@ -1494,7 +1502,6 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
     if AlienSessionInfo['use_usercert']: await token(wb, token_args)  # if we connect with usercert then let get a default token
-    # print(json.dumps(ssl_context.get_ca_certs(), sort_keys=True, indent=4), flush = True)
     return wb
 
 
