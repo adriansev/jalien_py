@@ -1300,6 +1300,12 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     x509file = ''
     if os.path.isfile(str(os.getenv('X509_CERT_FILE'))): x509file = os.getenv('X509_CERT_FILE')
 
+    if not (os.path.exists(usercert) and os.path.exists(userkey)):
+        msg = f"User certificate files NOT FOUND!!! Connection will not be possible!!"
+        print(msg, file=sys.stderr, flush = True)
+        logging.info(msg)
+        sys.exit(1)
+
     capath_default = ''
     if x509dir:
         capath_default = x509dir
@@ -1309,7 +1315,9 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         if os.path.isdir(system_ca_path): capath_default = system_ca_path
 
     if not capath_default and not x509file:
-        print("Not CA location or files specified!!! Connection will not be possible!!", file=sys.stderr, flush = True)
+        msg = "Not CA location or files specified!!! Connection will not be possible!!"
+        print(msg, file=sys.stderr, flush = True)
+        logging.info(msg)
         sys.exit(1)
     if DEBUG:
         if x509file:
