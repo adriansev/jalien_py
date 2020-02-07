@@ -194,7 +194,8 @@ def xrdcp_help():
 the command is of the form of (with the strict order of arguments):
 cp args src dst
 where src|dst are local files if prefixed with file:// or grid files otherwise
-after each src,dst can be added comma separated arguments like: disk:N,SE1,SE2,!SE3
+after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
+where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
 args are the following :
 -h : print help
 -f : replace any existing output file
@@ -206,8 +207,10 @@ args are the following :
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
 
 for the recursive copy of directories the following options (of the find command) can be used:
--select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -select all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
+-name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-name all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
@@ -511,12 +514,26 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         xrd_copy_command.pop(skip_nr_idx)
 
     pattern = '.*'  # default regex selection for find
+    if '-select' in xrd_copy_command and '-name' in xrd_copy_command:
+        print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
+        return int(22)  # EINVAL /* Invalid argument */
+
     if '-select' in xrd_copy_command:
         select_idx = xrd_copy_command.index('-select')
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
+
+    if '-name' in xrd_copy_command:
+        name_idx = xrd_copy_command.index('-name')
+        pattern = xrd_copy_command.pop(name_idx + 1)
+        xrd_copy_command.pop(name_idx)
         if pattern.startswith('all_'):
-            pattern = '.*\\.' + pattern.replace('all_', '', 1) + '$'
+            pattern = '\\/*.*\\.' + pattern.replace('all_', '', 1) + '$'
+        else:
+            pattern = '.*\\/' + pattern + '$'
+
+    if ('-select' in xrd_copy_command or '-name' in xrd_copy_command) and pattern.startswith('all_'):
+        pattern = '.*\\.' + pattern.replace('all_', '', 1) + '$'
 
     # list of src files and coresponding dst names
     src_filelist = []
@@ -584,9 +601,7 @@ async def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_cop
         isWrite = bool(False)
         specs = src_specs_remotes
         if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
-            find_args.append('-r')
-            find_args.append(src)
-            find_args.append(pattern)
+            find_args.extend(['-r', '-a', '-s', src, pattern])
             if not DEBUG: find_args.insert(0, '-nomsg')
             result = await SendMsg(wb, 'find', find_args)
             src_list_files_dict = json.loads(result)
