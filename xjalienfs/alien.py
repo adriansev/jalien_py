@@ -1371,6 +1371,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             msg = f"Could NOT create socket connection to local socket {socket_filename}"
             logging.error(msg)
             print(msg, file=sys.stderr, flush = True)
+            print(f"Check the logfile: {DEBUG_FILE}", file=sys.stderr, flush = True)
             return None
     else:
         fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
@@ -1492,6 +1493,7 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
                     time.sleep(1)
 
     if not wb:
+        print(f"Check the logfile: {DEBUG_FILE}", file=sys.stderr, flush = True)
         msg = "Could not get a websocket connection, exiting.."
         logging.error(msg)
         print(msg, file=sys.stderr, flush = True)
