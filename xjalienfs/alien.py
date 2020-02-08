@@ -1968,6 +1968,68 @@ def main():
         sys.exit(1)
     os._exit(int(AlienSessionInfo['exitcode']))
 
+def _cmd(what):
+    sys.argv = [sys.argv[0]] + [what] + sys.argv[1:]
+    main()
+
+def cmd_cp():
+    _cmd('cp')
+
+def cmd_find():
+    _cmd('find')
+
+def cmd_guid2lfn():
+    _cmd('guid2lfn')
+
+def cmd_lfn2guid():
+    _cmd('lfn2guid')
+
+def cmd_ls():
+    _cmd('ls')
+
+def cmd_mirror():
+    _cmd('mirror')
+
+def cmd_mkdir():
+    _cmd('mkdir')
+
+def cmd_mv():
+    _cmd('mv')
+
+def cmd_ps():
+    _cmd('ps')
+
+def cmd_rm():
+    _cmd('rm')
+
+def cmd_rmdir():
+    _cmd('rmdir')
+
+def cmd_stat():
+    _cmd('stat')
+
+def cmd_submit():
+    _cmd('submit')
+
+def cmd_token_info():
+    _cmd('token-info')
+
+def cmd_token_init():
+    print('INFO: JAliEn client automatically creates tokens, '
+          'alien-token-init is deprecated')
+    _cmd('token-init')
+
+def cmd_whereis():
+    if '-g' in sys.argv:
+        sys.argv.remove('-g')
+
+    p = re.compile(r'{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}?')
+    for a in sys.argv:
+        if p.match(a):
+            sys.argv = sys.argv[0] + ['-g'] + sys.argv[1:]
+            break
+    
+    _cmd('whereis')
 
 if __name__ == '__main__':
     main()
