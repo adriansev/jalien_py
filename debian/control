@@ -1,0 +1,17 @@
+Source: xjalienfs
+Maintainer: ALICE JAliEn <jalien@cern.ch>
+Section: python
+Priority: optional
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9)
+Standards-Version: 3.9.6
+Homepage: https://gitlab.cern.ch/jalien/xjalienfs
+
+Package: python3-xjalienfs
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}
+Description: Command line interface to ALICE Grid infrastructure.
+ Python interface to web-socket endpoint of ALICE Grid Services.
+ .
+ The interface can be used both in command mode (for scripting) and
+ interactively. 
+

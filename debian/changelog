@@ -1,0 +1,5 @@
+xjalienfs (0.0.1-1) unstable; urgency=low
+
+  * Initial release of CL interface to ALICE Grid
+
+ -- ALICE JAliEn <jalien@cern.ch>  Thu, 06 Feb 2020 15:51:40 +0100
