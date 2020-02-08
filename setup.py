@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 alibuild_requirements = [
-        'gnureadline',
+        'readline',
         'async-stagger',
         'websockets',
         'pyOpenSSL',
     ]
 
-standard_requirements = alibuild_requirements + ["pyxrootd"]
+standard_requirements = alibuild_requirements + ["xrootd"]
 
 selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
 
