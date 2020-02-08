@@ -1336,6 +1336,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         AlienSessionInfo['use_usercert'] = False
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh)
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
