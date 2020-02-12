@@ -17,7 +17,7 @@ from typing import NamedTuple
 import OpenSSL
 import shlex
 import argparse
-# import tempfile
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -1291,8 +1291,10 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     # SSL SETTINGS
     usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
     userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    tokencert_file = os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem'
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_file)
+    tokenkey_file = os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem'
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_file)
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     x509dir = ''
@@ -1330,7 +1332,19 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     key  = userkey
     AlienSessionInfo['use_usercert'] = True
 
-    if IsValidCert(tokencert) and not use_usercert:
+    if (tokencert and tokenkey) and not use_usercert:  # if tokencert has value
+        if not os.path.isfile(tokencert):  # and is not a file
+            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
+            temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
+            temp_cert.seek(0)
+            tokencert = temp_cert.name
+        if not os.path.isfile(tokenkey):  # and is not a file
+            temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = '_' + str(os.getuid()) + '.pem')
+            temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
+            temp_key.seek(0)
+            tokenkey = temp_key.name
+
+    if IsValidCert(tokencert):
         cert = tokencert
         key  = tokenkey
         AlienSessionInfo['use_usercert'] = False
@@ -1345,6 +1359,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     else:
         ctx.load_verify_locations(capath = capath_default)
     ctx.load_cert_chain(certfile=cert, keyfile=key)
+
     if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
     return ctx
 
@@ -1541,13 +1556,13 @@ async def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
         return exitcode
 
     if os.path.isfile(tokencert):
-        os.chmod(tokencert, 0o700)  # make it writeable
+        os.chmod(tokencert, 0o600)  # make it writeable
         os.remove(tokencert)
     with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file=tcert)  # write the tokencert
     os.chmod(tokencert, 0o400)  # make it readonly
 
     if os.path.isfile(tokenkey):
-        os.chmod(tokenkey, 0o700)  # make it writeable
+        os.chmod(tokenkey, 0o600)  # make it writeable
         os.remove(tokenkey)
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
@@ -1665,6 +1680,13 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             print("Print token certificate information")
             AlienSessionInfo['exitcode'] = 0
             return AlienSessionInfo['exitcode']
+
+        if not os.path.isfile(tokencert):  # and is not a file
+            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
+            temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
+            temp_cert.seek(0)
+            tokencert = temp_cert.name
+
         if os.path.exists(tokencert):
             AlienSessionInfo['exitcode'] = CertInfo(tokencert)
         else:
