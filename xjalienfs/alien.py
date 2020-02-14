@@ -204,6 +204,21 @@ def os_release() -> dict:
     return read_conf_file('/etc/os-release')
 
 
+def pid_uid(pid: int) -> int:
+    '''Return username of UID of process pid'''
+    try:
+        with open(f'/proc/{pid}/status') as proc_status:
+            for line in proc_status:
+                # Uid, Gid: Real, effective, saved set, and filesystem UIDs(GIDs)
+                if line.startswith('Uid:'): return int((line.split()[1]))
+    except Exception as e:
+        return int(65537)
+
+
+def is_my_pid(pid: int) -> bool:
+    return True if pid_uid(int(pid)) == os.getuid() else False
+
+
 def xrdcp_help():
     print(f'''at least 2 arguments are needed : src dst
 the command is of the form of (with the strict order of arguments):
@@ -1484,7 +1499,7 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
             # lets check JBOX availability
             jalien_info = read_conf_file(jclient_env)
             if jalien_info:
-                if check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
+                if is_my_pid(jalien_info['JALIEN_PID']) and check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
                     jalien_server = jalien_info['JALIEN_HOST']
                     jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
