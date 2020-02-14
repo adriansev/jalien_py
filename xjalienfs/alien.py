@@ -1312,16 +1312,8 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_file)
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    x509dir = ''
-    if os.path.isdir(str(os.getenv('X509_CERT_DIR'))): x509dir = os.getenv('X509_CERT_DIR')
-    x509file = ''
-    if os.path.isfile(str(os.getenv('X509_CERT_FILE'))): x509file = os.getenv('X509_CERT_FILE')
-
-    if not (os.path.exists(usercert) and os.path.exists(userkey)):
-        msg = f"User certificate files NOT FOUND!!! Connection will not be possible!!"
-        print(msg, file=sys.stderr, flush = True)
-        logging.info(msg)
-        sys.exit(1)
+    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
+    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
 
     capath_default = ''
     if x509dir:
@@ -1342,34 +1334,36 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         else:
             logging.debug(f"CApath = {capath_default}")
 
-    # defaults
-    cert = usercert
-    key  = userkey
-    AlienSessionInfo['use_usercert'] = True
-
-    if (tokencert and tokenkey) and not use_usercert:  # if tokencert has value
+    if not use_usercert:  # if there is no explicit request for usercert
         if not os.path.isfile(tokencert):  # and is not a file
             temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
             temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
             temp_cert.seek(0)
-            tokencert = temp_cert.name
+            tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         if not os.path.isfile(tokenkey):  # and is not a file
             temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = '_' + str(os.getuid()) + '.pem')
             temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
             temp_key.seek(0)
-            tokenkey = temp_key.name
+            tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
 
     if IsValidCert(tokencert):
         cert = tokencert
         key  = tokenkey
         AlienSessionInfo['use_usercert'] = False
+    else:
+        if not (os.path.exists(usercert) and os.path.exists(userkey)):
+            msg = f"User certificate files NOT FOUND!!! Connection will not be possible!!"
+            print(msg, file=sys.stderr, flush = True)
+            logging.info(msg)
+            sys.exit(1)
+        cert = usercert
+        key  = userkey
+        AlienSessionInfo['use_usercert'] = True
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
 
-    VERSION_ID = ''
     OS_INFO = os_release()
-    if OS_INFO: VERSION_ID = OS_INFO['VERSION_ID']
-
+    VERSION_ID = OS_INFO['VERSION_ID'] if OS_INFO else ''
     if VERSION_ID and VERSION_ID != '7': ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
