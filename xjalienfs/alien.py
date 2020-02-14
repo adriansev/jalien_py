@@ -189,6 +189,21 @@ def exit_message(exitcode: int = 0):
     sys.exit(exitcode)
 
 
+def read_conf_file(file: str) -> dict:
+    DICT_INFO = {}
+    with open(file) as rel_file:
+        for line in rel_file:
+            name, var = line.partition("=")[::2]
+            var = re.sub(r"^\"", '', str(var.strip()))
+            var = re.sub(r"\"$", '', var)
+            DICT_INFO[name.strip()] = var
+    return DICT_INFO
+
+
+def os_release() -> dict:
+    return read_conf_file('/etc/os-release')
+
+
 def xrdcp_help():
     print(f'''at least 2 arguments are needed : src dst
 the command is of the form of (with the strict order of arguments):
@@ -1350,7 +1365,12 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         AlienSessionInfo['use_usercert'] = False
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh)
+
+    VERSION_ID = ''
+    OS_INFO = os_release()
+    if OS_INFO: VERSION_ID = OS_INFO['VERSION_ID']
+
+    if VERSION_ID and VERSION_ID != '7': ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
