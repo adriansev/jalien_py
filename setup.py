@@ -11,7 +11,7 @@ alibuild_requirements = [
         'pyOpenSSL',
     ]
 
-standard_requirements = alibuild_requirements + ["pyxrootd"]
+standard_requirements = alibuild_requirements + ["xrootd"]
 
 selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
 
