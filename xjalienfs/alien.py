@@ -1488,12 +1488,7 @@ async def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool 
     else:
         if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
             # lets check JBOX availability
-            jalien_info = {}
-            with open(jclient_env) as myfile:
-                for line in myfile:
-                    name, var = line.partition("=")[::2]
-                    jalien_info[name.strip()] = str(var.strip())
-
+            jalien_info = read_conf_file(jclient_env)
             if jalien_info:
                 if check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
                     jalien_server = jalien_info['JALIEN_HOST']
