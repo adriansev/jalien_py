@@ -1979,7 +1979,9 @@ def main():
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
-    sys.argv.pop(0)  # remove the name of the script(alien.py)
+    exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
+    verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
+    if verb: sys.argv.insert(0, verb)
     if '-json' in sys.argv:
         sys.argv.remove('-json')
         JSON_OUT = 1
