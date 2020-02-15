@@ -1,3 +1,0 @@
-#!/bin/bash
-echo "INFO: jalien clients automatically create tokens, running alien-token-init is no longer required"
-alien.py token-init $@

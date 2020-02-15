@@ -35,6 +35,25 @@ setuptools.setup(
     entry_points = {
         'console_scripts': [
             'alien.py = xjalienfs.alien:main',
+            'alien_cmd = xjalienfs.alien:main',
+            'alien_cp = xjalienfs.alien:main',
+            'alien_find = xjalienfs.alien:main',
+            'alien_guid2lfn = xjalienfs.alien:main',
+            'alien_lfn2guid = xjalienfs.alien:main',
+            'alien_ls = xjalienfs.alien:main',
+            'alien_mirror = xjalienfs.alien:main',
+            'alien_mkdir = xjalienfs.alien:main',
+            'alien_mv = xjalienfs.alien:main',
+            'alien_pfn = xjalienfs.alien:main',
+            'alien_ps = xjalienfs.alien:main',
+            'alien_rm = xjalienfs.alien:main',
+            'alien_rmdir = xjalienfs.alien:main',
+            'alien_stat = xjalienfs.alien:main',
+            'alien_submit = xjalienfs.alien:main',
+            'alien_whereis = xjalienfs.alien:main',
+            'alien-token-info = xjalienfs.alien:cmd_token_info',
+            'alien-token-init = xjalienfs.alien:cmd_token_init',
+            'alien-token-destroy = xjalienfs.alien:cmd_token_destroy',
         ]
     }
 )

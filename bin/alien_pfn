@@ -1,2 +1,0 @@
-#!/bin/bash
-alien_whereis "${1}" | awk '/pfn/ {print $NF}'

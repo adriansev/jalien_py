@@ -2037,5 +2037,22 @@ def main():
     os._exit(int(AlienSessionInfo['exitcode']))
 
 
+def _cmd(what):
+    sys.argv = [sys.argv[0]] + [what] + sys.argv[1:]
+    main()
+
+
+def cmd_token_info(): _cmd('token-info')
+
+
+def cmd_token_destroy(): _cmd('token-destroy')
+
+
+def cmd_token_init():
+    print('INFO: JAliEn client automatically creates tokens, '
+          'alien-token-init is deprecated')
+    _cmd('token-init')
+
+
 if __name__ == '__main__':
     main()
