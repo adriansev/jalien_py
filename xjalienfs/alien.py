@@ -1637,7 +1637,11 @@ async def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('quit')
     AlienSessionInfo['commandlist'].append('exit')
     AlienSessionInfo['commandlist'].append('exitcode')
+    AlienSessionInfo['commandlist'].append('pfn')
     AlienSessionInfo['commandlist'].append('logout')
+    AlienSessionInfo['commandlist'].append('ll')
+    AlienSessionInfo['commandlist'].append('la')
+    AlienSessionInfo['commandlist'].append('lla')
     AlienSessionInfo['commandlist'].sort()
 
     AlienSessionInfo['user'] = json_dict['metadata']['user']
@@ -1782,6 +1786,22 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             print(' '.join(AlienSessionInfo['commandlist']), flush = True)
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
+
+    if cmd == "pfn":
+        cmd = 'whereis'
+        args.insert(0, '-r')
+        result = await SendMsg(wb, cmd, args)
+        json_dict = json.loads(result)
+        message = str(json_dict['results'][0]['message'])
+        if message:
+            arr = message.split()
+            if 'archive' in arr: print('IS_ARCHIVED')
+            [print(i) for i in arr if i.startswith('root:')]
+        error = str(json_dict["metadata"]["error"])
+        AlienSessionInfo['error'] = error
+        AlienSessionInfo['exitcode'] = int(json_dict["metadata"]["exitcode"])
+        if AlienSessionInfo['exitcode'] != 0: print(f'{error}', file=sys.stderr, flush = True)
+        return AlienSessionInfo['exitcode']
 
     if cmd == "quota":
         await DO_quota(wb, args)
