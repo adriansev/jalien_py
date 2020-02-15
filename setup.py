@@ -30,5 +30,11 @@ setuptools.setup(
         "License :: OSI Approved :: BSD 3-Clause License",
         "Operating System :: OS Independent",
     ],
+
+    entry_points = {
+        'console_scripts': [
+            'alien.py = xjalienfs.alien:main',
+        ]
+    }
 )
 
