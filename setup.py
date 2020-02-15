@@ -25,6 +25,7 @@ setuptools.setup(
     url="https://gitlab.cern.ch/jalien/xjalienfs",
     packages=setuptools.find_packages(),
     install_requires=selected_requirements,
+    python_requires='>=3.6',
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD 3-Clause License",
