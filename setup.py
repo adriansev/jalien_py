@@ -4,20 +4,19 @@ import os
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-alibuild_requirements = [
-        'gnureadline',
+standard_requirements = [
         'async-stagger',
         'websockets',
         'pyOpenSSL',
+        'xrootd',
     ]
 
-standard_requirements = alibuild_requirements + ["xrootd"]
-
+alibuild_requirements = standard_requirements + ['gnureadline']
 selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
 
 setuptools.setup(
     name="xjalienfs",
-    version="0.0.1",
+    version="1.0.5",
     author="ALICE JAliEn",
     author_email="jalien@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
