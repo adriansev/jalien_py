@@ -12,7 +12,7 @@ import asyncio
 import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
-import alien
+import xjalienfs.alien
 import daemon
 import lockfile
 
@@ -35,7 +35,7 @@ context = daemon.DaemonContext(
 
 context.signal_map = {
     signal.SIGTERM: 'terminate',
-    signal.SIGHUP: 'terminate',
+    # signal.SIGHUP: 'terminate',
     }
 
 
