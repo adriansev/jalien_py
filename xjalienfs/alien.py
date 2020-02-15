@@ -1787,6 +1787,16 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
 
+    if cmd == "quota":
+        await DO_quota(wb, args)
+        AlienSessionInfo['exitcode'] = int(0)
+        return AlienSessionInfo['exitcode']
+
+    # for commands that use lfns we need the current used paths and current directory content
+    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
+    home_grid_path = Path(AlienSessionInfo['alienHome'])
+    await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
+
     if cmd == "pfn":
         cmd = 'whereis'
         args.insert(0, '-r')
@@ -1802,16 +1812,6 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
         AlienSessionInfo['exitcode'] = int(json_dict["metadata"]["exitcode"])
         if AlienSessionInfo['exitcode'] != 0: print(f'{error}', file=sys.stderr, flush = True)
         return AlienSessionInfo['exitcode']
-
-    if cmd == "quota":
-        await DO_quota(wb, args)
-        AlienSessionInfo['exitcode'] = int(0)
-        return AlienSessionInfo['exitcode']
-
-    # for commands that use lfns we need the current used paths and current directory content
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
-    await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
 
     if cmd == "cp":  # defer cp processing to ProcessXrootdCp
         exitcode = await ProcessXrootdCp(wb, args)
