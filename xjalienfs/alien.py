@@ -70,11 +70,11 @@ def syncify(fn):
 
 
 try:
-    import gnureadline as readline
+    import readline as rl
     has_readline = True
 except ImportError:
     try:
-        import readline
+        import gnureadline as rl
         has_readline = True
     except ImportError:
         has_readline = False
@@ -413,19 +413,19 @@ if has_readline:
     def setupHistory():
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
         try:
-            readline.read_history_file(histfile)
-            h_len = readline.get_current_history_length()
+            rl.read_history_file(histfile)
+            h_len = rl.get_current_history_length()
         except FileNotFoundError:
             open(histfile, 'wb').close()
             h_len = 0
-        readline.set_auto_history(True)
-        atexit.register(readline.write_history_file, histfile)
+        rl.set_auto_history(True)
+        atexit.register(rl.write_history_file, histfile)
 
     def saveHistory(prev_h_len, histfile):
-        new_h_len = readline.get_current_history_length()
-        prev_h_len = readline.get_history_length()
-        readline.set_history_length(1000)
-        readline.append_history_file(new_h_len - prev_h_len, histfile)
+        new_h_len = rl.get_current_history_length()
+        prev_h_len = rl.get_history_length()
+        rl.set_history_length(1000)
+        rl.append_history_file(new_h_len - prev_h_len, histfile)
 
 
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
@@ -1981,8 +1981,8 @@ def JAlien(commands: str = ''):
 
     # Begin Shell-like interaction
     if has_readline:
-        readline.parse_and_bind("tab: complete")
-        readline.set_completer_delims(" ")
+        rl.parse_and_bind("tab: complete")
+        rl.set_completer_delims(" ")
 
         def complete(text, state):
             prompt_line = readline.get_line_buffer()
@@ -1998,7 +1998,7 @@ def JAlien(commands: str = ''):
                 results = lfn_list(wb, text) + [None]
             return results[state]
 
-        readline.set_completer(complete)
+        rl.set_completer(complete)
         setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
