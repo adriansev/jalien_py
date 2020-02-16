@@ -24,6 +24,7 @@ from pathlib import Path
 from enum import Enum
 from urllib.parse import urlparse
 import socket
+import threading
 import asyncio
 import async_stagger
 import websockets
@@ -32,6 +33,41 @@ from websockets.extensions import permessage_deflate
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
+
+
+def signal_handler(sig, frame):
+    print('\nExit')
+    sys.exit(0)
+
+
+def start_asyncio():
+    '''GLOBAK ASYNCIO LOOP'''
+    signal.signal(signal.SIGINT, signal_handler)
+    loop = None
+    ready = threading.Event()
+
+    async def wait_forever():
+        nonlocal loop
+        loop = asyncio.get_event_loop()
+        ready.set()
+        await loop.create_future()
+    threading.Thread(daemon=True, target=asyncio.run, args=(wait_forever(),)).start()
+    ready.wait()
+    return loop
+
+
+# _loop = asyncio.get_event_loop()
+_loop = start_asyncio()
+
+
+def syncify(fn):
+    def syncfn(*args, **kwds):
+        # submit the original coroutine to the event loop and wait for the result
+        conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _loop)
+        return conc_future.result()
+    syncfn.as_async = fn
+    return syncfn
+
 
 try:
     import gnureadline as readline
@@ -49,6 +85,7 @@ try:  # let's fail fast if the xrootd python bindings are not present
 except ImportError:
     has_xrootd = False
 
+
 hasColor = False
 if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
 
@@ -60,7 +97,7 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'cwd_list': [], 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'tempout_txt': '', 'tempout_list': []}
 
 
 class COLORS:
@@ -177,11 +214,6 @@ def cleanup_temp():
     if AlienSessionInfo['templist']:
         for f in AlienSessionInfo['templist']:
             if os.path.isfile(f): os.remove(f)
-
-
-def signal_handler(sig, frame):
-    print('\nExit')
-    sys.exit(0)
 
 
 def exit_message(exitcode: int = 0):
@@ -1674,12 +1706,34 @@ async def InitConnection(token_args: Union[None, list] = None, use_usercert: boo
     return wb
 
 
+async def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
+    """Get possible content options for a given lfn"""
+    if not wb: return
+    if not lfn: lfn = AlienSessionInfo['currentdir']
+    lfn = expand_path_grid(lfn)
+    ls_args = ['-nokeys', '-F']
+    lfn_path = Path(lfn)
+    base_dir = lfn_path.parent.as_posix()
+    name = lfn_path.name
+    result = await SendMsg(wb, 'ls', ls_args + [base_dir])
+    result_dict = json.loads(result)
+    listing = list(item['message'] for item in result_dict['results'])
+    lfn_list = [item for item in listing if item.startswith(name)]
+    if len(lfn_list) == 1 and (name + '/' == lfn_list[0]):
+        result = await SendMsg(wb, 'ls', ls_args + [expand_path_grid(base_dir + '/' + name)])
+        result_dict = json.loads(result)
+        listing.clear()
+        lfn_list = list(item['message'] for item in result_dict['results'])
+        return lfn_list
+    return lfn_list
+
+
 async def cwd_list(wb: websockets.client.WebSocketClientProtocol):
     """Save into global cwd_list the content of current directory"""
     if not wb: return
-    result = await SendMsg(wb, 'ls', ['-nokeys', '-F'])
-    result_dict = json.loads(result)
-    AlienSessionInfo['cwd_list'] = list(item['message'] for item in result_dict['results'])
+    cwd_list = await lfn_list(wb, '')
+    AlienSessionInfo['cwd_list'].clear()
+    AlienSessionInfo['cwd_list'] = cwd_list
 
 
 async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
@@ -1795,7 +1849,13 @@ async def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string
     # for commands that use lfns we need the current used paths and current directory content
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
-    await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
+    # await cwd_list(wb)  # content of grid current dir; it is used in expand_path_grid for paths without beggining /
+
+    if cmd == 'lfn_list':
+        arg = args[0] if args else ''
+        list = await lfn_list(wb, arg)
+        print(list)
+        return
 
     if cmd == "pfn":
         cmd = 'whereis'
@@ -1914,6 +1974,28 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
     return exitcode
 
 
+@syncify
+async def get_help(wb, cmd):
+    result = await SendMsg(wb, cmd, '-h')
+    json_dict = json.loads(result)
+    text = json_dict["results"][0]['message']
+    return text
+
+
+def get_help_wrp(wb, cmd):
+    return get_help(wb, cmd)
+
+
+@syncify
+async def dir_list(wb, lfn):
+    result = await lfn_list(wb. lfn)
+    return result
+
+
+def dir_list_wrp(wb, lfn):
+    return dir_list(wb, lfn)
+
+
 async def JAlien(commands: str = ''):
     """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo
@@ -1932,7 +2014,24 @@ async def JAlien(commands: str = ''):
         readline.set_completer_delims(" ")
 
         def complete(text, state):
-            results = [x+" " for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
+            line = readline.get_line_buffer()
+            tokens = line.split()
+            # if not tokens or readline.get_line_buffer()[-1] == " ": tokens.append()
+            if len(tokens) == 0:
+                results = [x+" " for x in AlienSessionInfo['commandlist']]
+            elif len(tokens) == 1 and not line.endswith(' '):
+                results = [x+" " for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
+            elif (len(tokens) == 1 and line.endswith(' ')) or len(tokens) > 1:
+                print('tokens: ', tokens)
+                print('text: ', text)
+                if text.startswith('-'):
+                    print('tokens[0]: ', tokens[0])
+                    print('start with -')
+                    help = get_help_wrp(wb, tokens[0])
+                    print(help)
+                    return
+                else:
+                    results = dir_list_wrp(wb, text)
             return results[state]
 
         readline.set_completer(complete)
@@ -1940,7 +2039,6 @@ async def JAlien(commands: str = ''):
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
     while True:
-        signal.signal(signal.SIGINT, signal_handler)
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
         if AlienSessionInfo['show_date']: prompt = str(datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
@@ -2001,7 +2099,8 @@ async def JAlien(commands: str = ''):
             await ProcessInput(wb, ' '.join(input_list), pipe_to_shell_cmd)
 
 
-def main():
+@syncify
+async def main():
     global JSON_OUT, JSONRAW_OUT
 
     MSG_LVL = logging.INFO
@@ -2026,7 +2125,9 @@ def main():
 
     cmd_string = ' '.join(sys.argv)
     try:
-        asyncio.get_event_loop().run_until_complete(JAlien(cmd_string))
+        await JAlien(cmd_string)
+        # _loop.run_until_complete(JAlien(cmd_string))
+        # conc_future = asyncio.run_coroutine_threadsafe(JAlien(cmd_string), _loop)
     except KeyboardInterrupt:
         print("Received keyboard intrerupt, exiting..")
         sys.exit(0)
