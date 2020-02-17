@@ -11,8 +11,11 @@ standard_requirements = [
         'xrootd',
     ]
 
-alibuild_requirements = standard_requirements.remove('xrootd') + ['gnureadline']
-selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
+if "ALIBUILD" not in os.environ.keys():
+    selected_requirements = standard_requirements
+else:
+    standard_requirements.remove('xrootd')
+    selected_requirements = standard_requirements + ['gnureadline']
 
 setuptools.setup(
     name="xjalienfs",
