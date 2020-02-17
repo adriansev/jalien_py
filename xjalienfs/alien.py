@@ -1985,16 +1985,14 @@ def JAlien(commands: str = ''):
         rl.set_completer_delims(" ")
 
         def complete(text, state):
-            prompt_line = readline.get_line_buffer()
+            prompt_line = rl.get_line_buffer()
             tokens = prompt_line.split()
             results = []
-            # if not tokens or readline.get_line_buffer()[-1] == " ": tokens.append()
             if len(tokens) == 0:
                 results = [x + " " for x in AlienSessionInfo['commandlist']]
             elif len(tokens) == 1 and not prompt_line.endswith(' '):
                 results = [x + " " for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
             else:
-                # (len(tokens) == 1 and line.endswith(' ')) or len(tokens) > 1:
                 results = lfn_list(wb, text) + [None]
             return results[state]
 
