@@ -11,7 +11,7 @@ standard_requirements = [
         'xrootd',
     ]
 
-alibuild_requirements = standard_requirements + ['gnureadline']
+alibuild_requirements = standard_requirements.remove('xrootd') + ['gnureadline']
 selected_requirements = standard_requirements if "ALIBUILD" not in os.environ.keys() else alibuild_requirements
 
 setuptools.setup(
