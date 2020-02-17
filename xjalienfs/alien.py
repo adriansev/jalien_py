@@ -456,6 +456,7 @@ if has_readline:
 
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
+    global AlienSessionInfo
     if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if (not xrd_copy_command) or len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
         xrdcp_help()
@@ -534,8 +535,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored")
-        # sources = int(xrd_copy_command.pop(y_idx + 1))
+        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored", flush = True)
+        sources = int(xrd_copy_command.pop(y_idx + 1))
         xrd_copy_command.pop(y_idx + 1)
         xrd_copy_command.pop(y_idx)
 
@@ -748,9 +749,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         lfn = item["lfn"]
         result = item["answer"]
         access_request = json.loads(result)
-        if access_request["metadata"]["error"]:
+        error = access_request["metadata"]["error"]
+        if error:
             errors_idx.append(item_idx)
-            error = access_request["metadata"]["error"]
             print(f"lfn: {lfn} --> {error}", flush = True)
         if DEBUG:
             logging.debug(f"lfn: {lfn}")
@@ -848,7 +849,7 @@ def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int,
     if not wb: return int(1)
     arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
     commit_results = SendMsg(wb, 'commit', arg_list)
-    result_dict = GetDict(commit_results)
+    result_dict = GetDict(commit_results, print_err = 'debug')
     if DEBUG: logging.debug(json.dumps(result_dict, sort_keys=True, indent=4))
     return int(AlienSessionInfo['exitcode'])
 
@@ -1135,20 +1136,17 @@ def runShellCMD(INPUT: str = '', captureout: bool = True):
 
     if captureout:
         args = sh_cmd
-        shcmd_out = subprocess.run(args, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True, env = os.environ)
+        shcmd_out = subprocess.run(args, env = os.environ, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
     else:
         args = shlex.split(sh_cmd)
         shcmd_out = subprocess.run(args, env = os.environ)
 
-    stdout = shcmd_out.stdout
-    if stdout: print(stdout.decode(), flush = True)
-    stderr = shcmd_out.stderr
-    if stderr: print(stderr.decode(), flush = True)
+    if shcmd_out.stderr: print(shcmd_out.stderr.decode().strip(), file=sys.stderr, flush = True)
+    if shcmd_out.stdout: print(shcmd_out.stdout.decode().strip(), file=sys.stdout, flush = True)
 
 
 def check_port(address: str, port: Union[str, int]) -> bool:
     """Check TCP connection to address:port"""
-    import socket
     s = socket.socket()  # Create a TCP socket
     try:
         s.connect((address, int(port)))
@@ -1177,11 +1175,12 @@ def CreateJsonCommand_str(cmd: str) -> str:
 
 
 def get_help(wb, cmd):
+    """Return the help option even for client-side commands"""
     ProcessInput(wb, cmd + ' -h')
 
 
 def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
-    """Get possible content options for a given lfn"""
+    """Completer function : for a given lfn return all options for latest leaf"""
     if not wb: return
     if not lfn: lfn = AlienSessionInfo['currentdir']
     lfn = expand_path_grid(lfn)
@@ -1204,6 +1203,7 @@ def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
 
 @syncify
 async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
+    """Check if websocket is connected with the protocol ping/pong"""
     try:
         pong_waiter = await wb.ping()
     except Exception as e:
@@ -1219,17 +1219,11 @@ async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
     return True
 
 
-@syncify
-async def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
+def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_delta = float(-999.0)
     init_begin = datetime.now().timestamp()
-    try:
-        pong_waiter = await wb.ping()
-        await pong_waiter
-    except Exception as e:
-        logging.debug(f"ping/pong failed!!!")
-        logging.exception(e)
+    status = IsWbConnected(wb)
     init_end = datetime.now().timestamp()
     init_delta = float((init_end - init_begin) * 1000)
     return init_delta
@@ -1305,40 +1299,13 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
 
 def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None) -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
-    if not wb:
-        logging.info(f"SendMsg:: websocket is invalid")
-        return ''
-    if not cmd:
-        logging.info(f"SendMsg:: command is not specified")
-        return ''
     if not args: args = []
-    result = SendMsg_json(wb, CreateJsonCommand(cmd, args))
-    return result
+    return SendMsg_json(wb, CreateJsonCommand(cmd, args))
 
 
 def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
-    if not wb:
-        logging.info(f"SendMsg_str:: websocket is invalid")
-        return ''
-    if not cmd_line:
-        logging.info(f"SendMsg_str:: command line is not specified")
-        return ''
-    result = SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
-    return result
-
-
-def AlienSession(cmd: str) -> str:
-    """Create a connection to AliEn central services, send a json message and return the decoded to dictionary message"""
-    if not cmd:
-        logging.info(f"AlienSession:: cmd string is not specified")
-        return None
-    wb = AlienConnect()
-    if not wb:
-        logging.info(f"AlienSession:: websocket could not be aquired")
-        return None
-    result = SendMsg_json(wb, cmd)
-    return result
+    return SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
 
 
 def IsValidCert(fname: str):
@@ -1547,7 +1514,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
 @syncify
 async def msg_proxy(websocket, path, use_usercert = False):
     # start client to upstream
-    wb_jalien = await AlienConnect(None, use_usercert)
+    wb_jalien = AlienConnect(None, use_usercert)
     local_query = await websocket.recv()
     jalien_answer = await SendMsg_json(wb_jalien, local_query)
     await websocket.send(jalien_answer)
@@ -1632,10 +1599,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
     args.insert(0, '-nomsg')
 
     answer = SendMsg(wb, 'token', args)
-    json_dict = GetDict(answer)
-
-    if int(AlienSessionInfo['exitcode']) != 0:
-        print(AlienSessionInfo['error'], file=sys.stderr, flush = True)
+    json_dict = GetDict(answer, print_err = 'print')
 
     tokencert_content = json_dict.get('results')[0].get('tokencert', '')
     if not tokencert_content:
@@ -1713,14 +1677,15 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].sort()
 
     AlienSessionInfo['user'] = json_dict['metadata']['user']
-    if not AlienSessionInfo['alienHome']:  # if this is first query then current dir is alienHOME
-        AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
     if AlienSessionInfo['currentdir'] and (AlienSessionInfo['currentdir'] != json_dict['metadata']['currentdir']):
         tmp_res = SendMsg(wb, 'cd', [AlienSessionInfo['currentdir']])
     else:
         AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
+
+    # if this is first query then current dir is alienHOME
+    if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
@@ -1944,19 +1909,19 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
     """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
-    json_dict = GetDict(message)
+    json_dict = GetDict(message, print_err = 'print')
 
     if JSON_OUT:  # print nice json for debug or json mode
-        print(json.dumps(json_dict, sort_keys=True, indent=4), flush = True)
-        return AlienSessionInfo['exitcode']
+        PrintDict(json_dict)
+        return int(AlienSessionInfo['exitcode'])
     if JSONRAW_OUT:  # print the raw byte stream received from the server
         print(message, flush = True)
-        return AlienSessionInfo['exitcode']
+        return int(AlienSessionInfo['exitcode'])
 
     websocket_output = ''
     if json_dict['results']:
         websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
-        websocket_output.lstrip()
+        websocket_output.strip()
     if websocket_output:
         if shellcmd:
             shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
@@ -1966,7 +1931,7 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
             if stderr: print(stderr, file=sys.stderr, flush = True)
         else:
             print(websocket_output, flush = True)
-    return AlienSessionInfo['exitcode']
+    return int(AlienSessionInfo['exitcode'])
 
 
 def JAlien(commands: str = ''):
