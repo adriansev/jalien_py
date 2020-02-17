@@ -36,12 +36,18 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
 
 
 def signal_handler(sig, frame):
-    print('\nExit')
-    sys.exit(0)
+    """Generig signal handler: just print the signal and exit"""
+    print(f'\nCought signal {signal.Signals(sig).name}, let\'s exit')
+    os._exit(int(AlienSessionInfo['exitcode']))
+
+
+def exit_message(exitcode: int = 0):
+    print('Exit')
+    sys.exit(exitcode)
 
 
 def start_asyncio():
-    '''GLOBAK ASYNCIO LOOP'''
+    """Initialization of main thread that will keep the asyncio loop"""
     signal.signal(signal.SIGINT, signal_handler)
     loop = None
     ready = threading.Event()
@@ -56,10 +62,11 @@ def start_asyncio():
     return loop
 
 
-# _loop = asyncio.get_event_loop()
+# GLOBAL STATE ASYNCIO LOOP !!! REQUIRED TO BE GLOBAL !!!
 _loop = start_asyncio()
 
 
+# DECORATOR FOR SYNCIFY FUNCTIONS
 def syncify(fn):
     def syncfn(*args, **kwds):
         # submit the original coroutine to the event loop and wait for the result
@@ -97,7 +104,7 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': '0', 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
 
 
 class COLORS:
@@ -173,6 +180,7 @@ class XrdCpArgs(NamedTuple):
 
 
 def PrintColor(color: str) -> str:
+    """Print colored string if terminal has color, print nothing otherwise"""
     if hasColor: return color
     return ''
 
@@ -216,12 +224,8 @@ def cleanup_temp():
             if os.path.isfile(f): os.remove(f)
 
 
-def exit_message(exitcode: int = 0):
-    print('Exit')
-    sys.exit(exitcode)
-
-
 def read_conf_file(file: str) -> dict:
+    """Convert a configuration file with key = value format to a dict"""
     DICT_INFO = {}
     with open(file) as rel_file:
         for line in rel_file:
@@ -249,6 +253,31 @@ def pid_uid(pid: int) -> int:
 
 def is_my_pid(pid: int) -> bool:
     return True if pid_uid(int(pid)) == os.getuid() else False
+
+
+def PrintDict(dict: dict) -> str:
+    """Print a dictionary in a nice format"""
+    print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
+
+
+def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
+    """Convert server reply string to dict, update all relevant globals"""
+    global AlienSessionInfo
+    if not answer: return None
+    ans_dict = json.loads(answer)
+    AlienSessionInfo['currentdir'] = ans_dict["metadata"]["currentdir"]
+    AlienSessionInfo['user'] = ans_dict["metadata"]["user"]
+    AlienSessionInfo['error'] = str(ans_dict["metadata"]["error"])
+    AlienSessionInfo['exitcode'] = int(ans_dict["metadata"]["exitcode"])
+    if int(AlienSessionInfo['exitcode']) != 0:
+        err_msg = AlienSessionInfo['error']
+        if 'log' in print_err:
+            logging.info(f"{err_mesg}")
+        if 'debug' in print_err:
+            logging.debug(f"{err_mesg}")
+        if 'print' in print_err:
+            print(f'{err_msg}', file=sys.stderr, flush = True)
+    return ans_dict
 
 
 def xrdcp_help():
@@ -337,25 +366,22 @@ def expand_path_grid(path: str) -> str:
 
 
 def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> str:
-    """Query if a lfn is a file or directory, return f, d or NoValidType"""
-    if not wb: return
-    if not path: return
+    """Query if a lfn is a file or directory, return f, d or empty"""
+    if not wb: return ''
+    if not path: return ''
     result = SendMsg(wb, 'stat', ['-nomsg', path])
-    json_dict = json.loads(result)
-    error = json_dict["metadata"]["error"]
-    if error:
-        if DEBUG: logging.debug(f"Stat cmd for {path} returned: {error}")
-        return str("NoValidType")
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']) != 0: return ''
     return str(json_dict['results'][0]["type"])
 
 
 def pathtype_local(path: str) -> str:
-    """Query if a local path is a file or directory, return f, d or NoValidType"""
+    """Query if a local path is a file or directory, return f, d or empty"""
     if not path: return ''
     p = Path(path)
     if p.is_dir(): return str('d')
     if p.is_file(): return str('f')
-    return str("NoValidType")
+    return ''
 
 
 def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
@@ -620,7 +646,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = expand_path_grid(src)
         src_type = pathtype_grid(wb, src)
-        if src_type == "NoValidType":
+        if not src_type:
             print("Could not determine the type of src argument.. is it missing?", file=sys.stderr, flush = True)
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
@@ -644,7 +670,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = pathtype_grid(wb, dst)
-        if dst_type == "NoValidType" and src_type == 'f':
+        if not dst_type and src_type == 'f':
             # the destination is not present yet and because src is file then dst must be also file
             base_dir = Path(dst).parent.as_posix()
             result = SendMsg_str(wb, 'mkdir -p ' + base_dir)
@@ -819,15 +845,12 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
 
 def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> int:
-    if not wb: return 1
+    if not wb: return int(1)
     arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
     commit_results = SendMsg(wb, 'commit', arg_list)
-    result_dict = json.loads(commit_results)
+    result_dict = GetDict(commit_results)
     if DEBUG: logging.debug(json.dumps(result_dict, sort_keys=True, indent=4))
-    error = str(result_dict["metadata"]["error"])
-    exitcode = int(result_dict["metadata"]["exitcode"])
-    if error: print(error, file=sys.stderr, flush = True)
-    return exitcode
+    return int(AlienSessionInfo['exitcode'])
 
 
 def GetHumanReadable(size, precision = 2):
@@ -1151,23 +1174,6 @@ def CreateJsonCommand_str(cmd: str) -> str:
     args = cmd.split(" ")
     command = args.pop(0)
     return CreateJsonCommand(command, args)
-
-
-def PrintDict(dict: dict) -> str:
-    """Print a dictionary in a nice format"""
-    print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
-
-
-def GetDict(answer: str) -> dict:
-    global AlienSessionInfo
-    ans_dict = json.loads(answer)
-    AlienSessionInfo['currentdir'] = ans_dict["metadata"]["currentdir"]
-    AlienSessionInfo['user'] = ans_dict["metadata"]["user"]
-    AlienSessionInfo['error'] = str(ans_dict["metadata"]["error"])
-    AlienSessionInfo['exitcode'] = int(ans_dict["metadata"]["exitcode"])
-    err_msg = AlienSessionInfo['error']
-    if AlienSessionInfo['exitcode'] != 0: print(f'{err_msg}', file=sys.stderr, flush = True)
-    return ans_dict
 
 
 def get_help(wb, cmd):
@@ -1622,29 +1628,24 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
     tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
     tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
     global AlienSessionInfo
-
     if not args: args = []
     args.insert(0, '-nomsg')
 
     answer = SendMsg(wb, 'token', args)
-    json_dict = json.loads(answer)
+    json_dict = GetDict(answer)
 
-    error = str(json_dict["metadata"]["error"])
-    AlienSessionInfo['error'] = error
-    if error: print(error, file=sys.stderr, flush = True)
-
-    exitcode = int(json_dict["metadata"]["exitcode"])
-    AlienSessionInfo['exitcode'] = exitcode
+    if int(AlienSessionInfo['exitcode']) != 0:
+        print(AlienSessionInfo['error'], file=sys.stderr, flush = True)
 
     tokencert_content = json_dict.get('results')[0].get('tokencert', '')
     if not tokencert_content:
-        print("No token returned", file=sys.stderr, flush = True)
-        return exitcode
+        print("No token certificate returned", file=sys.stderr, flush = True)
+        return int(AlienSessionInfo['exitcode'])
 
     tokenkey_content = json_dict.get('results')[0].get('tokenkey', '')
     if not tokenkey_content:
-        print("No token returned", file=sys.stderr, flush = True)
-        return exitcode
+        print("No token key returned", file=sys.stderr, flush = True)
+        return int(AlienSessionInfo['exitcode'])
 
     if os.path.isfile(tokencert):
         os.chmod(tokencert, 0o600)  # make it writeable
@@ -1657,7 +1658,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
         os.remove(tokenkey)
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
-    return exitcode
+    return int(AlienSessionInfo['exitcode'])
 
 
 def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None):
