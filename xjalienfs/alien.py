@@ -52,12 +52,41 @@ def start_asyncio():
     loop = None
     ready = threading.Event()
 
+    def run(main, *, debug=False):
+        if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")
+        if not asyncio.coroutines.iscoroutine(main): raise ValueError("a coroutine was expected, got {!r}".format(main))
+
+        loop = asyncio.events.new_event_loop()
+        try:
+            asyncio.events.set_event_loop(loop)
+            loop.set_debug(debug)
+            return loop.run_until_complete(main)
+        finally:
+            try:
+                _cancel_all_tasks(loop)
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            finally:
+                asyncio.events.set_event_loop(None)
+                loop.close()
+
+    def _cancel_all_tasks(loop):
+        to_cancel = asyncio.tasks.all_tasks(loop)
+        if not to_cancel: return
+        for task in to_cancel: task.cancel()
+        loop.run_until_complete(asyncio.tasks.gather(*to_cancel, loop=loop, return_exceptions=True))
+
+        for task in to_cancel:
+            if task.cancelled(): continue
+            if task.exception() is not None:
+                loop.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task,})
+
     async def wait_forever():
         nonlocal loop
         loop = asyncio.get_event_loop()
         ready.set()
         await loop.create_future()
-    threading.Thread(daemon=True, target=asyncio.run, args=(wait_forever(),)).start()
+
+    threading.Thread(daemon=True, target=run, args=(wait_forever(),)).start()
     ready.wait()
     return loop
 
