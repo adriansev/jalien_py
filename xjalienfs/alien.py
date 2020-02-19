@@ -63,7 +63,7 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'aliases': {}}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
 
 
 def signal_handler(sig, frame):
@@ -342,7 +342,7 @@ def read_conf_file(file: str) -> dict:
 def import_aliases():
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
     global AlienSessionInfo
-    if os.path.exists(alias_file): AlienSessionInfo['aliases'] = read_conf_file(alias_file)
+    if os.path.exists(alias_file): return read_conf_file(alias_file)
 
 
 def os_release() -> dict:
@@ -2017,9 +2017,8 @@ def JAlien(commands: str = ''):
     global AlienSessionInfo
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
 
-    import_aliases()
-    for alias in AlienSessionInfo['aliases']:
-        commands = commands.replace(alias, AlienSessionInfo['aliases'][alias])
+    aliases_dict = import_aliases()
+    for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
 
     # Command mode interaction
     if commands:
