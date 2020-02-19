@@ -1736,7 +1736,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     return wb
 
 
-def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
+def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False, silent: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
 
@@ -1931,20 +1931,20 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if message_begin:
         message_delta = (datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
-    return int(ProcessReceivedMessage(result, shellcmd, cmd_mode))
+    return int(ProcessReceivedMessage(result, shellcmd, cmd_mode, silent))
 
 
-def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False):
+def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False, silent: bool = False):
     """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
     json_dict = GetDict(message, print_err = 'print')
 
     if JSON_OUT:  # print nice json for debug or json mode
-        PrintDict(json_dict)
+        if not silent: PrintDict(json_dict)
         return int(AlienSessionInfo['exitcode'])
     if JSONRAW_OUT:  # print the raw byte stream received from the server
-        print(message, flush = True)
+        if not silent: print(message, flush = True)
         return int(AlienSessionInfo['exitcode'])
 
     websocket_output = ''
@@ -1955,13 +1955,36 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
         if shellcmd:
             shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
             stdout = shell_run.stdout
-            if stdout: print(stdout, flush = True)
+            if stdout and not silent: print(stdout, flush = True)
             stderr = shell_run.stderr
-            if stderr: print(stderr, file=sys.stderr, flush = True)
+            if stderr and not silent: print(stderr, file=sys.stderr, flush = True)
         else:
-            print(websocket_output, flush = True)
+            if not silent: print(websocket_output, flush = True)
     return int(AlienSessionInfo['exitcode'])
 
+def GetCWDFilename():
+    tmp = os.getenv('TMPDIR', '/tmp')
+    return os.path.join(tmp, "alienpy_cwd_{}".format(os.getuid()))
+
+def RestoreCWD(wb):
+    try:
+        cwd = ""
+        with open(GetCWDFilename()) as f:
+            cwd = f.read()
+
+        ProcessInput(wb, "cd " + cwd, silent=True)
+    except Exception as e:
+        logging.warning("RestoreCWD:: failed to restore the curernt working directory")
+        logging.exception(e)
+
+
+def StoreCWD(cwd):
+    try:
+        with open(GetCWDFilename(), "w") as f:
+            f.write(cwd)
+    except Exception as e:
+        logging.warning("StoreCWD:: failed to store cwd")
+        logging.exception(e)
 
 def JAlien(commands: str = ''):
     """Main entry-point for interaction with AliEn"""
@@ -1995,6 +2018,7 @@ def JAlien(commands: str = ''):
         setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
+    RestoreCWD(wb)
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -2044,6 +2068,7 @@ def JAlien(commands: str = ''):
 
             if input_list[0] == 'exit' or input_list[0] == 'quit' or input_list[0] == 'logout': exit_message()
             ProcessInput(wb, ' '.join(input_list), pipe_to_shell_cmd)
+            StoreCWD(AlienSessionInfo["currentdir"])
 
 
 def main():
