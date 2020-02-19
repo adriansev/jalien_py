@@ -30,9 +30,40 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
+
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
+
+try:
+    import readline as rl
+    has_readline = True
+except ImportError:
+    try:
+        import gnureadline as rl
+        has_readline = True
+    except ImportError:
+        has_readline = False
+
+try:  # let's fail fast if the xrootd python bindings are not present
+    from XRootD import client
+    has_xrootd = True
+except ImportError:
+    has_xrootd = False
+
+
+hasColor = False
+if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
+
+# environment debug variable
+JSON_OUT = os.getenv('ALIENPY_JSON', '')
+JSONRAW_OUT = os.getenv('ALIENPY_JSONRAW', '')
+DEBUG = os.getenv('ALIENPY_DEBUG', '')
+DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
+TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
+
+# global session state;
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
 
 
 def signal_handler(sig, frame):
@@ -105,35 +136,77 @@ def syncify(fn):
     return syncfn
 
 
-try:
-    import readline as rl
-    has_readline = True
-except ImportError:
+@syncify
+async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
+    """Check if websocket is connected with the protocol ping/pong"""
     try:
-        import gnureadline as rl
-        has_readline = True
-    except ImportError:
-        has_readline = False
+        pong_waiter = await wb.ping()
+    except Exception as e:
+        logging.debug(f"WB ping failed!!!")
+        logging.exception(e)
+        return False
+    try:
+        await pong_waiter
+    except Exception as e:
+        logging.debug(f"WB pong failed!!!")
+        logging.exception(e)
+        return False
+    return True
 
-try:  # let's fail fast if the xrootd python bindings are not present
-    from XRootD import client
-    has_xrootd = True
-except ImportError:
-    has_xrootd = False
+
+@syncify
+async def wb_close(wb, code, reason):
+    await wb.close(code = code, reason = reason)
 
 
-hasColor = False
-if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
+@syncify
+async def msg_proxy(websocket, path, use_usercert = False):
+    # start client to upstream
+    wb_jalien = AlienConnect(None, use_usercert)
+    local_query = await websocket.recv()
+    jalien_answer = await SendMsg_json(wb_jalien, local_query)
+    await websocket.send(jalien_answer)
 
-# environment debug variable
-JSON_OUT = os.getenv('ALIENPY_JSON', '')
-JSONRAW_OUT = os.getenv('ALIENPY_JSONRAW', '')
-DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
-TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
-# global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
+@syncify
+async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
+    """Send a json message to the specified websocket; it will return the server answer"""
+    if not wb:
+        logging.info(f"SendMsg_json:: websocket not initialized")
+        return ''
+    if not json:
+        logging.info(f"SendMsg_json:: json message is empty or invalid")
+        return ''
+    if DEBUG:
+        logging.debug(f"SEND COMMAND: {json}")
+        init_begin = datetime.now().timestamp()
+        logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
+
+    try:
+        await wb.send(json)
+    except Exception as e:
+        logging.exception(e)
+        logging.debug("SendMsg_json:: error sending the message")
+        print("SendMsg_json:: error sending the message", file=sys.stderr, flush = True)
+        wb_status = IsWbConnected(wb)
+        if not wb_status: wb = InitConnection()
+        return ''
+
+    try:
+        result = await wb.recv()
+    except Exception as e:
+        logging.exception(e)
+        logging.debug("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
+        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s", file=sys.stderr, flush = True)
+        wb_status = IsWbConnected(wb)
+        if not wb_status: wb = InitConnection()
+        return ''
+    if DEBUG:
+        init_end = datetime.now().timestamp()
+        init_delta = (init_end - init_begin) * 1000
+        logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
+        logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
+    return result
 
 
 class COLORS:
@@ -1000,7 +1073,7 @@ def make_tmp_fn(lfn: str = '') -> str:
     return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", '%%') + ext
 
 
-async def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
+def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
@@ -1011,7 +1084,7 @@ async def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) 
         return ''
 
 
-async def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
+def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
     """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the oirginal lfn"""
     # lets recover the lfn from temp file name
     lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
@@ -1230,24 +1303,6 @@ def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
     return lfn_list
 
 
-@syncify
-async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
-    """Check if websocket is connected with the protocol ping/pong"""
-    try:
-        pong_waiter = await wb.ping()
-    except Exception as e:
-        logging.debug(f"WB ping failed!!!")
-        logging.exception(e)
-        return False
-    try:
-        await pong_waiter
-    except Exception as e:
-        logging.debug(f"WB pong failed!!!")
-        logging.exception(e)
-        return False
-    return True
-
-
 def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_delta = float(-999.0)
@@ -1283,47 +1338,6 @@ def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
     rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
     endpoint = wb.remote_address[0]
     print(f"Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
-
-
-@syncify
-async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
-    """Send a json message to the specified websocket; it will return the server answer"""
-    if not wb:
-        logging.info(f"SendMsg_json:: websocket not initialized")
-        return ''
-    if not json:
-        logging.info(f"SendMsg_json:: json message is empty or invalid")
-        return ''
-    if DEBUG:
-        logging.debug(f"SEND COMMAND: {json}")
-        init_begin = datetime.now().timestamp()
-        logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
-
-    try:
-        await wb.send(json)
-    except Exception as e:
-        logging.exception(e)
-        logging.debug("SendMsg_json:: error sending the message")
-        print("SendMsg_json:: error sending the message", file=sys.stderr, flush = True)
-        wb_status = IsWbConnected(wb)
-        if not wb_status: wb = InitConnection()
-        return ''
-
-    try:
-        result = await wb.recv()
-    except Exception as e:
-        logging.exception(e)
-        logging.debug("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
-        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s", file=sys.stderr, flush = True)
-        wb_status = IsWbConnected(wb)
-        if not wb_status: wb = InitConnection()
-        return ''
-    if DEBUG:
-        init_end = datetime.now().timestamp()
-        init_delta = (init_end - init_begin) * 1000
-        logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
-        logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
-    return result
 
 
 def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None) -> str:
@@ -1384,16 +1398,23 @@ def CertInfo(fname: str):
     return int(0)
 
 
+def get_files_cert() -> list:
+    return (os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem'), os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem'))
+
+
+def get_files_token() -> list:
+    return (os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem'), os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem'))
+
+
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     global AlienSessionInfo
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     # SSL SETTINGS
-    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
-    userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
-    tokencert_file = os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem'
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', tokencert_file)
-    tokenkey_file = os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem'
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', tokenkey_file)
+    cert_files = get_files_cert()
+    token_files = get_files_token()
+    tokencert = token_files[0]
+    tokenkey = token_files[1]
+
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
@@ -1435,13 +1456,13 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         key  = tokenkey
         AlienSessionInfo['use_usercert'] = False
     else:
-        if not (os.path.exists(usercert) and os.path.exists(userkey)):
+        if not (os.path.exists(cert_files[0]) and os.path.exists(cert_files[1])):
             msg = f"User certificate files NOT FOUND!!! Connection will not be possible!!"
             print(msg, file=sys.stderr, flush = True)
             logging.info(msg)
             sys.exit(1)
-        cert = usercert
-        key  = userkey
+        cert = cert_files[0]
+        key  = cert_files[1]
         AlienSessionInfo['use_usercert'] = True
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
@@ -1540,15 +1561,6 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     return wb
 
 
-@syncify
-async def msg_proxy(websocket, path, use_usercert = False):
-    # start client to upstream
-    wb_jalien = AlienConnect(None, use_usercert)
-    local_query = await websocket.recv()
-    jalien_answer = await SendMsg_json(wb_jalien, local_query)
-    await websocket.send(jalien_answer)
-
-
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
@@ -1621,8 +1633,10 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
 def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None):
     """(Re)create the tokencert and tokenkey files"""
     if not wb: return
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    token_files = get_files_token()
+    tokencert = token_files[0]
+    tokenkey = token_files[1]
+
     global AlienSessionInfo
     if not args: args = []
     args.insert(0, '-nomsg')
@@ -1657,7 +1671,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
 def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None):
     global AlienSessionInfo
     if not AlienSessionInfo['use_usercert']:
-        wb.close(code = 1000, reason = 'Lets connect with usercert to be able to generate token')
+        wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
             # we have to reconnect with the new token
             wb = InitConnection()
@@ -1667,7 +1681,7 @@ def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     # now we are connected with usercert, so we can generate token
     token(wb, args)
     # we have to reconnect with the new token
-    wb.close(code = 1000, reason = 'Re-initialize the connection with the new token')
+    wb_close(wb, code = 1000, reason = 'Re-initialize the connection with the new token')
     try:
         wb = InitConnection()
     except Exception as e:
@@ -1750,17 +1764,17 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     cmd = args.pop(0)
     args[:] = [x for x in args if x.strip()]
 
-    usercert = os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem')
-    # userkey = os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem')
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    cert_files = get_files_cert()
+    token_files = get_files_token()
+    tokencert = token_files[0]
+    tokenkey = token_files[1]
 
     if cmd == 'cert-info':
         if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
             print("Print user certificate information")
             AlienSessionInfo['exitcode'] = 0
             return AlienSessionInfo['exitcode']
-        AlienSessionInfo['exitcode'] = CertInfo(usercert)
+        AlienSessionInfo['exitcode'] = CertInfo(cert_files[0])
         return AlienSessionInfo['exitcode']
 
     if cmd == 'token-info':
