@@ -1288,25 +1288,42 @@ def get_help(wb, cmd):
     ProcessInput(wb, cmd + ' -h')
 
 
+def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
+    """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
+    ls_args = ['-nomsg', '-F']
+    # lfn = expand_path_grid(lfn)
+    result = SendMsg(wb, 'ls', ls_args + [lfn])
+    result_dict = json.loads(result)
+    if result_dict["metadata"]["exitcode"] != '0': return []
+    key = 'path' if fullpath else 'name'
+
+    def cleanup_item(lfn):
+        ret = lfn
+        ret = re.sub(r"\/{2,}", "/", ret)
+        ret = re.sub(r"^\.\/", "", ret)
+        return ret
+    return list(cleanup_item(item[key]) for item in result_dict['results'])
+
+
 def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
     """Completer function : for a given lfn return all options for latest leaf"""
     if not wb: return
     if not lfn: lfn = AlienSessionInfo['currentdir']
-    lfn = expand_path_grid(lfn)
-    ls_args = ['-nokeys', '-F']
     lfn_list = []
     if lfn.endswith('/'):
-        result = SendMsg(wb, 'ls', ls_args + [lfn])
-        result_dict = json.loads(result)
-        lfn_list = list(item['message'] for item in result_dict['results'])
+        lfn_list = get_list_entries(wb, lfn)
     else:
         lfn_path = Path(lfn)
         base_dir = lfn_path.parent.as_posix()
         name = lfn_path.name
-        result = SendMsg(wb, 'ls', ls_args + [base_dir])
-        result_dict = json.loads(result)
-        listing = list(item['message'] for item in result_dict['results'])
-        lfn_list = [base_dir + '/' + item if base_dir != '/' else base_dir + item for item in listing if item.startswith(name)]
+        listing = get_list_entries(wb, base_dir)
+
+        def item_format(base_dir, name, item):
+            if (base_dir != '.' and base_dir != '/'): return base_dir + '/' + item
+            if base_dir == '/': return base_dir + item
+            return item
+
+        lfn_list = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
     return lfn_list
 
 
@@ -1873,10 +1890,6 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
 
-    # for commands that use lfns we need the current used paths and current directory content
-    cwd_grid_path = Path(AlienSessionInfo['currentdir'])
-    home_grid_path = Path(AlienSessionInfo['alienHome'])
-
     if cmd == "pfn":
         cmd = 'whereis'
         args.insert(0, '-r')
@@ -1907,12 +1920,12 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if cmd == "less":
         if args[0] != '-h':
             DO_less(wb, args[0])
-            return int(0)
+            return AlienSessionInfo['exitcode']
 
     if (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
         if args[0] != '-h':
             DO_edit(wb, args[0], editor=cmd)
-            return int(0)
+            return AlienSessionInfo['exitcode']
 
     if (cmd == 'edit' or cmd == 'sensible-editor'):
         EDITOR = os.getenv('EDITOR', '')
@@ -1922,7 +1935,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         cmd = EDITOR
         if args[0] != '-h':
             DO_edit(wb, args[0], editor=cmd)
-            return int(0)
+            return AlienSessionInfo['exitcode']
 
     # default to print / after directories
     if cmd == 'ls': args.insert(0, '-F')
