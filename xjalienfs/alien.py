@@ -1996,7 +1996,7 @@ def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
 
 
 def StoreCWD():
-    if os.getenv('ALIENPY_SAVE_CWD'):
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'):
         try:
             with open(GetCWDFilename(), "w") as f:
                 f.write(AlienSessionInfo["currentdir"])
@@ -2037,7 +2037,7 @@ def JAlien(commands: str = ''):
         setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
-    if os.getenv('ALIENPY_SAVE_CWD'): RestoreCWD(wb)
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): RestoreCWD(wb)
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -2087,6 +2087,7 @@ def JAlien(commands: str = ''):
 
             if input_list[0] == 'exit' or input_list[0] == 'quit' or input_list[0] == 'logout': exit_message()
             ProcessInput(wb, ' '.join(input_list), pipe_to_shell_cmd)
+            if input_list[0] == 'cd': StoreCWD()
 
 
 def main():
@@ -2100,7 +2101,6 @@ def main():
 
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
-    atexit.register(StoreCWD)
 
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
