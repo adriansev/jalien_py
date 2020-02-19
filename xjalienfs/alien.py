@@ -2061,6 +2061,8 @@ def JAlien(commands: str = ''):
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): RestoreCWD(wb)
+    if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
+    if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
