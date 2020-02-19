@@ -1445,10 +1445,10 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         AlienSessionInfo['use_usercert'] = True
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
-
-    OS_INFO = os_release()
-    VERSION_ID = OS_INFO['VERSION_ID'] if OS_INFO else ''
-    if VERSION_ID and VERSION_ID != '7': ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
+    try:
+        ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
+    except ssl.SSLError:
+        pass
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
