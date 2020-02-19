@@ -34,7 +34,11 @@ setuptools.setup(
         "License :: OSI Approved :: BSD 3-Clause License",
         "Operating System :: OS Independent",
     ],
-
+    project_urls={
+        "Developer git": "https://github.com/adriansev/jalien_py",
+        "Project(experiment) git": "https://gitlab.cern.ch/jalien/xjalienfs",
+        "Issues": "https://github.com/adriansev/jalien_py/issues",
+    },
     entry_points = {
         'console_scripts': [
             'alien.py = xjalienfs.alien:main',
