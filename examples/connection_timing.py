@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import asyncio
 import websockets
-import alien
+import xjalienfs.alien as alien
 
 
 alien.DEBUG = 1
@@ -20,6 +20,5 @@ if 'wbdebug' in sys.argv:
 else:
     logger_wb.setLevel(logging.ERROR)
 
-asyncio.get_event_loop().run_until_complete(alien.AlienConnect())
-os._exit(int(0))
+wb = alien.AlienConnect()
 
