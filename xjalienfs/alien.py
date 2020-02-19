@@ -1962,35 +1962,34 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
             print(websocket_output, flush = True)
     return int(AlienSessionInfo['exitcode'])
 
-def GetCWDFilename():
-    tmp = os.getenv('TMPDIR', '/tmp')
-    return os.path.join(tmp, "alienpy_cwd_{}".format(os.getuid()))
 
-def RestoreCWD(wb):
-    msg = "RestoreCWD:: failed to restore the curernt working directory: {}"
+def GetCWDFilename() -> str:
+    return os.path.join(os.path.expanduser("~"), ".alienpy_cwd")
 
+
+def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
+    cwd = ''
     try:
-        cwd = ""
         with open(GetCWDFilename()) as f:
             cwd = f.read()
+    except Exception as e:
+        logging.warning('RestoreCWD:: failed to read file')
+        logging.exception(e)
 
-        resp = SendMsg(wb, 'cd', [cwd])
+    if cwd:
+        resp = SendMsg_str(wb, 'cd ' + cwd)
         GetDict(resp, print_err='log')
 
-        if AlienSessionInfo['exitcode'] != 0:
-            logging.warning(msg.format(cwd))
-    except Exception as e:
-        logging.warning(msg.format(cwd))
-        logging.exception(e)
 
+def StoreCWD():
+    if os.getenv('ALIENPY_SAVE_CWD'):
+        try:
+            with open(GetCWDFilename(), "w") as f:
+                f.write(AlienSessionInfo["currentdir"])
+        except Exception as e:
+            logging.warning("StoreCWD:: failed to write file")
+            logging.exception(e)
 
-def StoreCWD(cwd):
-    try:
-        with open(GetCWDFilename(), "w") as f:
-            f.write(cwd)
-    except Exception as e:
-        logging.warning("StoreCWD:: failed to store cwd")
-        logging.exception(e)
 
 def JAlien(commands: str = ''):
     """Main entry-point for interaction with AliEn"""
@@ -2024,7 +2023,7 @@ def JAlien(commands: str = ''):
         setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
-    RestoreCWD(wb)
+    if os.getenv('ALIENPY_SAVE_CWD'): RestoreCWD(wb)
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -2074,7 +2073,6 @@ def JAlien(commands: str = ''):
 
             if input_list[0] == 'exit' or input_list[0] == 'quit' or input_list[0] == 'logout': exit_message()
             ProcessInput(wb, ' '.join(input_list), pipe_to_shell_cmd)
-            StoreCWD(AlienSessionInfo["currentdir"])
 
 
 def main():
@@ -2088,6 +2086,7 @@ def main():
 
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
+    atexit.register(StoreCWD)
 
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
