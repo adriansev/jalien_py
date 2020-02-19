@@ -301,9 +301,9 @@ def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
     if int(AlienSessionInfo['exitcode']) != 0:
         err_msg = AlienSessionInfo['error']
         if 'log' in print_err:
-            logging.info(f"{err_mesg}")
+            logging.info(f"{err_msg}")
         if 'debug' in print_err:
-            logging.debug(f"{err_mesg}")
+            logging.debug(f"{err_msg}")
         if 'print' in print_err:
             print(f'{err_msg}', file=sys.stderr, flush = True)
     return ans_dict
@@ -1736,7 +1736,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     return wb
 
 
-def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False, silent: bool = False):
+def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
 
@@ -1931,20 +1931,20 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if message_begin:
         message_delta = (datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
-    return int(ProcessReceivedMessage(result, shellcmd, cmd_mode, silent))
+    return int(ProcessReceivedMessage(result, shellcmd, cmd_mode))
 
 
-def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False, silent: bool = False):
+def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
     json_dict = GetDict(message, print_err = 'print')
 
     if JSON_OUT:  # print nice json for debug or json mode
-        if not silent: PrintDict(json_dict)
+        PrintDict(json_dict)
         return int(AlienSessionInfo['exitcode'])
     if JSONRAW_OUT:  # print the raw byte stream received from the server
-        if not silent: print(message, flush = True)
+        print(message, flush = True)
         return int(AlienSessionInfo['exitcode'])
 
     websocket_output = ''
@@ -1955,11 +1955,11 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
         if shellcmd:
             shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=websocket_output, encoding='ascii', shell=True, env=os.environ)
             stdout = shell_run.stdout
-            if stdout and not silent: print(stdout, flush = True)
+            if stdout: print(stdout, flush = True)
             stderr = shell_run.stderr
-            if stderr and not silent: print(stderr, file=sys.stderr, flush = True)
+            if stderr: print(stderr, file=sys.stderr, flush = True)
         else:
-            if not silent: print(websocket_output, flush = True)
+            print(websocket_output, flush = True)
     return int(AlienSessionInfo['exitcode'])
 
 def GetCWDFilename():
@@ -1967,14 +1967,20 @@ def GetCWDFilename():
     return os.path.join(tmp, "alienpy_cwd_{}".format(os.getuid()))
 
 def RestoreCWD(wb):
+    msg = "RestoreCWD:: failed to restore the curernt working directory"
+
     try:
         cwd = ""
         with open(GetCWDFilename()) as f:
             cwd = f.read()
 
-        ProcessInput(wb, "cd " + cwd, silent=True)
+        resp = SendMsg(wb, 'cd', [cwd])
+        GetDict(resp, print_err='log')
+
+        if AlienSessionInfo['exitcode'] != 0:
+            logging.warning(msg)
     except Exception as e:
-        logging.warning("RestoreCWD:: failed to restore the curernt working directory")
+        logging.warning(msg)
         logging.exception(e)
 
 
