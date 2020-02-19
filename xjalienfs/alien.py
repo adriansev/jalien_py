@@ -2031,10 +2031,11 @@ def JAlien(commands: str = ''):
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
 
     aliases_dict = import_aliases()
-    for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
 
     # Command mode interaction
     if commands:
+        # translate aliases
+        for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
         cmds_tokens = commands.split(";")
         for token in cmds_tokens: ProcessInput(wb, token, None, True)
         return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
@@ -2076,6 +2077,9 @@ def JAlien(commands: str = ''):
             exit_message()
 
         if not INPUT: continue
+
+        # translate aliases for each command
+        for alias in aliases_dict: INPUT = INPUT.replace(alias, aliases_dict[alias])
 
         # if shell command, just run it and return
         if INPUT.startswith('!'):
