@@ -1967,7 +1967,7 @@ def GetCWDFilename():
     return os.path.join(tmp, "alienpy_cwd_{}".format(os.getuid()))
 
 def RestoreCWD(wb):
-    msg = "RestoreCWD:: failed to restore the curernt working directory"
+    msg = "RestoreCWD:: failed to restore the curernt working directory: {}"
 
     try:
         cwd = ""
@@ -1978,9 +1978,9 @@ def RestoreCWD(wb):
         GetDict(resp, print_err='log')
 
         if AlienSessionInfo['exitcode'] != 0:
-            logging.warning(msg)
+            logging.warning(msg.format(cwd))
     except Exception as e:
-        logging.warning(msg)
+        logging.warning(msg.format(cwd))
         logging.exception(e)
 
 
