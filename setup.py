@@ -19,7 +19,7 @@ else:
 
 setuptools.setup(
     name="xjalienfs",
-    version="1.0.5",
+    version="1.0.6",
     author="ALICE JAliEn",
     author_email="jalien@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
