@@ -429,9 +429,9 @@ def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, s
     if isWrite: access_type = 'write'
     for lfn in lfn_list:
         get_envelope_arg_list = [access_type, lfn]
-        if not DEBUG: get_envelope_arg_list.insert(0, '-nomsg')
+        send_opts = 'nomsg' if not DEBUG else ''
         if specs: get_envelope_arg_list.append(str(",".join(specs)))
-        result = SendMsg(wb, 'access', get_envelope_arg_list)
+        result = SendMsg(wb, 'access', get_envelope_arg_list, send_opts)
         access_list.append({"lfn": lfn, "answer": result})
     return access_list
 
@@ -478,7 +478,7 @@ def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> s
     """Query if a lfn is a file or directory, return f, d or empty"""
     if not wb: return ''
     if not path: return ''
-    result = SendMsg(wb, 'stat', ['-nomsg', path])
+    result = SendMsg(wb, 'stat', [path], 'nomsg')
     json_dict = GetDict(result, print_err = 'debug')
     if int(AlienSessionInfo['exitcode']) != 0: return ''
     return str(json_dict['results'][0]["type"])
@@ -821,8 +821,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         specs = src_specs_remotes
         if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
             find_args.extend(['-r', '-a', '-s', src, pattern])
-            if not DEBUG: find_args.insert(0, '-nomsg')
-            result = SendMsg(wb, 'find', find_args)
+            send_opts = 'nomsg' if not DEBUG else ''
+            result = SendMsg(wb, 'find', find_args, send_opts)
             src_list_files_dict = json.loads(result)
             src_filelist = list(item['lfn'] for item in src_list_files_dict['results'])
             src_path = Path(src)
@@ -1038,7 +1038,7 @@ if has_xrootd:
                     import xml.dom.minidom
                     content = xml.dom.minidom.parse(meta_file)
                     lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
-                    os.remove(meta_file)  # remove the created metalink
+                    # os.remove(meta_file)  # remove the created metalink
                     self.token_list_upload_ok.append(str(lfn))  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     link = urlparse(str(self.job_list[jobId - 1]['tgt']))
@@ -1300,9 +1300,9 @@ def CreateJsonCommand(cmd: str, options: Union[None, list] = None) -> str:
     return json.dumps(jsoncmd)
 
 
-def CreateJsonCommand_str(cmd: str) -> str:
+def CreateJsonCommand_str(cmdline: str) -> str:
     """Return a json by spliting the input string in first element(command) and the rest asa a list of arguments"""
-    args = cmd.split(" ")
+    args = cmdline.split()
     command = args.pop(0)
     return CreateJsonCommand(command, args)
 
@@ -1388,15 +1388,21 @@ def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
     print(f"Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
 
 
-def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None) -> str:
+def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None, opts: str = '') -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     if not args: args = []
+    if 'nomsg' in opts: args.insert(0, '-nomsg')
+    if 'nokeys' in opts: args.insert(0, '-nokeys')
     return SendMsg_json(wb, CreateJsonCommand(cmd, args))
 
 
-def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str) -> str:
+def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str, opts: str = '') -> str:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
-    return SendMsg_json(wb, CreateJsonCommand_str(cmd_line))
+    args = cmd_line.split()
+    cmd = args.pop(0)
+    if 'nomsg' in opts: args.insert(0, '-nomsg')
+    if 'nokeys' in opts: args.insert(0, '-nokeys')
+    return SendMsg_json(wb, CreateJsonCommand(cmd, args))
 
 
 def IsValidCert(fname: str):
@@ -1687,9 +1693,8 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
 
     global AlienSessionInfo
     if not args: args = []
-    args.insert(0, '-nomsg')
 
-    answer = SendMsg(wb, 'token', args)
+    answer = SendMsg(wb, 'token', args, 'nomsg')
     json_dict = GetDict(answer, print_err = 'print')
 
     tokencert_content = json_dict.get('results')[0].get('tokencert', '')
@@ -1984,8 +1989,8 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
 
-    if not (DEBUG or JSON_OUT or JSONRAW_OUT): args.insert(0, '-nokeys')
-    result = SendMsg(wb, cmd, args)
+    send_opt = 'nokeys' if not (DEBUG or JSON_OUT or JSONRAW_OUT) else ''
+    result = SendMsg(wb, cmd, args, send_opt)
     if message_begin:
         message_delta = (datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
