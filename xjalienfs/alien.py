@@ -408,9 +408,9 @@ args are the following :
 
 for the recursive copy of directories the following options (of the find command) can be used:
 -select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--select all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
 -name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--name all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
@@ -725,13 +725,34 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         name_idx = xrd_copy_command.index('-name')
         pattern = xrd_copy_command.pop(name_idx + 1)
         xrd_copy_command.pop(name_idx)
-        if pattern.startswith('all_'):
-            pattern = '\\/*.*\\.' + pattern.replace('all_', '', 1) + '$'
-        else:
-            pattern = '.*\\/' + pattern + '$'
 
-    if ('-select' in xrd_copy_command or '-name' in xrd_copy_command) and pattern.startswith('all_'):
-        pattern = '.*\\.' + pattern.replace('all_', '', 1) + '$'
+    translated_pattern = '.*\\/'
+    verbs = ('begin', 'contain', 'ends', 'ext')
+    if any(verb in pattern for verb in verbs):
+        pattern_list = pattern.split('_')
+        if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+            print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+            return int(64)  # EX_USAGE /* command line usage error */
+        for idx, token in enumerate(pattern_list):
+            if token == 'begin':
+                string = pattern_list[idx + 1]
+                translated_pattern = translated_pattern + string + '.*'
+            if token == 'contain':
+                string = pattern_list[idx + 1]
+                translated_pattern = translated_pattern + '.*' + string + '.*'
+            if token == 'ends':
+                string = pattern_list[idx + 1]
+                translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
+            if token == 'ext':
+                string = pattern_list[idx + 1]
+                translated_pattern = translated_pattern + '.*\\.' + string + '$'
+
+    pattern = translated_pattern
+    try:
+        regex = re.compile(pattern)
+    except re.error:
+        print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
+        return int(64)  # EX_USAGE /* command line usage error */
 
     # list of src files and coresponding dst names
     src_filelist = []
@@ -823,7 +844,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isWrite = bool(True)
         specs = dst_specs_remotes
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
-            regex = re.compile(pattern)
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
