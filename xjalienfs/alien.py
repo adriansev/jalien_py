@@ -2059,7 +2059,8 @@ def JAlien(commands: str = ''):
     # Command mode interaction
     if commands:
         # translate aliases
-        for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
+        if aliases_dict:
+            for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
         cmds_tokens = commands.split(";")
         for token in cmds_tokens: ProcessInput(wb, token, None, True)
         return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
