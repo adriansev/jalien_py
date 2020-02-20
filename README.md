@@ -81,9 +81,9 @@ args are the following :
 
 for the recursive copy of directories the following options (of the find command) can be used:
 -select <pattern> : select only these files to be copied; N.B. this is a REGEX applied to full path!!! defaults to all ".*"
--select all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
 -name <pattern> : select only these files to be copied; N.B. this is a REGEX applied to a directory or file name!!! defaults to all ".*"
--name all_<extension> : alias for selection of all files the have the specified extension e.g. all_root would select all files that have .root extension
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
+N.B. the text to be filtered cannont have underline <_> within!!!
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
@@ -101,6 +101,7 @@ lfns that don't start with a `/` will have the current directory appended before
 It can show date and/or local directory:   
 * `prompt date` will toggle on/off the date  
 * `prompt pwd` will toggle on/off the local current directory  
+For permanent setting the following are env variables are available : ALIENPY_PROMPT_DATE, ALIENPY_PROMPT_CWD   
 ```
 AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >prompt date
 2020-02-07T16:49:05 AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >
@@ -111,4 +112,11 @@ AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ local:/home.hdd/adrian/work-GRID
 
 #### `ls` aliases
 `ll`, `la`, `lla` are aliases to `ls -l`, `ls -a`, `ls -la`
+
+#### CWD persistence
+By default, the shell mode will remember the location of the last directory and a new session will use the previous cwd   
+This bevahiour can be disabled with the env var ALIENPY_NO_CWD_RESTORE   
+
+#### Custom aliases   
+A fixed file `${HOME}/.alienpy_aliases` can be used to define alias=string pairs that will be used(translated) in the usage of alien.py. One can do `myalias=cmd1;cmd2;cmd3` and the `myalias` string will be replaced by it's value when used.   
 
