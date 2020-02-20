@@ -2103,7 +2103,8 @@ def JAlien(commands: str = ''):
         if not INPUT: continue
 
         # translate aliases for each command
-        for alias in aliases_dict: INPUT = INPUT.replace(alias, aliases_dict[alias])
+        if aliases_dict:
+            for alias in aliases_dict: INPUT = INPUT.replace(alias, aliases_dict[alias])
 
         # if shell command, just run it and return
         if INPUT.startswith('!'):
