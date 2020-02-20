@@ -824,15 +824,17 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             if not DEBUG: find_args.insert(0, '-nomsg')
             result = SendMsg(wb, 'find', find_args)
             src_list_files_dict = json.loads(result)
-            for file in src_list_files_dict['results']:
-                src_filelist.append(file['lfn'])
-                src_path = Path(src)
-                if parent > (len(src_path.parents) - 1): parent = len(src_path.parents) - 1  # make sure maximum parent var point to first dir in path
-                src_root = src_path.parents[parent].as_posix()
-                if src_root != '/':
-                    file_relative_name = file['lfn'].replace(src_root, '')
+            src_filelist = list(item['lfn'] for item in src_list_files_dict['results'])
+            src_path = Path(src)
+            for file in src_filelist:
+                if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
+                if parent == 0 and src != '/':
+                    file_relative_name = file.replace(src, '', 1)
+                elif parent > 0:
+                    src_root = src_path.parents[parent - 1].as_posix()
+                    file_relative_name = file.replace(src_root, '', 1)
                 else:
-                    file_relative_name = file['lfn']
+                    file_relative_name = file
                 dst_file = dst + "/" + file_relative_name
                 dst_file = re.sub(r"\/{2,}", "/", dst_file)
                 dst_filelist.append(dst_file)
@@ -844,16 +846,18 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isWrite = bool(True)
         specs = dst_specs_remotes
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
+            src_path = Path(src)
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
                     if regex.search(filepath):
                         src_filelist.append(filepath)
-                        src_path = Path(src)
-                        if parent > (len(src_path.parents) - 1): parent = len(src_path.parents) - 1  # make sure maximum parent var point to first dir in path
-                        src_root = src_path.parents[parent].as_posix()
-                        if src_root != '/':
-                            file_relative_name = filepath.replace(src_root, '')
+                        if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
+                        if parent == 0 and src != '/':
+                            file_relative_name = filepath.replace(src, '', 1)
+                        elif parent > 0:
+                            src_root = src_path.parents[parent - 1].as_posix()
+                            file_relative_name = filepath.replace(src_root, '', 1)
                         else:
                             file_relative_name = filepath
                         dst_file = dst[:-1] + "/" + file_relative_name
