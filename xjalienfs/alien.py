@@ -45,6 +45,25 @@ except ImportError:
     except ImportError:
         has_readline = False
 
+if has_readline:
+    def setupHistory():
+        histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
+        try:
+            rl.read_history_file(histfile)
+            h_len = rl.get_current_history_length()
+        except FileNotFoundError:
+            open(histfile, 'wb').close()
+            h_len = 0
+        rl.set_auto_history(True)
+        atexit.register(rl.write_history_file, histfile)
+
+    def saveHistory(prev_h_len, histfile):
+        new_h_len = rl.get_current_history_length()
+        prev_h_len = rl.get_history_length()
+        rl.set_history_length(1000)
+        rl.append_history_file(new_h_len - prev_h_len, histfile)
+
+
 try:  # let's fail fast if the xrootd python bindings are not present
     from XRootD import client
     has_xrootd = True
@@ -364,9 +383,14 @@ def is_my_pid(pid: int) -> bool:
     return True if pid_uid(int(pid)) == os.getuid() else False
 
 
-def PrintDict(dict: dict) -> str:
+def PrintDict(dict: dict, opts: str = ''):
     """Print a dictionary in a nice format"""
-    print(json.dumps(dict, sort_keys=True, indent=4), flush = True)
+    dict_str = json.dumps(dict, sort_keys=True, indent=4)
+    if not opts: print(dict_str, flush = True)
+    if 'info' in opts: logging.info(dict_str)
+    if 'warn' in opts: logging.warning(dict_str)
+    if 'err' in opts: logging.error(dict_str)
+    if 'debug' in opts: logging.debug(dict_str)
 
 
 def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
@@ -480,8 +504,7 @@ def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> s
     if not path: return ''
     result = SendMsg(wb, 'stat', [path], 'nomsg')
     json_dict = GetDict(result, print_err = 'debug')
-    if int(AlienSessionInfo['exitcode']) != 0: return ''
-    return str(json_dict['results'][0]["type"])
+    return '' if int(AlienSessionInfo['exitcode']) != 0 else str(json_dict['results'][0]["type"])
 
 
 def pathtype_local(path: str) -> str:
@@ -544,23 +567,20 @@ def md5(file: str) -> str:
     return hasher.hexdigest()
 
 
-if has_readline:
-    def setupHistory():
-        histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-        try:
-            rl.read_history_file(histfile)
-            h_len = rl.get_current_history_length()
-        except FileNotFoundError:
-            open(histfile, 'wb').close()
-            h_len = 0
-        rl.set_auto_history(True)
-        atexit.register(rl.write_history_file, histfile)
-
-    def saveHistory(prev_h_len, histfile):
-        new_h_len = rl.get_current_history_length()
-        prev_h_len = rl.get_history_length()
-        rl.set_history_length(1000)
-        rl.append_history_file(new_h_len - prev_h_len, histfile)
+def format_dst_fn(src_dir, src_file, dst, parent):
+    src_path = Path(src_dir)
+    if not src_dir.endswith('/'): parent = parent + 1
+    if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
+    if parent == 0 and src_dir != '/':
+        file_relative_name = src_file.replace(src_dir, '', 1)
+    elif parent > 0:
+        src_root = src_path.parents[parent - 1].as_posix()
+        file_relative_name = src_file.replace(src_root, '', 1)
+    else:
+        file_relative_name = src_file
+    dst_file = dst + "/" + file_relative_name
+    dst_file = re.sub(r"\/{2,}", "/", dst_file)
+    return dst_file
 
 
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
@@ -778,7 +798,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         src = expand_path_grid(src)
         src_type = pathtype_grid(wb, src)
         if not src_type:
-            print("Could not determine the type of src argument.. is it missing?", file=sys.stderr, flush = True)
+            error = AlienSessionInfo['error']
+            print(f"Could not check source argument type: {error}", file=sys.stderr, flush = True)
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
 
@@ -801,14 +822,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = pathtype_grid(wb, dst)
-        if not dst_type and src_type == 'f':
-            # the destination is not present yet and because src is file then dst must be also file
-            base_dir = Path(dst).parent.as_posix()
-            result = SendMsg_str(wb, 'mkdir -p ' + base_dir)
-            json_dict = json.loads(result)
-            if json_dict["metadata"]["exitcode"] != '0':
-                err = json_dict["metadata"]["error"]
-                print(f"Could not create directory : {base_dir} !! --> {err}", file=sys.stderr, flush = True)
         if dst_type == 'd': isDstDir = bool(True)
 
     if isSrcLocal == isDstLocal:
@@ -823,21 +836,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             find_args.extend(['-r', '-a', '-s', src, pattern])
             send_opts = 'nomsg' if not DEBUG else ''
             result = SendMsg(wb, 'find', find_args, send_opts)
-            src_list_files_dict = json.loads(result)
+            src_list_files_dict = GetDict(result)
             src_filelist = list(item['lfn'] for item in src_list_files_dict['results'])
-            src_path = Path(src)
-            for file in src_filelist:
-                if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
-                if parent == 0 and src != '/':
-                    file_relative_name = file.replace(src, '', 1)
-                elif parent > 0:
-                    src_root = src_path.parents[parent - 1].as_posix()
-                    file_relative_name = file.replace(src_root, '', 1)
-                else:
-                    file_relative_name = file
-                dst_file = dst + "/" + file_relative_name
-                dst_file = re.sub(r"\/{2,}", "/", dst_file)
-                dst_filelist.append(dst_file)
+            for filepath in src_filelist:
+                dst_filelist.append(format_dst_fn(src, filepath, dst, parent))
         else:
             src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
@@ -846,23 +848,12 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isWrite = bool(True)
         specs = dst_specs_remotes
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
-            src_path = Path(src)
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
                     if regex.search(filepath):
                         src_filelist.append(filepath)
-                        if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
-                        if parent == 0 and src != '/':
-                            file_relative_name = filepath.replace(src, '', 1)
-                        elif parent > 0:
-                            src_root = src_path.parents[parent - 1].as_posix()
-                            file_relative_name = filepath.replace(src_root, '', 1)
-                        else:
-                            file_relative_name = filepath
-                        dst_file = dst[:-1] + "/" + file_relative_name
-                        dst_file = re.sub(r"\/{2,}", "/", dst_file)
-                        dst_filelist.append(dst_file)
+                        dst_filelist.append(format_dst_fn(src, filepath, dst, parent))
         else:
             src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
@@ -885,10 +876,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         error = access_request["metadata"]["error"]
         if error:
             errors_idx.append(item_idx)
-            print(f"lfn: {lfn} --> {error}", flush = True)
+            print(f"lfn: {lfn} --> {error}", file=sys.stderr, flush = True)
         if DEBUG:
             logging.debug(f"lfn: {lfn}")
-            logging.debug(json.dumps(access_request, sort_keys=True, indent=4))
+            PrintDict(access_request, 'debug')
 
     for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
     if not envelope_list:
@@ -1124,14 +1115,14 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
 
     envelope_list = getEnvelope(wb, [lfn], [upload_specs], isWrite = True)
     result = envelope_list[0]["answer"]
-    access_request = json.loads(result)
+    access_request = GetDict(result)
     replicas = access_request["results"][0]["nSEs"]
 
     # let's create a backup of old lfn
     lfn_backup = lfn + "~"
     result = SendMsg(wb, 'rm', ['-f', lfn_backup])
     result = SendMsg(wb, 'mv', [lfn, lfn_backup])
-    json_dict = json.loads(result)
+    json_dict = GetDict(result)
     if json_dict["metadata"]["exitcode"] != '0':
         print(f"Could not create backup of lfn : {lfn}", file=sys.stderr, flush = True)
         return ''
@@ -1149,43 +1140,96 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
         return ''
 
 
-def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
     """cat lfn :: download lfn as a temporary file and cat"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
-    if tmp in AlienSessionInfo['templist']:
-        runShellCMD('cat ' + tmp)
-    else:
+    if tmp not in AlienSessionInfo['templist']:
         tmp = download_tmp(wb, lfn)
-        if tmp:
-            AlienSessionInfo['templist'].append(tmp)
-            runShellCMD('cat ' + tmp)
+        AlienSessionInfo['templist'].append(tmp)
+    if tmp and os.path.isfile(tmp): return runShellCMD('cat ' + tmp)
 
 
-def DO_less(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+def DO_less(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
     """cat lfn :: download lfn as a temporary file and less"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
-    if tmp in AlienSessionInfo['templist']:
-        runShellCMD('less ' + tmp, False)
-    else:
+    if tmp not in AlienSessionInfo['templist']:
         tmp = download_tmp(wb, lfn)
-        if tmp:
-            AlienSessionInfo['templist'].append(tmp)
-            runShellCMD('less ' + tmp, False)
+        AlienSessionInfo['templist'].append(tmp)
+    if tmp and os.path.isfile(tmp): return runShellCMD('less ' + tmp, False)
 
 
-def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
     """cat lfn :: download lfn as a temporary file and more"""
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
-    if tmp in AlienSessionInfo['templist']:
-        runShellCMD('more ' + tmp)
-    else:
+    if tmp not in AlienSessionInfo['templist']:
         tmp = download_tmp(wb, lfn)
-        if tmp:
-            AlienSessionInfo['templist'].append(tmp)
-            runShellCMD('more ' + tmp)
+        AlienSessionInfo['templist'].append(tmp)
+    if tmp and os.path.isfile(tmp): return runShellCMD('more ' + tmp, False)
+
+
+def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, editor: str = 'mcedit') -> int:
+    """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
+    if editor == 'mcedit': editor = 'mc -c -e'
+    editor = editor + " "
+    specs = ''
+    lfn_specs = lfn.split("@", maxsplit = 1)
+    if len(lfn_specs) > 1:
+        lfn = lfn_specs[0]
+        specs = lfn_specs[1]
+    lfn_path = expand_path_grid(lfn)
+    tmp = download_tmp(wb, lfn)
+    if tmp and os.path.isfile(tmp):
+        md5_begin = md5(tmp)
+        exitcode = runShellCMD(editor + tmp, False)
+        md5_end = md5(tmp)
+        if md5_begin != md5_end: upload_tmp(wb, tmp, specs)
+        os.remove(tmp)  # clean up the temporary file not matter if the upload was succesful or not
+        return exitcode
+    else:
+        print(f'There was an error downloading {lfn}, editing could not be done.', file=sys.stderr, flush = True)
+        return int(1)
+
+
+def DO_run(wb: websockets.client.WebSocketClientProtocol, cmd: str, lfn: str) -> int:
+    """cat lfn :: download lfn as a temporary file and more"""
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
+    if tmp not in AlienSessionInfo['templist']:
+        tmp = download_tmp(wb, lfn)
+        AlienSessionInfo['templist'].append(tmp)
+    if tmp and os.path.isfile(tmp): return runShellCMD(cmd + ' ' + tmp)
+
+
+def DO_exec(wb: websockets.client.WebSocketClientProtocol, lfn: str, opt_args: str = '') -> int:
+    """cat lfn :: download lfn as a temporary file and more"""
+    lfn_path = expand_path_grid(lfn)
+    tmp = make_tmp_fn(lfn_path)
+    if tmp not in AlienSessionInfo['templist']:
+        tmp = download_tmp(wb, lfn)
+        AlienSessionInfo['templist'].append(tmp)
+    os.chmod(tmp, 0o700)
+    cmd = tmp + ' ' + opt_args if opt_args else tmp
+    if tmp and os.path.isfile(tmp): return runShellCMD(cmd)
+
+
+def runShellCMD(INPUT: str = '', captureout: bool = True) -> int:
+    """Run shell command in subprocess; if exists, print stdout and stderr"""
+    if not INPUT: return
+    sh_cmd = re.sub(r'^!', '', INPUT)
+
+    if captureout:
+        args = sh_cmd
+        shcmd_out = subprocess.run(args, env = os.environ, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
+    else:
+        args = shlex.split(sh_cmd)
+        shcmd_out = subprocess.run(args, env = os.environ)
+
+    if shcmd_out.stderr: print(shcmd_out.stderr.decode().strip(), file=sys.stderr, flush = True)
+    if shcmd_out.stdout: print(shcmd_out.stdout.decode().strip(), file=sys.stdout, flush = True)
+    return int(shcmd_out.returncode)
 
 
 def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[None, list] = None):
@@ -1240,42 +1284,6 @@ Unfinished jobs :\t\tMAX={unfinishedjobs_max}
 Waiting :\t\t\t{waiting}
 Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
 Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
-
-
-def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, editor: str = 'mcedit'):
-    """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
-    if editor == 'mcedit': editor = 'mc -c -e'
-    editor = editor + " "
-    specs = ''
-    lfn_specs = lfn.split("@", maxsplit = 1)
-    if len(lfn_specs) > 1:
-        lfn = lfn_specs[0]
-        specs = lfn_specs[1]
-    lfn_path = expand_path_grid(lfn)
-    tmp = download_tmp(wb, lfn)
-    if tmp:
-        md5_begin = md5(tmp)
-        runShellCMD(editor + tmp, False)
-        md5_end = md5(tmp)
-        if md5_begin != md5_end: upload_tmp(wb, tmp, specs)
-        # clean up the temporary file not matter if the upload was succesful or not
-        os.remove(tmp)
-
-
-def runShellCMD(INPUT: str = '', captureout: bool = True):
-    """Run shell command in subprocess; if exists, print stdout and stderr"""
-    if not INPUT: return
-    sh_cmd = re.sub(r'^!', '', INPUT)
-
-    if captureout:
-        args = sh_cmd
-        shcmd_out = subprocess.run(args, env = os.environ, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
-    else:
-        args = shlex.split(sh_cmd)
-        shcmd_out = subprocess.run(args, env = os.environ)
-
-    if shcmd_out.stderr: print(shcmd_out.stderr.decode().strip(), file=sys.stderr, flush = True)
-    if shcmd_out.stdout: print(shcmd_out.stdout.decode().strip(), file=sys.stdout, flush = True)
 
 
 def check_port(address: str, port: Union[str, int]) -> bool:
@@ -1770,6 +1778,8 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('ll')
     AlienSessionInfo['commandlist'].append('la')
     AlienSessionInfo['commandlist'].append('lla')
+    AlienSessionInfo['commandlist'].append('run')
+    AlienSessionInfo['commandlist'].append('exec')
     AlienSessionInfo['commandlist'].sort()
 
     AlienSessionInfo['user'] = json_dict['metadata']['user']
@@ -1914,6 +1924,34 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
 
+    # intercept all commands that take a lfn as argument and proper expand it
+    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid" or cmd == "whereis" or cmd == "pfn":
+        # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
+        for i, arg in enumerate(args):
+            if args[i][0] != '-': args[i] = expand_path_grid(args[i])
+
+    if cmd == "run":
+        if '-h' in args or '-help' in args:
+            print('Command format: run <shell_command + arguments> lfn'
+                  'the lfn must be the last element of the command'
+                  'N.B.! The output and error streams will be captured and printed at the end of execution!'
+                  'for working within application use <edit>', flush = True)
+            return int(0)
+        lfn = args.pop(-1)
+        cmd = " ".join(args)
+        AlienSessionInfo['exitcode'] = DO_run(wb, cmd, lfn)
+        return AlienSessionInfo['exitcode']
+
+    if cmd == "exec":
+        if '-h' in args or '-help' in args:
+            print('Command format: run lfn list_of_arguments'
+                  'N.B.! The output and error streams will be captured and printed at the end of execution!'
+                  'for working within application use <edit>', flush = True)
+            return int(0)
+        lfn = args.pop(0)
+        AlienSessionInfo['exitcode'] = DO_exec(wb, lfn, " ".join(args))
+        return AlienSessionInfo['exitcode']
+
     if cmd == "quota":
         DO_quota(wb, args)
         AlienSessionInfo['exitcode'] = int(0)
@@ -1983,11 +2021,6 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         args.insert(0, '-a')
         args.insert(0, '-l')
         args.insert(0, '-F')
-
-    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid":
-        # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
-        for i, arg in enumerate(args):
-            if args[i][0] != '-': args[i] = expand_path_grid(args[i])
 
     send_opt = 'nokeys' if not (DEBUG or JSON_OUT or JSONRAW_OUT) else ''
     result = SendMsg(wb, cmd, args, send_opt)
