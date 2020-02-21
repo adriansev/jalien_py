@@ -1167,12 +1167,12 @@ def DO_less(wb: websockets.client.WebSocketClientProtocol, lfn: str):
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp in AlienSessionInfo['templist']:
-        runShellCMD('less ' + tmp)
+        runShellCMD('less ' + tmp, False)
     else:
         tmp = download_tmp(wb, lfn)
         if tmp:
             AlienSessionInfo['templist'].append(tmp)
-            runShellCMD('less ' + tmp)
+            runShellCMD('less ' + tmp, False)
 
 
 def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str):
