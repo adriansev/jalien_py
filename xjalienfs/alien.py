@@ -1100,10 +1100,7 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
     result = ProcessXrootdCp(wb, copycmd.split())
-    if result == 0:
-        return tmpfile
-    else:
-        return ''
+    return tmpfile if result == 0 else ''
 
 
 def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
@@ -1133,11 +1130,9 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     if upload_specs: upload_specs = "@" + upload_specs
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn + upload_specs
     list_upload = ProcessXrootdCp(wb, copycmd.split())
-    if list_upload == 0:
-        return lfn
-    else:
-        result = SendMsg(wb, 'mv', [lfn_backup, lfn])
-        return ''
+    if list_upload == 0: return lfn
+    result = SendMsg(wb, 'mv', [lfn_backup, lfn])
+    return ''
 
 
 def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
@@ -1431,10 +1426,7 @@ def IsValidCert(fname: str):
     time_notafter = int((utc_time - datetime(1970, 1, 1)).total_seconds())
     time_current  = int(datetime.now().timestamp())
     time_remaining = time_notafter - time_current
-    if (time_remaining > 300):
-        return True
-    else:
-        return False
+    return True if (time_remaining > 300) else False
 
 
 def CertInfo(fname: str):
