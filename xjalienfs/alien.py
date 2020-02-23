@@ -583,6 +583,57 @@ def format_dst_fn(src_dir, src_file, dst, parent):
     return dst_file
 
 
+def xrd_stat(pfn: str):
+    if not has_xrootd:
+        print('python XRootD module cannot be found, the copy process cannot continue')
+        return None
+    url_components = urlparse(pfn)
+    endpoint = client.FileSystem(url_components.netloc)
+    answer = endpoint.stat(url_components.path)
+    print(answer)
+    return answer
+
+
+def get_pfn_flags(pfn: str):
+    answer = xrd_stat(pfn)
+    if not answer[0].ok: return None
+    return answer[1].flags
+
+
+def is_pfn_readable(pfn: str) -> bool:
+    answer = xrd_stat(pfn)
+    flags = answer[1].flags
+    if not answer: return False
+    return True if flags & client.flags.StatInfoFlags.IS_WRITABLE else False
+
+
+def print_pfn_status(pfn: str):
+    answer = xrd_stat(pfn)
+    response_stat = answer[0]
+    response_statinfo = answer[1]
+    if not response_stat.ok:
+        print(f'{response_stat.message}; code/status: {response_stat.code}/{response_stat.status}', file=sys.stderr, flush = True)
+    size = response_statinfo.size
+    modtime = response_statinfo.modtimestr
+    flags = response_statinfo.flags
+    x_bit_set = 1 if flags & client.flags.StatInfoFlags.X_BIT_SET else 0
+    is_dir = 1 if flags & client.flags.StatInfoFlags.IS_DIR else 0
+    other = 1 if flags & client.flags.StatInfoFlags.OTHER else 0
+    offline = 1 if flags & client.flags.StatInfoFlags.OFFLINE else 0
+    posc_pending = 1 if flags & client.flags.StatInfoFlags.POSC_PENDING else 0
+    is_readable = 1 if flags & client.flags.StatInfoFlags.IS_READABLE else 0
+    is_writable = 1 if flags & client.flags.StatInfoFlags.IS_WRITABLE else 0
+    print(f'''Size: {size}\n'''
+          f'''Modification time: {modtime}\n'''
+          f'''Executable bit: {x_bit_set}\n'''
+          f'''Is directory: {is_dir}\n'''
+          f'''Not a file or directory: {other}\n'''
+          f'''File is offline (not on disk): {offline}\n'''
+          f'''File opened with POSC flag, not yet successfully closed: {posc_pending}\n'''
+          f'''Is readable: {is_readable}\n'''
+          f'''Is writable: {is_writable}''')
+
+
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     global AlienSessionInfo
@@ -1943,6 +1994,11 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         lfn = args.pop(0)
         AlienSessionInfo['exitcode'] = DO_exec(wb, lfn, " ".join(args))
         return AlienSessionInfo['exitcode']
+
+    if cmd == "pfn_status":
+        pfn = args.pop(0)
+        print_pfn_status(pfn)
+        return int(0)
 
     if cmd == "quota":
         DO_quota(wb, args)
