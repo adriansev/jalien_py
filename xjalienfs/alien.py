@@ -961,8 +961,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     is_zip = True
                     file_in_zip = url_components[1]
                 if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                    complete_url = url_components[0] + '?authz=' + server['envelope']
-                url_list_4meta.append(complete_url)
+                    url_list_4meta.append(url_components[0] + '?authz=' + server['envelope'])
 
             if not url_list_4meta:
                 print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
