@@ -590,7 +590,6 @@ def xrd_stat(pfn: str):
     url_components = urlparse(pfn)
     endpoint = client.FileSystem(url_components.netloc)
     answer = endpoint.stat(url_components.path)
-    print(answer)
     return answer
 
 
@@ -601,10 +600,10 @@ def get_pfn_flags(pfn: str):
 
 
 def is_pfn_readable(pfn: str) -> bool:
-    answer = xrd_stat(pfn)
-    flags = answer[1].flags
-    if not answer: return False
-    return True if flags & client.flags.StatInfoFlags.IS_WRITABLE else False
+    flags = get_pfn_flags(pfn)
+    if flags:
+        return True if flags & client.flags.StatInfoFlags.IS_READABLE else False
+    return False
 
 
 def print_pfn_status(pfn: str):
@@ -715,9 +714,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored", flush = True)
+        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored in those cases", flush = True)
         sources = int(xrd_copy_command.pop(y_idx + 1))
-        xrd_copy_command.pop(y_idx + 1)
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
@@ -962,14 +960,19 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 if len(url_components) > 1:
                     is_zip = True
                     file_in_zip = url_components[1]
-                complete_url = url_components[0] + '?authz=' + server['envelope']
+                if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
+                    complete_url = url_components[0] + '?authz=' + server['envelope']
                 url_list_4meta.append(complete_url)
 
+            if not url_list_4meta:
+                print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
+                continue
             url_list_dst.append({"url": dst})  # the local file destination
             src = src_filelist[item_idx]
             meta_fn = tmpdir + "/" + src.replace("/", "%%") + ".meta4"
             create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
             if is_zip:
+                sources = 1
                 download_link = meta_fn + '?xrdcl.unzip=' + file_in_zip
             else:
                 download_link = meta_fn
@@ -1996,6 +1999,10 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         return AlienSessionInfo['exitcode']
 
     if cmd == "pfn_status":
+        if '-h' in args or '-help' in args:
+            print('Command format: pfn_status <pfn>'
+                  'It will return all flags reported by the xrootd server', flush = True)
+            return int(0)
         pfn = args.pop(0)
         print_pfn_status(pfn)
         return int(0)
