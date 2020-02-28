@@ -1082,7 +1082,7 @@ if has_xrootd:
                     import xml.dom.minidom
                     content = xml.dom.minidom.parse(meta_file)
                     lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
-                    os.remove(meta_file)  # remove the created metalink
+                    if not os.getenv('ALIENPY_KEEP_META'): os.remove(meta_file)  # remove the created metalink
                     self.token_list_upload_ok.append(str(lfn))  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     link = urlparse(str(self.job_list[jobId - 1]['tgt']))
