@@ -960,7 +960,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 if len(url_components) > 1:
                     is_zip = True
                     file_in_zip = url_components[1]
-                if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
+                if True:  # is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
                     url_list_4meta.append(url_components[0] + '?authz=' + server['envelope'])
 
             if not url_list_4meta:
@@ -1082,7 +1082,7 @@ if has_xrootd:
                     import xml.dom.minidom
                     content = xml.dom.minidom.parse(meta_file)
                     lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
-                    # os.remove(meta_file)  # remove the created metalink
+                    os.remove(meta_file)  # remove the created metalink
                     self.token_list_upload_ok.append(str(lfn))  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     link = urlparse(str(self.job_list[jobId - 1]['tgt']))
