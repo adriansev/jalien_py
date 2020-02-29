@@ -1369,41 +1369,56 @@ def get_help(wb, cmd):
 
 
 def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
+    global AlienSessionInfo
+    cache = AlienSessionInfo['completer_cache']
     """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
-    ls_args = ['-nomsg', '-F']
-    # lfn = expand_path_grid(lfn)
-    result = SendMsg(wb, 'ls', ls_args + [lfn])
-    result_dict = json.loads(result)
-    if result_dict["metadata"]["exitcode"] != '0': return []
     key = 'path' if fullpath else 'name'
 
     def cleanup_item(lfn):
-        ret = lfn
-        ret = re.sub(r"\/{2,}", "/", ret)
-        ret = re.sub(r"^\.\/", "", ret)
-        return ret
-    return list(cleanup_item(item[key]) for item in result_dict['results'])
+        ret = re.sub(r"\/{2,}", "/", lfn)
+        return re.sub(r"^\.\/", "", ret)
+
+    entries_list = None
+    for cached_item in cache:
+        if cached_item['lfn'] == lfn:
+            entries_list = cached_item['entries']
+            break
+
+    if not entries_list:
+        ls_args = ['-nomsg', '-F']
+        result = SendMsg(wb, 'ls', ls_args + [lfn])
+        result_dict = json.loads(result)
+        if result_dict["metadata"]["exitcode"] != '0': entries_list = []
+        entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
+        to_be_cached = {'lfn': lfn, 'entries': entries_list}
+        cache.append(to_be_cached)
+    return entries_list
 
 
 def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
     """Completer function : for a given lfn return all options for latest leaf"""
     if not wb: return
-    if not lfn: lfn = AlienSessionInfo['currentdir']
+    if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
     lfn_list = []
+    lfn_path = Path(lfn)
+    base_dir = lfn_path.parent.as_posix() if lfn_path.parent.as_posix() == '/' else lfn_path.parent.as_posix() + '/'
+    name = lfn_path.name + '/' if lfn.endswith('/') else lfn_path.name
+
+    def item_format(base_dir, name, item):
+        # print(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
+        if name.endswith('/') and name != '/':
+            return name + item if base_dir == './' else base_dir + name + item
+        else:
+            return item if base_dir == './' else base_dir + item
+        return item
+
     if lfn.endswith('/'):
-        lfn_list = get_list_entries(wb, lfn)
+        listing = get_list_entries(wb, lfn)
+        lfn_list = [item_format(base_dir, name, item) for item in listing]
     else:
-        lfn_path = Path(lfn)
-        base_dir = lfn_path.parent.as_posix()
-        name = lfn_path.name
         listing = get_list_entries(wb, base_dir)
-
-        def item_format(base_dir, name, item):
-            if (base_dir != '.' and base_dir != '/'): return base_dir + '/' + item
-            if base_dir == '/': return base_dir + item
-            return item
-
         lfn_list = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
+    # print(f'\n{lfn_list}\n')
     return lfn_list
 
 
@@ -1876,6 +1891,10 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     token_files = get_files_token()
     tokencert = token_files[0]
     tokenkey = token_files[1]
+
+    if cmd == "lfn_list":
+        lfn_list(wb, args[0])
+        return int(0)
 
     if cmd == 'cert-info':
         if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
