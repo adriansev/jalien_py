@@ -1892,10 +1892,6 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     tokencert = token_files[0]
     tokenkey = token_files[1]
 
-    if cmd == "lfn_list":
-        lfn_list(wb, args[0])
-        return int(0)
-
     if cmd == 'cert-info':
         if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
             print("Print user certificate information")
