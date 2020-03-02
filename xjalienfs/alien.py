@@ -633,6 +633,49 @@ def print_pfn_status(pfn: str):
           f'''Is writable: {is_writable}''')
 
 
+def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+    if not wb: return ''
+    if not lfn: return ''
+    type = pathtype_grid(wb, lfn)
+    if type != 'f': return ''
+    result = SendMsg(wb, 'whereis', [lfn], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    pfn_list = [str(item['pfn']) for item in json_dict['results']]
+
+
+def get_SE_id(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    return [se["seNumber"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+
+
+def get_SE_name(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    if se_name.isdecimal():
+        return [se["seName"].strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
+    else:
+        return [se["seName"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+
+
+def get_SE_srv(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    if se_name.isdecimal():
+        return [urlparse(se["endpointUrl"]).netloc.strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
+    else:
+        return [urlparse(se["endpointUrl"]).netloc.strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+
+
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     global AlienSessionInfo
@@ -968,7 +1011,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 continue
             url_list_dst.append({"url": dst})  # the local file destination
             src = src_filelist[item_idx]
-            meta_fn = tmpdir + "/" + src.replace("/", "%%") + ".meta4"
+            meta_fn = make_tmp_fn(lfn, '.meta4', True)  # create a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
             create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
             if is_zip:
                 sources = 1
@@ -1079,11 +1122,9 @@ if has_xrootd:
                 speed_str = str(GetHumanReadable(speed)) + '/s'
                 if self.isDownload:
                     meta_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
-                    import xml.dom.minidom
-                    content = xml.dom.minidom.parse(meta_file)
-                    lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
+                    lfn = get_lfn_meta(meta_file)
                     if not os.getenv('ALIENPY_KEEP_META'): os.remove(meta_file)  # remove the created metalink
-                    self.token_list_upload_ok.append(str(lfn))  # append on output list the downloaded lfn to be checked later
+                    self.token_list_upload_ok.append(lfn)  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     link = urlparse(str(self.job_list[jobId - 1]['tgt']))
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
@@ -1140,12 +1181,33 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
 
 
-def make_tmp_fn(lfn: str = '') -> str:
+def get_lfn_meta(meta_fn: str) -> str:
+    if not os.path.isfile(meta_fn): return ''
+    import xml.dom.minidom
+    content = xml.dom.minidom.parse(meta_fn)
+    lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
+    return lfn
+
+
+def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
+    """make temporary file name that can be reconstructed back to the lfn"""
+    if not lfn: return str(uuid.uuid4())
+    if uuid5:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, lfn))
+    return lfn.replace("/", '%%')
+
+
+def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
-    ext = '_' + str(os.getuid()) + '.alienpy_tmp'
-    if not lfn:
-        return os.getenv('TMPDIR', '/tmp') + '/' + str(uuid.uuid4()) + ext
-    return os.getenv('TMPDIR', '/tmp') + '/' + lfn.replace("/", '%%') + ext
+    if not ext: ext = '_' + str(os.getuid()) + '.alienpy_tmp'
+    return os.getenv('TMPDIR', '/tmp') + '/' + lfn2tmp_fn(lfn, uuid5) + ext
+
+
+def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
+    lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
+    lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
+    lfn = lfn.replace("%%", "/")
+    return lfn
 
 
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
@@ -1159,10 +1221,7 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str
 def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
     """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the oirginal lfn"""
     # lets recover the lfn from temp file name
-    lfn = temp_file_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
-    lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
-    lfn = lfn.replace("%%", "/")
-
+    lfn = get_lfn_name(temp_file_name)
     envelope_list = getEnvelope(wb, [lfn], [upload_specs], isWrite = True)
     result = envelope_list[0]["answer"]
     access_request = GetDict(result)
@@ -1840,6 +1899,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('lla')
     AlienSessionInfo['commandlist'].append('run')
     AlienSessionInfo['commandlist'].append('exec')
+    AlienSessionInfo['commandlist'].append('getSE')
     AlienSessionInfo['commandlist'].sort()
 
     AlienSessionInfo['user'] = json_dict['metadata']['user']
@@ -1989,6 +2049,23 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
+
+    if cmd == 'getSE':
+        if not args or '-h' in args or '-help' in args:
+            print('Command format: getSE <-id | -name | -srv> identifier_string', flush = True)
+            return int(0)
+        if args[0] == '-name':
+            ans_list = get_SE_name(wb, args[1])
+            print(" ".join(ans_list).strip())
+            return int(0)
+        if args[0] == '-id':
+            ans_list = get_SE_id(wb, args[1])
+            print(" ".join(ans_list).strip())
+            return int(0)
+        if args[0] == '-srv':
+            ans_list = get_SE_srv(wb, args[1])
+            print(" ".join(ans_list).strip())
+            return int(0)
 
     if cmd == "run":
         if '-h' in args or '-help' in args:
