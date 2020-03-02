@@ -1379,10 +1379,10 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
         return re.sub(r"^\.\/", "", ret)
 
     entries_list = None
-    for cached_item in cache:
-        if cached_item['lfn'] == expand_path_grid(lfn):
-            entries_list = cached_item['entries']
-            break
+    # for cached_item in cache:
+    #    if cached_item['lfn'] == expand_path_grid(lfn):
+    #        entries_list = cached_item['entries']
+    #        break
 
     if not entries_list:
         ls_args = ['-nomsg', '-F']
@@ -1390,8 +1390,8 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
         result_dict = json.loads(result)
         if result_dict["metadata"]["exitcode"] != '0': entries_list = []
         entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
-        to_be_cached = {'lfn': expand_path_grid(lfn), 'entries': entries_list}
-        cache.append(to_be_cached)
+    #    to_be_cached = {'lfn': expand_path_grid(lfn), 'entries': entries_list}
+    #    cache.append(to_be_cached)
     return entries_list
 
 
