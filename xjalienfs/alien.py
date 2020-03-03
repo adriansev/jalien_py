@@ -823,7 +823,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '.*'  # default regex selection for find
+    pattern = '\\/.*'  # default regex selection for find
     if '-select' in xrd_copy_command and '-name' in xrd_copy_command:
         print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
         return int(22)  # EINVAL /* Invalid argument */
@@ -838,28 +838,28 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         pattern = xrd_copy_command.pop(name_idx + 1)
         xrd_copy_command.pop(name_idx)
 
-    translated_pattern = '.*\\/'
-    verbs = ('begin', 'contain', 'ends', 'ext')
-    if any(verb in pattern for verb in verbs):
-        pattern_list = pattern.split('_')
-        if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
-            print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
-            return int(64)  # EX_USAGE /* command line usage error */
-        for idx, token in enumerate(pattern_list):
-            if token == 'begin':
-                string = pattern_list[idx + 1]
-                translated_pattern = translated_pattern + string + '.*'
-            if token == 'contain':
-                string = pattern_list[idx + 1]
-                translated_pattern = translated_pattern + '.*' + string + '.*'
-            if token == 'ends':
-                string = pattern_list[idx + 1]
-                translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
-            if token == 'ext':
-                string = pattern_list[idx + 1]
-                translated_pattern = translated_pattern + '.*\\.' + string + '$'
+        translated_pattern = '.*\\/'
+        verbs = ('begin', 'contain', 'ends', 'ext')
+        if any(verb in pattern for verb in verbs):
+            pattern_list = pattern.split('_')
+            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+                print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+                return int(64)  # EX_USAGE /* command line usage error */
+            for idx, token in enumerate(pattern_list):
+                if token == 'begin':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + string + '.*'
+                if token == 'contain':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*' + string + '.*'
+                if token == 'ends':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
+                if token == 'ext':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*\\.' + string + '$'
+        pattern = translated_pattern
 
-    pattern = translated_pattern
     try:
         regex = re.compile(pattern)
     except re.error:
