@@ -300,6 +300,14 @@ class XrdCpArgs(NamedTuple):
     streams: int
 
 
+class CopyFile(NamedTuple):
+    src: str
+    dst: str
+    isUpload: bool
+    token_request: dict
+    lfn: str
+
+
 def PrintColor(color: str) -> str:
     """Print colored string if terminal has color, print nothing otherwise"""
     if hasColor: return color
@@ -443,20 +451,28 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
+def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn: str, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
+    """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
+    if not wb: return
+    if not lfn: return {}
+    if not specs: specs = []
+    access_type = 'write' if isWrite else 'read'
+    get_envelope_arg_list = [access_type, lfn]
+    send_opts = 'nomsg' if not DEBUG else ''
+    if specs: get_envelope_arg_list.append(str(",".join(specs)))
+    result = SendMsg(wb, 'access', get_envelope_arg_list, send_opts)
+    return {"lfn": lfn, "answer": result}
+
+
 def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return
     access_list = []
     if not lfn_list: return access_list
     if not specs: specs = []
-    access_type = 'read'
-    if isWrite: access_type = 'write'
     for lfn in lfn_list:
-        get_envelope_arg_list = [access_type, lfn]
-        send_opts = 'nomsg' if not DEBUG else ''
-        if specs: get_envelope_arg_list.append(str(",".join(specs)))
-        result = SendMsg(wb, 'access', get_envelope_arg_list, send_opts)
-        access_list.append({"lfn": lfn, "answer": result})
+        lfn_token = getEnvelope_lfn(wb, lfn, specs, isWrite)
+        access_list.append(lfn_token)
     return access_list
 
 
@@ -476,8 +492,6 @@ def setDst(file: str = '', parent: int = 0) -> str:
 def expand_path_local(path: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
-    exp_path = exp_path.replace("file://", "")  # there are only 2 cases : either file:// and the remainder is the path
-    exp_path = exp_path.replace("file:", "")  # or just file: ; the unspoken contract is that no one will do file:/ + /full_local_path
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path.cwd().parents[0].as_posix() + "/", exp_path)
     exp_path = re.sub(r"^\/*\.{1}[\/\s]", Path.cwd().as_posix() + "/", exp_path)
@@ -583,101 +597,30 @@ def format_dst_fn(src_dir, src_file, dst, parent):
     return dst_file
 
 
-def xrd_stat(pfn: str):
-    if not has_xrootd:
-        print('python XRootD module cannot be found, the copy process cannot continue')
-        return None
-    url_components = urlparse(pfn)
-    endpoint = client.FileSystem(url_components.netloc)
-    answer = endpoint.stat(url_components.path)
-    return answer
+def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> int:
+    if not wb: return int(1)
+    arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
+    commit_results = SendMsg(wb, 'commit', arg_list)
+    result_dict = GetDict(commit_results, print_err = 'debug')
+    if DEBUG: PrintDict(result_dict, 'debug')
+    return int(AlienSessionInfo['exitcode'])
 
 
-def get_pfn_flags(pfn: str):
-    answer = xrd_stat(pfn)
-    if not answer[0].ok: return None
-    return answer[1].flags
-
-
-def is_pfn_readable(pfn: str) -> bool:
-    flags = get_pfn_flags(pfn)
-    if flags:
-        return True if flags & client.flags.StatInfoFlags.IS_READABLE else False
-    return False
-
-
-def print_pfn_status(pfn: str):
-    answer = xrd_stat(pfn)
-    response_stat = answer[0]
-    response_statinfo = answer[1]
-    if not response_stat.ok:
-        print(f'{response_stat.message}; code/status: {response_stat.code}/{response_stat.status}', file=sys.stderr, flush = True)
-    size = response_statinfo.size
-    modtime = response_statinfo.modtimestr
-    flags = response_statinfo.flags
-    x_bit_set = 1 if flags & client.flags.StatInfoFlags.X_BIT_SET else 0
-    is_dir = 1 if flags & client.flags.StatInfoFlags.IS_DIR else 0
-    other = 1 if flags & client.flags.StatInfoFlags.OTHER else 0
-    offline = 1 if flags & client.flags.StatInfoFlags.OFFLINE else 0
-    posc_pending = 1 if flags & client.flags.StatInfoFlags.POSC_PENDING else 0
-    is_readable = 1 if flags & client.flags.StatInfoFlags.IS_READABLE else 0
-    is_writable = 1 if flags & client.flags.StatInfoFlags.IS_WRITABLE else 0
-    print(f'''Size: {size}\n'''
-          f'''Modification time: {modtime}\n'''
-          f'''Executable bit: {x_bit_set}\n'''
-          f'''Is directory: {is_dir}\n'''
-          f'''Not a file or directory: {other}\n'''
-          f'''File is offline (not on disk): {offline}\n'''
-          f'''File opened with POSC flag, not yet successfully closed: {posc_pending}\n'''
-          f'''Is readable: {is_readable}\n'''
-          f'''Is writable: {is_writable}''')
-
-
-def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str):
-    if not wb: return ''
-    if not lfn: return ''
-    type = pathtype_grid(wb, lfn)
-    if type != 'f': return ''
-    result = SendMsg(wb, 'whereis', [lfn], 'nomsg')
-    json_dict = GetDict(result, print_err = 'debug')
-    pfn_list = [str(item['pfn']) for item in json_dict['results']]
-
-
-def get_SE_id(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
-    if not wb: return ''
-    if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, print_err = 'debug')
-    if int(AlienSessionInfo['exitcode']): return ''
-    return [se["seNumber"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
-
-
-def get_SE_name(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
-    if not wb: return ''
-    if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, print_err = 'debug')
-    if int(AlienSessionInfo['exitcode']): return ''
-    if se_name.isdecimal():
-        return [se["seName"].strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
-    else:
-        return [se["seName"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
-
-
-def get_SE_srv(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
-    if not wb: return ''
-    if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, print_err = 'debug')
-    if int(AlienSessionInfo['exitcode']): return ''
-    if se_name.isdecimal():
-        return [urlparse(se["endpointUrl"]).netloc.strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
-    else:
-        return [urlparse(se["endpointUrl"]).netloc.strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+def GetHumanReadable(size, precision = 2):
+    suffixes = ['B', 'KiB', 'MiB']
+    suffixIndex = 0
+    while size > 1024 and suffixIndex < 4:
+        suffixIndex += 1  # increment the index of the suffix
+        size = size/1024.0  # apply the division
+    return "%.*f %s" % (precision, size, suffixes[suffixIndex])
 
 
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
+    if not has_xrootd:
+        print('python XRootD module cannot be found, the copy process cannot continue')
+        return int(1)
+
     global AlienSessionInfo
     if not wb: return int(107)  # ENOTCONN /* Transport endpoint is not connected */
     if (not xrd_copy_command) or len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
@@ -687,10 +630,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     if not AlienSessionInfo:
         print('Session information like home and current directories needed', flush = True)
         return int(126)  # ENOKEY /* Required key not available */
-
-    if not has_xrootd:
-        print('python XRootD module cannot be found, the copy process cannot continue')
-        return int(1)
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
@@ -710,13 +649,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     makedir = bool(True)  # create the parent directories when creating a file
     overwrite = bool(False)  # overwrite target if it exists
     posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
-
-    isSrcLocal = bool(False)
-    isDstLocal = bool(False)
-    isSrcDir = bool(False)
-    isDstDir = bool(False)
-    isDownload = bool(True)
-    file_name = ''
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
@@ -866,25 +798,52 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
         return int(64)  # EX_USAGE /* command line usage error */
 
-    # list of src files and coresponding dst names
-    src_filelist = []
-    dst_filelist = []
+    isSrcDir = bool(False)
+    isDstDir = bool(False)
+    isDownload = bool(True)
+    file_name = ''
 
     arg_source = xrd_copy_command[-2]
     arg_target = xrd_copy_command[-1]
 
-    # clean up and prepare the paths to be used in the xrdcp command
+    # identify the types of src,dst and prepare context describing vars
+    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
+        print("The operands cannot have the same type: one must be local and one grid", file=sys.stderr, flush = True)
+        return int(22)  # EINVAL /* Invalid argument */
+
+    if arg_source.startswith('file:') or arg_target.startswith('alien:'):  # second to last argument (should be the source)
+        isSrcLocal = True
+        isDstLocal = False
+        isDownload = False
+
+    if arg_source.startswith('alien:') or arg_target.startswith('file:'):  # last argument (should be the destination)
+        isSrcLocal = False
+        isDstLocal = True
+        isDownload = True
+
+    # Cleanup the alien: and file: specifications
+    # there are only 2 cases : either file,alien:// and the remainder is the path or just file,alien: ; the unspoken contract is that no one will do file:/ + /full_local_path
+    if arg_source.startswith('alien:'):
+        arg_source = arg_source.replace("alien://", "")
+        arg_source = arg_source.replace("alien:", "")
+    if arg_target.startswith('alien:'):
+        arg_target = arg_target.replace("alien://", "")
+        arg_target = arg_target.replace("alien:", "")
+    if arg_source.startswith('file:'):
+        arg_source = arg_source.replace("file://", "")
+        arg_source = arg_source.replace("file:", "")
+    if arg_target.startswith('file:'):
+        arg_target = arg_target.replace("file://", "")
+        arg_target = arg_target.replace("file:", "")
+
     src = None
     src_type = None
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if arg_source.startswith('file:'):  # second to last argument (should be the source)
-        isSrcLocal = True
-        isDownload = False
+    if isSrcLocal:
         src = expand_path_local(arg_source)
         src_type = pathtype_local(src)
         if src_type == 'd': isSrcDir = bool(True)
     else:
-        if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "")
         src_specs_remotes = arg_source.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = expand_path_grid(src)
@@ -902,194 +861,170 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     dst = None
     dst_type = None
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if arg_target.startswith('file:'):  # last argument (should be the destination)
-        isDstLocal = True
+    if isDstLocal:
         dst = expand_path_local(arg_target)
         dst_type = pathtype_local(dst)
+        if not dst_type:
+            print(f"Could not check destination type! It is infered to be a not yet existing directory and it will be created", flush = True)
+            try:
+                Path(dst).mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                print(f"Could not create local distination directory: {dst}; check log file {DEBUG_FILE}", file=sys.stderr, flush = True)
+                return int(42)  # ENOMSG /* No message of desired type */
+            dst_type = 'd'  # we just created it
         if dst_type == 'd': isDstDir = bool(True)
     else:
-        isDownload = False
-        if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "")
         dst_specs_remotes = arg_target.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = pathtype_grid(wb, dst)
+        if not dst_type:
+            print(f"Could not check destination type! It is infered to be a not yet existing directory and it will be created", flush = True)
+            result = SendMsg(wb, 'mkdir', ['-p', dst], 'nomsg')
+            json_dict = GetDict(result, 'print')
+            if AlienSessionInfo['exitcode'] != 0:
+                return int(42)  # ENOMSG /* No message of desired type */
+            dst_type = 'd'  # we just created it
         if dst_type == 'd': isDstDir = bool(True)
 
-    if isSrcLocal == isDstLocal:
-        print("The operands cannot specify different source types: one must be local and one grid", file=sys.stderr, flush = True)
-        return int(22)  # EINVAL /* Invalid argument */
-
+    # create a list of copy tasks
+    copy_list = []
     # if src is directory, then create list of files coresponding with options
+    isWrite = bool(False)
     if isDownload:
-        isWrite = bool(False)
         specs = src_specs_remotes
         if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
             find_args.extend(['-r', '-a', '-s', src, pattern])
             send_opts = 'nomsg' if not DEBUG else ''
             result = SendMsg(wb, 'find', find_args, send_opts)
             src_list_files_dict = GetDict(result)
-            src_filelist = list(item['lfn'] for item in src_list_files_dict['results'])
-            for filepath in src_filelist:
-                dst_filelist.append(format_dst_fn(src, filepath, dst, parent))
+            for item in src_list_files_dict['results']:
+                tokens = getEnvelope_lfn(wb, item['lfn'], specs, isWrite)
+                token_query = GetDict(tokens['answer'])
+                if token_query["metadata"]["exitcode"] != '0':
+                    lfn = tokens['lfn']
+                    error = token_query["metadata"]["error"]
+                    msg = f"{lfn} -> {error}"
+                    continue
+                copy_list.append(CopyFile(item['lfn'], format_dst_fn(src, item['lfn'], dst, parent), isWrite, token_query, ''))
         else:
-            src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
-            dst_filelist.append(dst)
+            tokens = getEnvelope_lfn(wb, src, specs, isWrite)
+            token_query = GetDict(tokens['answer'])
+            if token_query["metadata"]["exitcode"] != '0':
+                lfn = tokens['lfn']
+                error = token_query["metadata"]["error"]
+                msg = f"{lfn} -> {error}"
+            else:
+                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
     else:  # it is upload
-        isWrite = bool(True)
+        isWrite = True
         specs = dst_specs_remotes
         if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
                     if regex.search(filepath):
-                        src_filelist.append(filepath)
-                        dst_filelist.append(format_dst_fn(src, filepath, dst, parent))
+                        lfn = format_dst_fn(src, filepath, dst, parent)
+                        tokens = getEnvelope_lfn(wb, lfn, specs, isWrite)
+                        token_query = GetDict(tokens['answer'])
+                        if token_query["metadata"]["exitcode"] != '0':
+                            lfn = tokens['lfn']
+                            error = token_query["metadata"]["error"]
+                            msg = f"{lfn} -> {error}"
+                            continue
+                        copy_list.append(CopyFile(filepath, lfn, isWrite, token_query, ''))
         else:
-            src_filelist.append(src)
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
-            dst_filelist.append(dst)
+            tokens = getEnvelope_lfn(wb, dst, specs, isWrite)
+            token_query = GetDict(tokens['answer'])
+            if token_query["metadata"]["exitcode"] != '0':
+                lfn = tokens['lfn']
+                error = token_query["metadata"]["error"]
+                msg = f"{lfn} -> {error}"
+            else:
+                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
 
     if DEBUG:
         logging.debug("We are going to copy these files:")
-        for src_dbg, dst_dbg in zip(src_filelist, dst_filelist):
-            logging.debug(f"src: {src_dbg}\ndst: {dst_dbg}\n")
+        for file in copy_list: logging.debug(file)
 
-    lfn_list = src_filelist if isDownload else dst_filelist
-    envelope_list = getEnvelope(wb, lfn_list, specs, isWrite)
-
-    # print errors
-    errors_idx = []
-    for item_idx, item in enumerate(envelope_list):
-        lfn = item["lfn"]
-        result = item["answer"]
-        access_request = json.loads(result)
-        error = access_request["metadata"]["error"]
-        if error:
-            errors_idx.append(item_idx)
-            print(f"lfn: {lfn} --> {error}", file=sys.stderr, flush = True)
-        if DEBUG:
-            logging.debug(f"lfn: {lfn}")
-            PrintDict(access_request, 'debug')
-
-    for i in reversed(errors_idx): envelope_list.pop(i)  # remove from list invalid lfns
-    if not envelope_list:
-        print("No lfns in envelope list after removing the invalid ones", file=sys.stderr)
+    if not copy_list:
+        print(f"No copy operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
         return int(2)  # ENOENT /* No such file or directory */
 
-    url_list_src = []
-    url_list_dst = []
-    if isDownload:
-        for item_idx, item in enumerate(envelope_list):
-            lfn = item["lfn"]
-            result = item["answer"]
-            access_request = json.loads(result)
-            if not access_request['results']: continue
+    # create a list of copy jobs to be passed to XRootD mechanism
+    xrdcopy_job_list = []
+    for cpfile in copy_list:
+        if isDownload:
+            lfn = cpfile.src
+            if not cpfile.token_request['results']: continue
+            dst = cpfile.dst
+            size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
+            md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
-            dst = dst_filelist[item_idx]
-            size_4meta = access_request['results'][0]['size']  # size SHOULD be the same for all replicas
-            md5_4meta = access_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-
-            # ALWAYS check if exist and valid. There is no scenario where the download is required even if the md5sums match
+            # ALWAYS check if exist and valid. There is no scenario where the download is required when the md5sums match
             if fileIsValid(dst, size_4meta, md5_4meta): continue
 
             # multiple replicas are downloaded to a single file
             is_zip = False
             file_in_zip = ''
             url_list_4meta = []
-            for server in access_request['results']:
-                url_components = server['url'].rsplit('#', maxsplit = 1)
+            for replica in cpfile.token_request['results']:
+                url_components = replica['url'].rsplit('#', maxsplit = 1)
                 if len(url_components) > 1:
                     is_zip = True
                     file_in_zip = url_components[1]
                 if True:  # is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                    url_list_4meta.append(url_components[0] + '?authz=' + server['envelope'])
+                    url_list_4meta.append(url_components[0] + '?authz=' + replica['envelope'])
 
             if not url_list_4meta:
                 print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
                 continue
-            url_list_dst.append({"url": dst})  # the local file destination
-            src = src_filelist[item_idx]
+
+            # Create the metafile based link
             meta_fn = make_tmp_fn(lfn, '.meta4', True)  # create a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
             create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
+            download_link = meta_fn
             if is_zip:
                 sources = 1
-                download_link = meta_fn + '?xrdcl.unzip=' + file_in_zip
-            else:
-                download_link = meta_fn
-            url_list_src.append({"url": download_link})
-    else:
-        for item_idx, item in enumerate(envelope_list):
-            src = src_filelist[item_idx]
-            lfn = item["lfn"]
-            result = item["answer"]
-            access_request = json.loads(result)
-            for server in access_request['results']:
-                if not server: continue
-                complete_url = server['url'] + "?" + "authz=" + server['envelope']
-                url_list_dst.append({"url": complete_url})
-                url_list_src.append({"url": src})
+                download_link = download_link + '?xrdcl.unzip=' + file_in_zip
+            xrdcopy_job_list.append(CopyFile(download_link, dst, cpfile.isUpload, {}, ''))  # we do not need the tokens in job list when downloading
+        else:  # is upload
+            src = cpfile.src
+            lfn = cpfile.dst
+            if not cpfile.token_request['results']: continue
+            for replica in cpfile.token_request['results']:
+                complete_url = replica['url'] + "?" + "authz=" + replica['envelope']
+                xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, replica, lfn))
 
-    if not (url_list_src or url_list_dst):
-        if DEBUG: logging.debug("copy src/dst lists are empty, no copy process to be started")
-        return int(0)  # no error to be reported as nothing happened
+    if not xrdcopy_job_list:
+        print(f"No xrootd copy operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
+        return int(2)  # ENOENT /* No such file or directory */
 
     if DEBUG:
-        logging.debug("List of files:")
-        for src_dbg, dst_dbg in zip(url_list_src, url_list_dst):
-            logging.debug("src:{0}\ndst:{1}\n".format(src_dbg['url'], dst_dbg['url']))
+        logging.debug("XRootD copy jobs:")
+        for file in xrdcopy_job_list: logging.debug(file)
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    token_list_upload_ok = XrdCopy(url_list_src, url_list_dst, isDownload, my_cp_args)
-
-    if (not isDownload) and token_list_upload_ok:  # it was an upload job that had succesfull uploads
-        for item_idx, item in enumerate(envelope_list):
-            result = item["answer"]
-            access_request = json.loads(result)
-            src = src_filelist[item_idx]
-            dst = dst_filelist[item_idx]
-            # common values for all commit commands
-            size = os.path.getsize(src)
-            md5sum = md5(src)
-            perm = '644'
-            expire = '0'
-            for token in token_list_upload_ok:  # for each succesful token
-                for server in access_request['results']:  # go over all received servers
-                    if token in server['envelope']:  # for the server that have the succesful uploaded token
-                        exitcode = commit(wb, token, int(size), dst, perm, expire, server['url'], server['se'], server['guid'], md5sum)
+    token_list_upload_ok = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
     return int(0) if token_list_upload_ok else int(1)
 
 
-def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> int:
-    if not wb: return int(1)
-    arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-    commit_results = SendMsg(wb, 'commit', arg_list)
-    result_dict = GetDict(commit_results, print_err = 'debug')
-    if DEBUG: logging.debug(json.dumps(result_dict, sort_keys=True, indent=4))
-    return int(AlienSessionInfo['exitcode'])
-
-
-def GetHumanReadable(size, precision = 2):
-    suffixes = ['B', 'KiB', 'MiB']
-    suffixIndex = 0
-    while size > 1024 and suffixIndex < 4:
-        suffixIndex += 1  # increment the index of the suffix
-        size = size/1024.0  # apply the division
-    return "%.*f %s" % (precision, size, suffixes[suffixIndex])
-
-
 if has_xrootd:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         def __init__(self):
+            self.wb = None
             self.isDownload = bool(True)
             self.token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
             self.jobs = int(0)
             self.job_list = []
+            self.xrdjob_list = []
             self.sigint = False
             signal.signal(signal.SIGINT, self.catch)
             signal.siginterrupt(signal.SIGINT, False)
@@ -1126,8 +1061,17 @@ if has_xrootd:
                     if not os.getenv('ALIENPY_KEEP_META'): os.remove(meta_file)  # remove the created metalink
                     self.token_list_upload_ok.append(lfn)  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
-                    link = urlparse(str(self.job_list[jobId - 1]['tgt']))
+                    xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
+                    link = urlparse(xrd_dst_url)
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
+                    copyjob = next(job for job in self.xrdjob_list if job.token_request.get('url') in xrd_dst_url)
+                    replica_dict = copyjob.token_request
+                    src_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
+                    size = os.path.getsize(src_file)
+                    md5sum = md5(src_file)
+                    perm = '644'
+                    expire = '0'
+                    exitcode = commit(self.wb, token, int(size), copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], md5sum)
                     self.token_list_upload_ok.append(str(token))
             print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
 
@@ -1139,7 +1083,7 @@ if has_xrootd:
             return self.sigint
 
 
-def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
+def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not has_xrootd:
         print("XRootD not found", file=sys.stderr, flush = True)
@@ -1166,19 +1110,107 @@ def XrdCopy(src: list, dst: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> l
         client.EnvPutInt('SubStreamsPerChannel', streams)
 
     handler.isDownload = isDownload
-    for url_src, url_dst in zip(src, dst):
-        if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(url_src['url'], url_dst['url']))
-        process.add_job(url_src["url"], url_dst["url"],
-                        sourcelimit = sources,
-                        force = overwrite,
-                        posc = posc,
-                        mkdir = makedir,
-                        chunksize = chunksize,
-                        parallelchunks = chunks
-                        )
+    handler.wb = wb
+    handler.xrdjob_list = job_list
+    for copy_job in job_list:
+        if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
+        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
     process.prepare()
     process.run(handler)
     return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
+
+
+def xrd_stat(pfn: str):
+    if not has_xrootd:
+        print('python XRootD module cannot be found, the copy process cannot continue')
+        return None
+    url_components = urlparse(pfn)
+    endpoint = client.FileSystem(url_components.netloc)
+    answer = endpoint.stat(url_components.path)
+    return answer
+
+
+def get_pfn_flags(pfn: str):
+    answer = xrd_stat(pfn)
+    if not answer[0].ok: return None
+    return answer[1].flags
+
+
+def is_pfn_readable(pfn: str) -> bool:
+    flags = get_pfn_flags(pfn)
+    if flags:
+        return True if flags & client.flags.StatInfoFlags.IS_READABLE else False
+    return False
+
+
+def print_pfn_status(pfn: str):
+    answer = xrd_stat(pfn)
+    response_stat = answer[0]
+    response_statinfo = answer[1]
+    if not response_stat.ok:
+        print(f'{response_stat.message}; code/status: {response_stat.code}/{response_stat.status}', file=sys.stderr, flush = True)
+    size = response_statinfo.size
+    modtime = response_statinfo.modtimestr
+    flags = response_statinfo.flags
+    x_bit_set = 1 if flags & client.flags.StatInfoFlags.X_BIT_SET else 0
+    is_dir = 1 if flags & client.flags.StatInfoFlags.IS_DIR else 0
+    other = 1 if flags & client.flags.StatInfoFlags.OTHER else 0
+    offline = 1 if flags & client.flags.StatInfoFlags.OFFLINE else 0
+    posc_pending = 1 if flags & client.flags.StatInfoFlags.POSC_PENDING else 0
+    is_readable = 1 if flags & client.flags.StatInfoFlags.IS_READABLE else 0
+    is_writable = 1 if flags & client.flags.StatInfoFlags.IS_WRITABLE else 0
+    print(f'''Size: {size}\n'''
+          f'''Modification time: {modtime}\n'''
+          f'''Executable bit: {x_bit_set}\n'''
+          f'''Is directory: {is_dir}\n'''
+          f'''Not a file or directory: {other}\n'''
+          f'''File is offline (not on disk): {offline}\n'''
+          f'''File opened with POSC flag, not yet successfully closed: {posc_pending}\n'''
+          f'''Is readable: {is_readable}\n'''
+          f'''Is writable: {is_writable}''')
+
+
+def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str):
+    if not wb: return ''
+    if not lfn: return ''
+    type = pathtype_grid(wb, lfn)
+    if type != 'f': return ''
+    result = SendMsg(wb, 'whereis', [lfn], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    pfn_list = [str(item['pfn']) for item in json_dict['results']]
+
+
+def get_SE_id(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    return [se["seNumber"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+
+
+def get_SE_name(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    if se_name.isdecimal():
+        return [se["seName"].strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
+    else:
+        return [se["seName"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
+
+
+def get_SE_srv(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
+    if not wb: return ''
+    if not se_name: return ''
+    result = SendMsg(wb, 'listSEs', [], 'nomsg')
+    json_dict = GetDict(result, print_err = 'debug')
+    if int(AlienSessionInfo['exitcode']): return ''
+    if se_name.isdecimal():
+        return [urlparse(se["endpointUrl"]).netloc.strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
+    else:
+        return [urlparse(se["endpointUrl"]).netloc.strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
 
 
 def get_lfn_meta(meta_fn: str) -> str:
