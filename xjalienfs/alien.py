@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200310_193755'
+ALIENPY_VERSION_DATE = '20200310_202147'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -2016,12 +2016,12 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     tokenkey = token_files[1]
 
     if cmd == 'version':
-        print(f'alien.py version date: {ALIENPY_VERSION_DATE}')
-        mypath = os.path.realpath(__file__)
-        print(f'alien.py location: {mypath}')
+        print(f'alien.py version: {ALIENPY_VERSION_DATE}')
+        print(f'alien.py location: {os.path.realpath(__file__)}')
         print(f'script location: {ALIENPY_EXECUTABLE}')
         real_interpreter = os.path.realpath(sys.executable)
         print(f'Interpreter: {real_interpreter}')
+        print(f'Python version: {sys.version}')
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
 
