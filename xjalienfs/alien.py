@@ -968,7 +968,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
             md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
 
-            # ALWAYS check if exist and valid. There is no scenario where the download is required when the md5sums match
+            if os.path.isfile(dst) and not overwrite:
+                print(f'{dst} exists, skipping..', flush = True)
+                continue
             if fileIsValid(dst, size_4meta, md5_4meta): continue
 
             # multiple replicas are downloaded to a single file
@@ -1004,7 +1006,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, replica, lfn))
 
     if not xrdcopy_job_list:
-        print(f"No xrootd copy operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
+        print(f"No XRootD operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
         return int(2)  # ENOENT /* No such file or directory */
 
     if DEBUG:
