@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200310_192836'
+ALIENPY_VERSION_DATE = '20200310_193251'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -1965,7 +1965,6 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('getSE')
     AlienSessionInfo['commandlist'].append('version')
     AlienSessionInfo['commandlist'].sort()
-
     AlienSessionInfo['user'] = json_dict['metadata']['user']
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
