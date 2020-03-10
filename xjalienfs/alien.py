@@ -31,7 +31,8 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200310_175751'
+ALIENPY_VERSION_DATE = '20200310_175929'
+ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
@@ -1962,6 +1963,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('run')
     AlienSessionInfo['commandlist'].append('exec')
     AlienSessionInfo['commandlist'].append('getSE')
+    AlienSessionInfo['commandlist'].append('version')
     AlienSessionInfo['commandlist'].sort()
 
     AlienSessionInfo['user'] = json_dict['metadata']['user']
@@ -2018,6 +2020,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         print(f'alien.py version date: {ALIENPY_VERSION_DATE}')
         mypath = os.path.realpath(__file__)
         print(f'alien.py location: {mypath}')
+        print(f'script location: {ALIENPY_EXECUTABLE}')
         AlienSessionInfo['exitcode'] = int(0)
         return AlienSessionInfo['exitcode']
 
@@ -2409,7 +2412,7 @@ def JAlien(commands: str = ''):
 
 
 def main():
-    global JSON_OUT, JSONRAW_OUT
+    global JSON_OUT, JSONRAW_OUT, ALIENPY_EXECUTABLE
 
     MSG_LVL = logging.INFO
     if DEBUG: MSG_LVL = logging.DEBUG
@@ -2420,6 +2423,7 @@ def main():
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
+    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv[0])
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
     if verb: sys.argv.insert(0, verb)
