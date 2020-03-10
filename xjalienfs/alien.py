@@ -931,6 +931,15 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     filepath = os.path.join(root, file)
                     if regex.search(filepath):
                         lfn = format_dst_fn(src, filepath, dst, parent)
+                        lfn_exists = pathtype_grid(wb, lfn)
+                        if lfn_exists:
+                            if not overwrite:  # if the lfn is already present and not overwrite lets's skip the upload
+                                print(f'{lfn} exists, skipping..', flush = True)
+                                continue
+                            else:  # clear up the destination lfn
+                                print(f'{lfn} exists, deleting..', flush = True)
+                                result = SendMsg(wb, 'rm', ['-f', lfn], 'nomsg')
+                                json_dict = GetDict(result, print_err = 'print')
                         tokens = getEnvelope_lfn(wb, lfn, specs, isWrite)
                         token_query = GetDict(tokens['answer'])
                         if token_query["metadata"]["exitcode"] != '0':
@@ -941,6 +950,15 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                         copy_list.append(CopyFile(filepath, lfn, isWrite, token_query, ''))
         else:
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            lfn_exists = pathtype_grid(wb, dst)
+            if lfn_exists:
+                if not overwrite:  # if the lfn is already present and not overwrite lets's skip the upload
+                    print(f'{dst} exists, skipping..', flush = True)
+                    return int(0)  # Destination present we will not overwrite it
+                else:  # clear up the destination lfn
+                    print(f'{dst} exists, deleting..', flush = True)
+                    result = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
+                    json_dict = GetDict(result, print_err = 'print')
             tokens = getEnvelope_lfn(wb, dst, specs, isWrite)
             token_query = GetDict(tokens['answer'])
             if token_query["metadata"]["exitcode"] != '0':
@@ -2093,7 +2111,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return AlienSessionInfo['exitcode']
 
     # intercept all commands that take a lfn as argument and proper expand it
-    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid" or cmd == "whereis" or cmd == "pfn":
+    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid" or cmd == "whereis" or cmd == "pfn" or cmd == "type":
         # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
