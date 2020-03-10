@@ -31,6 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
+ALIENPY_VERSION_DATE = '20200310_175751'
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
@@ -2012,6 +2013,13 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     token_files = get_files_token()
     tokencert = token_files[0]
     tokenkey = token_files[1]
+
+    if cmd == 'version':
+        print(f'alien.py version date: {ALIENPY_VERSION_DATE}')
+        mypath = os.path.realpath(__file__)
+        print(f'alien.py location: {mypath}')
+        AlienSessionInfo['exitcode'] = int(0)
+        return AlienSessionInfo['exitcode']
 
     if cmd == 'cert-info':
         if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
