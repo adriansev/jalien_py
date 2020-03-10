@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+if [ -e .commit ]; then
+    rm .commit
+    ALIENPY_IS_CHANGED=$(git status -s xjalienfs/alien.py)
+    if [ -n "${ALIENPY_IS_CHANGED}" ]; then
+        sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" xjalienfs/alien.py
+        git add xjalienfs/alien.py
+        git commit --amend -C HEAD --no-verify
+    fi
+fi
+exit
+
