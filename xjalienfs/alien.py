@@ -865,12 +865,13 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         dst = expand_path_local(arg_target)
         dst_type = pathtype_local(dst)
         if not dst_type:
-            print(f"Could not check destination type! It is infered to be a not yet existing directory and it will be created", flush = True)
             try:
-                Path(dst).mkdir(parents=True, exist_ok=True)
+                mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent
+                mk_path.mkdir(parents=True, exist_ok=True)
             except Exception as e:
                 logging.error(traceback.format_exc())
-                print(f"Could not create local distination directory: {dst}; check log file {DEBUG_FILE}", file=sys.stderr, flush = True)
+                path_str = mk_path.as_posix()
+                print(f"Could not create local destination directory: {path_str}\ncheck log file {DEBUG_FILE}", file=sys.stderr, flush = True)
                 return int(42)  # ENOMSG /* No message of desired type */
             dst_type = 'd'  # we just created it
         if dst_type == 'd': isDstDir = bool(True)
@@ -880,10 +881,12 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         dst = expand_path_grid(dst)
         dst_type = pathtype_grid(wb, dst)
         if not dst_type:
-            print(f"Could not check destination type! It is infered to be a not yet existing directory and it will be created", flush = True)
-            result = SendMsg(wb, 'mkdir', ['-p', dst], 'nomsg')
+            mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
+            result = SendMsg(wb, 'mkdir', ['-p', mk_path], 'nomsg')
             json_dict = GetDict(result, 'print')
             if AlienSessionInfo['exitcode'] != 0:
+                error = AlienSessionInfo['error']
+                print(f"{error}\ncheck log file {DEBUG_FILE}", file=sys.stderr, flush = True)
                 return int(42)  # ENOMSG /* No message of desired type */
             dst_type = 'd'  # we just created it
         if dst_type == 'd': isDstDir = bool(True)
