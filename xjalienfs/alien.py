@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200310_175929'
+ALIENPY_VERSION_DATE = '20200310_182958'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
