@@ -904,6 +904,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             result = SendMsg(wb, 'find', find_args, send_opts)
             src_list_files_dict = GetDict(result)
             for item in src_list_files_dict['results']:
+                dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
+                if os.path.isfile(dst_filename) and not overwrite:
+                    print(f'{dst_filename} exists, skipping..', flush = True)
+                    continue
                 tokens = getEnvelope_lfn(wb, item['lfn'], specs, isWrite)
                 token_query = GetDict(tokens['answer'])
                 if token_query["metadata"]["exitcode"] != '0':
@@ -911,9 +915,12 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     error = token_query["metadata"]["error"]
                     msg = f"{lfn} -> {error}"
                     continue
-                copy_list.append(CopyFile(item['lfn'], format_dst_fn(src, item['lfn'], dst, parent), isWrite, token_query, ''))
+                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, token_query, ''))
         else:
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            if os.path.isfile(dst) and not overwrite:
+                print(f'{dst} exists, skipping..', flush = True)
+                return int(0)  # Destination present we will not overwrite it
             tokens = getEnvelope_lfn(wb, src, specs, isWrite)
             token_query = GetDict(tokens['answer'])
             if token_query["metadata"]["exitcode"] != '0':
@@ -968,13 +975,14 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             else:
                 copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
 
+    if not copy_list:
+        msg = f"No copy operations in list! enable the DEBUG mode for more info"
+        logging.info(msg)
+        return int(2)  # ENOENT /* No such file or directory */
+
     if DEBUG:
         logging.debug("We are going to copy these files:")
         for file in copy_list: logging.debug(file)
-
-    if not copy_list:
-        print(f"No copy operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
-        return int(2)  # ENOENT /* No such file or directory */
 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
@@ -985,11 +993,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             dst = cpfile.dst
             size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
             md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-
-            if os.path.isfile(dst) and not overwrite:
-                print(f'{dst} exists, skipping..', flush = True)
-                continue
-            if fileIsValid(dst, size_4meta, md5_4meta): continue
+            if fileIsValid(dst, size_4meta, md5_4meta): continue  # destination exists and is valid
 
             # multiple replicas are downloaded to a single file
             is_zip = False
@@ -1024,7 +1028,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, replica, lfn))
 
     if not xrdcopy_job_list:
-        print(f"No XRootD operations in list! check {DEBUG_FILE} and if necessary, enable the DEBUG mode", file=sys.stderr, flush = True)
+        msg = f"No XRootD operations in list! enable the DEBUG mode for more info"
+        logging.info(msg)
         return int(2)  # ENOENT /* No such file or directory */
 
     if DEBUG:
