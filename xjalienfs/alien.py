@@ -13,6 +13,7 @@ import logging
 import ssl
 import uuid
 import statistics
+import math
 from typing import NamedTuple
 import OpenSSL
 import shlex
@@ -2069,13 +2070,23 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             message_begin = datetime.now().timestamp()
 
     # then we process the help commands
-    if (cmd == "?") or (cmd == "help"):
+    if (cmd == "?") or (cmd == "-h") or (cmd.endswith('help')):
         if len(args) > 0:
             cmd = args.pop(0)
             args.clear()
             args.append('-h')
         else:
-            print(' '.join(AlienSessionInfo['commandlist']), flush = True)
+            print('Project documentation can be found at:\n'
+                  'https://jalien.docs.cern.ch/\n'
+                  'https://gitlab.cern.ch/jalien/xjalienfs/blob/master/README.md\n'
+                  'the following commands are available:', flush = True)
+            nr = len(AlienSessionInfo['commandlist'])
+            columns = 6
+            for ln in range(0, nr, columns):
+                if ln + 1 > nr: ln = nr - 1
+                el_ln = AlienSessionInfo['commandlist'][ln:ln + columns]
+                ln = [str(i).ljust(26) for i in el_ln]
+                print(''.join(ln), flush = True)
             AlienSessionInfo['exitcode'] = int(0)
             return AlienSessionInfo['exitcode']
 
