@@ -1,0 +1,5 @@
+#!/bin/env bash
+
+ALIENPY_IS_CHANGED=$(git status -s xjalienfs/alien.py)
+[[ -n "${ALIENPY_IS_CHANGED}" ]] && sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" xjalienfs/alien.py
+

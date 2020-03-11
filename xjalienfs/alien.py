@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_182451'
+ALIENPY_VERSION_DATE = '20200311_210847'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -228,7 +228,7 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str,
         logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
 
-    if 'dict' in opts:
+    if result and 'dict' in opts:
         return GetDict(result, opts)
     return result
 
@@ -320,8 +320,9 @@ class AliEnMsg:
         self.wb = InitConnection()
         self.opts = opts
 
-    def run(self, cmd):
-        return SendMsg_str(self.wb, cmd, self.opts)
+    def run(self, cmd, opts = ''):
+        if not opts: opts = self.opts
+        return SendMsg_str(self.wb, cmd, opts)
 
 
 class AliEn(AliEnMsg):
@@ -446,13 +447,16 @@ def PrintDict(input_dict: Union[dict, str], opts: str = ''):
     out_dict = None
     if type(input_dict) == dict:
         out_dict = input_dict.copy()
-    else:
+    elif type(input_dict) == str:
         out_dict = json.loads(input_dict)
-    if 'nometa' in opts: del out_dict["metadata"]
-    if 'results' in opts:
-        dict_str = json.dumps(out_dict['results'], sort_keys=True, indent=4)
     else:
-        dict_str = json.dumps(out_dict, sort_keys=True, indent=4)
+        out_dict = input_dict.copy()
+
+    if type(out_dict) == dict:
+        if 'nometa' in opts: del out_dict["metadata"]
+        if 'results' in opts: out_dict = out_dict['results']
+    dict_str = json.dumps(out_dict, sort_keys=True, indent=4)
+    if 'return' in opts: return out_dict
     if 'info' in opts: logging.info(dict_str)
     elif 'warn' in opts: logging.warning(dict_str)
     elif 'err' in opts: logging.error(dict_str)
@@ -2484,15 +2488,17 @@ def JAlien(commands: str = ''):
             if input_list[0] == 'cd': StoreCWD()
 
 
-def main():
-    global JSON_OUT, JSONRAW_OUT, ALIENPY_EXECUTABLE
-
+def setup_logging():
     MSG_LVL = logging.INFO
     if DEBUG: MSG_LVL = logging.DEBUG
     log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
+
+def main():
+    global JSON_OUT, JSONRAW_OUT, ALIENPY_EXECUTABLE
+    setup_logging()
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 

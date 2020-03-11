@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import websockets
 import xjalienfs.alien as alien
+alien.setup_logging()
+j = alien.AliEn()
 
-# token_args: Union[None, list] = None, use_usercert: bool = False
-wb = alien.InitConnection()
-
-cmd = 'pwd'
-alien.ProcessInput(wb, cmd)
-print('', flush = True)
-
-cmd = 'whoami'
-alien.ProcessInput(wb, cmd)
-print('', flush = True)
-
-cmd = 'lla'
-bash_cmd = 'head -n3'
-alien.ProcessInput(wb, cmd, bash_cmd)
+# in the case of AliEn class the run method will process the command exactly as it is process within shell or command
+# all aliases and client side implementation are available (like cp)
+j.run('whoami')
+print()
+j.run('pwd')
+print()
+j.run('ls')
 
