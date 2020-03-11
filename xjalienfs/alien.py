@@ -163,14 +163,9 @@ async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
     try:
         pong_waiter = await wb.ping()
-    except Exception as e:
-        logging.debug(f"WB ping failed!!!")
-        logging.exception(e)
-        return False
-    try:
         await pong_waiter
     except Exception as e:
-        logging.debug(f"WB pong failed!!!")
+        logging.debug(f"WB ping/pong failed!!!")
         logging.exception(e)
         return False
     return True
