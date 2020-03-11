@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_120149'
+ALIENPY_VERSION_DATE = '20200310_202147 '
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -191,7 +191,7 @@ async def msg_proxy(websocket, path, use_usercert = False):
 
 
 @syncify
-async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
+async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str, opts: str = '') -> Union[str, dict]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
         logging.info(f"SendMsg_json:: websocket not initialized")
@@ -204,30 +204,32 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str)
         init_begin = datetime.now().timestamp()
         logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
 
-    try:
-        await wb.send(json)
-    except Exception as e:
-        logging.exception(e)
-        logging.debug("SendMsg_json:: error sending the message")
-        print("SendMsg_json:: error sending the message", file=sys.stderr, flush = True)
-        wb_status = IsWbConnected(wb)
-        if not wb_status: wb = InitConnection()
-        return ''
+    nr_tries = int(0)
+    result = None
+    while result is None:
+        if nr_tries > 3:
+            msg = f"SendMsg_json:: {nr_tries - 1} communication errors!\nSent command: {json}"
+            print(msg, file=sys.stderr, flush = True)
+            logging.error(msg)
+            break
+        try:
+            nr_tries += 1
+            await wb.send(json)
+            result = await wb.recv()
+        except Exception as e:
+            logging.exception(e)
+            wb_status = IsWbConnected(wb)
+            if not wb_status: wb = InitConnection()
+        time.sleep(0.2)
 
-    try:
-        result = await wb.recv()
-    except Exception as e:
-        logging.exception(e)
-        logging.debug("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s")
-        print("SendMsg_json:: Websocket connection was closed while waiting the answer. Either network problem or ALIENPY_TIMEOUT should be set >20s", file=sys.stderr, flush = True)
-        wb_status = IsWbConnected(wb)
-        if not wb_status: wb = InitConnection()
-        return ''
     if DEBUG:
         init_end = datetime.now().timestamp()
         init_delta = (init_end - init_begin) * 1000
         logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
+
+    if 'dict' in opts:
+        return GetDict(result, 'log')
     return result
 
 
@@ -1665,21 +1667,21 @@ def DO_ping(wb: websockets.client.WebSocketClientProtocol, arg: str = ''):
     print(f"Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
 
 
-def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None, opts: str = '') -> str:
+def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[None, list] = None, opts: str = '') -> Union[str, dict]:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     if not args: args = []
     if 'nomsg' in opts: args.insert(0, '-nomsg')
     if 'nokeys' in opts: args.insert(0, '-nokeys')
-    return SendMsg_json(wb, CreateJsonCommand(cmd, args))
+    return SendMsg_json(wb, CreateJsonCommand(cmd, args), opts)
 
 
-def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str, opts: str = '') -> str:
+def SendMsg_str(wb: websockets.client.WebSocketClientProtocol, cmd_line: str, opts: str = '') -> Union[str, dict]:
     """Send a cmd/argument list message to the specified websocket; it will return the server answer"""
     args = cmd_line.split()
     cmd = args.pop(0)
     if 'nomsg' in opts: args.insert(0, '-nomsg')
     if 'nokeys' in opts: args.insert(0, '-nokeys')
-    return SendMsg_json(wb, CreateJsonCommand(cmd, args))
+    return SendMsg_json(wb, CreateJsonCommand(cmd, args), opts)
 
 
 def IsValidCert(fname: str):
