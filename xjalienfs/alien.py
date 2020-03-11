@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_132951'
+ALIENPY_VERSION_DATE = '20200311_135047'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -2081,6 +2081,21 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
         if DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
     return wb
+
+
+class AliEnMsg:
+    def __init__(self):
+        self.wb = InitConnection()
+
+    def run(self, cmd):
+        return SendMsg_str(self.wb, cmd, 'dict')
+
+
+class AliEn(AliEnMsg):
+    def run(self, cmd):
+        command_list = cmd.split(";")
+        for cmd in command_list: ProcessInput(self.wb, cmd)
+        return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
 
 
 def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
