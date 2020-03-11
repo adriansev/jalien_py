@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_210847'
+ALIENPY_VERSION_DATE = '20200311_212441'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -315,7 +315,7 @@ class CopyFile(NamedTuple):
     lfn: str
 
 
-class AliEnMsg:
+class AliEn:
     def __init__(self, opts = 'dict'):
         self.wb = InitConnection()
         self.opts = opts
@@ -324,9 +324,7 @@ class AliEnMsg:
         if not opts: opts = self.opts
         return SendMsg_str(self.wb, cmd, opts)
 
-
-class AliEn(AliEnMsg):
-    def run(self, cmd):
+    def ProcessMsg(self, cmd):
         command_list = cmd.split(";")
         for cmd in command_list: ProcessInput(self.wb, cmd)
 

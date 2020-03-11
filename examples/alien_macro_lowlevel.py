@@ -8,7 +8,7 @@ import xjalienfs.alien as alien
 
 alien.setup_logging()
 
-j = alien.AliEnMsg()
+j = alien.AliEn()
 
 out = j.run('pwd')
 print(f"Output of type {type(out)}")
