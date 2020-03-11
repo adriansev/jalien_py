@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_135047'
+ALIENPY_VERSION_DATE = '20200311_182451'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -229,7 +229,7 @@ async def SendMsg_json(wb: websockets.client.WebSocketClientProtocol, json: str,
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
 
     if 'dict' in opts:
-        return GetDict(result, 'log')
+        return GetDict(result, opts)
     return result
 
 
@@ -294,6 +294,7 @@ class COLORS:
 
 
 class XrdCpArgs(NamedTuple):
+    """Structure to keep the set of xrootd flags used for xrootd copy process"""
     overwrite: bool
     batch: int
     sources: int
@@ -306,11 +307,27 @@ class XrdCpArgs(NamedTuple):
 
 
 class CopyFile(NamedTuple):
+    """Structure to keep a generic copy task"""
     src: str
     dst: str
     isUpload: bool
     token_request: dict
     lfn: str
+
+
+class AliEnMsg:
+    def __init__(self, opts = 'dict'):
+        self.wb = InitConnection()
+        self.opts = opts
+
+    def run(self, cmd):
+        return SendMsg_str(self.wb, cmd, self.opts)
+
+
+class AliEn(AliEnMsg):
+    def run(self, cmd):
+        command_list = cmd.split(";")
+        for cmd in command_list: ProcessInput(self.wb, cmd)
 
 
 def PrintColor(color: str) -> str:
@@ -396,14 +413,51 @@ def is_my_pid(pid: int) -> bool:
     return True if pid_uid(int(pid)) == os.getuid() else False
 
 
-def PrintDict(dict: dict, opts: str = ''):
+def GetCWDFilename() -> str:
+    return os.path.join(os.path.expanduser("~"), ".alienpy_cwd")
+
+
+def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
+    cwd = ''
+    try:
+        with open(GetCWDFilename()) as f:
+            cwd = f.read()
+    except Exception as e:
+        logging.warning('RestoreCWD:: failed to read file')
+        logging.exception(e)
+
+    if cwd:
+        resp = SendMsg_str(wb, 'cd ' + cwd)
+        GetDict(resp, print_err='log')
+
+
+def StoreCWD():
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'):
+        try:
+            with open(GetCWDFilename(), "w") as f:
+                f.write(AlienSessionInfo["currentdir"])
+        except Exception as e:
+            logging.warning("StoreCWD:: failed to write file")
+            logging.exception(e)
+
+
+def PrintDict(input_dict: Union[dict, str], opts: str = ''):
     """Print a dictionary in a nice format"""
-    dict_str = json.dumps(dict, sort_keys=True, indent=4)
-    if not opts: print(dict_str, flush = True)
+    out_dict = None
+    if type(input_dict) == dict:
+        out_dict = input_dict.copy()
+    else:
+        out_dict = json.loads(input_dict)
+    if 'nometa' in opts: del out_dict["metadata"]
+    if 'results' in opts:
+        dict_str = json.dumps(out_dict['results'], sort_keys=True, indent=4)
+    else:
+        dict_str = json.dumps(out_dict, sort_keys=True, indent=4)
     if 'info' in opts: logging.info(dict_str)
-    if 'warn' in opts: logging.warning(dict_str)
-    if 'err' in opts: logging.error(dict_str)
-    if 'debug' in opts: logging.debug(dict_str)
+    elif 'warn' in opts: logging.warning(dict_str)
+    elif 'err' in opts: logging.error(dict_str)
+    elif 'debug' in opts: logging.debug(dict_str)
+    else: print(dict_str, flush = True)
 
 
 def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
@@ -417,11 +471,10 @@ def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
     AlienSessionInfo['exitcode'] = int(ans_dict["metadata"]["exitcode"])
     if int(AlienSessionInfo['exitcode']) != 0:
         err_msg = AlienSessionInfo['error']
-        if 'log' in print_err:
-            logging.info(f"{err_msg}")
-        if 'debug' in print_err:
-            logging.debug(f"{err_msg}")
-        if 'print' in print_err:
+        flags = ['log', 'error', 'debug']
+        if any(flag in print_err for flag in flags):
+            logging.error(f"{err_msg}")
+        elif 'print' in print_err:
             print(f'{err_msg}', file=sys.stderr, flush = True)
     return ans_dict
 
@@ -1762,7 +1815,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         msg = "Not CA location or files specified!!! Connection will not be possible!!"
         print(msg, file=sys.stderr, flush = True)
         logging.info(msg)
-        sys.exit(1)
+        sys.exit(2)
     if DEBUG:
         if x509file:
             logging.debug(f"CAfile = {x509file}")
@@ -1790,9 +1843,14 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             msg = f"User certificate files NOT FOUND!!! Connection will not be possible!!"
             print(msg, file=sys.stderr, flush = True)
             logging.info(msg)
-            sys.exit(1)
+            sys.exit(126)
         cert = cert_files[0]
         key  = cert_files[1]
+        if not IsValidCert(cert):
+            msg = f'Invalid user certificate!! Check the content of {cert}'
+            print(msg, file=sys.stderr, flush = True)
+            logging.info(msg)
+            sys.exit(129)
         AlienSessionInfo['use_usercert'] = True
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
@@ -2083,21 +2141,6 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     return wb
 
 
-class AliEnMsg:
-    def __init__(self):
-        self.wb = InitConnection()
-
-    def run(self, cmd):
-        return SendMsg_str(self.wb, cmd, 'dict')
-
-
-class AliEn(AliEnMsg):
-    def run(self, cmd):
-        command_list = cmd.split(";")
-        for cmd in command_list: ProcessInput(self.wb, cmd)
-        return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
-
-
 def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
@@ -2330,34 +2373,6 @@ def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None,
         else:
             print(websocket_output, flush = True)
     return int(AlienSessionInfo['exitcode'])
-
-
-def GetCWDFilename() -> str:
-    return os.path.join(os.path.expanduser("~"), ".alienpy_cwd")
-
-
-def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
-    cwd = ''
-    try:
-        with open(GetCWDFilename()) as f:
-            cwd = f.read()
-    except Exception as e:
-        logging.warning('RestoreCWD:: failed to read file')
-        logging.exception(e)
-
-    if cwd:
-        resp = SendMsg_str(wb, 'cd ' + cwd)
-        GetDict(resp, print_err='log')
-
-
-def StoreCWD():
-    if not os.getenv('ALIENPY_NO_CWD_RESTORE'):
-        try:
-            with open(GetCWDFilename(), "w") as f:
-                f.write(AlienSessionInfo["currentdir"])
-        except Exception as e:
-            logging.warning("StoreCWD:: failed to write file")
-            logging.exception(e)
 
 
 def JAlien(commands: str = ''):
