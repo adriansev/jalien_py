@@ -426,12 +426,15 @@ def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
 
 def DO_version():
     global AlienSessionInfo
-    print(f'alien.py version: {ALIENPY_VERSION_DATE}')
-    print(f'alien.py location: {os.path.realpath(__file__)}')
-    print(f'script location: {ALIENPY_EXECUTABLE}')
-    real_interpreter = os.path.realpath(sys.executable)
-    print(f'Interpreter: {real_interpreter}')
-    print(f'Python version: {sys.version}')
+    print(f'alien.py version: {ALIENPY_VERSION_DATE}\n'
+          f'alien.py location: {os.path.realpath(__file__)}\n'
+          f'script location: {ALIENPY_EXECUTABLE}\n'
+          f'Interpreter: {os.path.realpath(sys.executable)}\n'
+          f'Python version: {sys.version}', flush = True)
+    if has_xrootd:
+        print(f'XRootD version: {client.__version__}\nXRootD path: {client.__file__}', flush = True)
+    else:
+        print('XRootD not found', flush = True)
     AlienSessionInfo['exitcode'] = int(0)
     return AlienSessionInfo['exitcode']
 
