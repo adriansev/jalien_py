@@ -424,6 +424,78 @@ def GetDict(answer: str, print_err: str = '') -> Union[None, dict]:
     return ans_dict
 
 
+def DO_version():
+    global AlienSessionInfo
+    print(f'alien.py version: {ALIENPY_VERSION_DATE}')
+    print(f'alien.py location: {os.path.realpath(__file__)}')
+    print(f'script location: {ALIENPY_EXECUTABLE}')
+    real_interpreter = os.path.realpath(sys.executable)
+    print(f'Interpreter: {real_interpreter}')
+    print(f'Python version: {sys.version}')
+    AlienSessionInfo['exitcode'] = int(0)
+    return AlienSessionInfo['exitcode']
+
+
+def DO_certinfo(args: list = None):
+    global AlienSessionInfo
+    if not args: args = []
+    cert_files = get_files_cert()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        print("Print user certificate information")
+        AlienSessionInfo['exitcode'] = 0
+        return AlienSessionInfo['exitcode']
+    AlienSessionInfo['exitcode'] = CertInfo(cert_files[0])
+    return AlienSessionInfo['exitcode']
+
+
+def DO_tokeninfo(args: list = None):
+    global AlienSessionInfo
+    if not args: args = []
+    token_files = get_files_token()
+    tokencert = token_files[0]
+    tokenkey = token_files[1]
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        print("Print token certificate information")
+        AlienSessionInfo['exitcode'] = 0
+        return AlienSessionInfo['exitcode']
+
+    if not os.path.isfile(tokencert):  # and is not a file
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
+        temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
+        temp_cert.seek(0)
+        tokencert = temp_cert.name
+
+    if os.path.exists(tokencert):
+        AlienSessionInfo['exitcode'] = CertInfo(tokencert)
+    else:
+        print(f"Token >{tokencert}< not found/created", file=sys.stderr, flush = True)
+        AlienSessionInfo['exitcode'] = 1
+    return AlienSessionInfo['exitcode']
+
+
+def DO_tokendestroy(args: list = None):
+    global AlienSessionInfo
+    if not args: args = []
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        print("Delete the token{cert,key}.pem files")
+        AlienSessionInfo['exitcode'] = 0
+        return AlienSessionInfo['exitcode']
+    token_files = get_files_token()
+    tokencert = token_files[0]
+    tokenkey = token_files[1]
+    if os.path.exists(tokencert): os.remove(tokencert)
+    if os.path.exists(tokenkey): os.remove(tokenkey)
+    print("Token was destroyed! Re-connect for token re-creation.")
+    AlienSessionInfo['exitcode'] = 0
+    return AlienSessionInfo['exitcode']
+
+
+def DO_exitcode():
+    global AlienSessionInfo
+    print(AlienSessionInfo['exitcode'])
+    return int(0)
+
+
 def xrdcp_help():
     print(f'''at least 2 arguments are needed : src dst
 the command is of the form of (with the strict order of arguments):
@@ -1174,12 +1246,20 @@ def is_pfn_readable(pfn: str) -> bool:
     return False
 
 
-def print_pfn_status(pfn: str):
+def DO_pfnstatus(args: list = None):
+    global AlienSessionInfo
+    if not args: args = []
+    if '-h' in args or '-help' in args:
+        print('Command format: pfn_status <pfn>'
+              'It will return all flags reported by the xrootd server', flush = True)
+        return int(0)
+    pfn = args.pop(0)
     answer = xrd_stat(pfn)
     response_stat = answer[0]
     response_statinfo = answer[1]
     if not response_stat.ok:
         print(f'{response_stat.message}; code/status: {response_stat.code}/{response_stat.status}', file=sys.stderr, flush = True)
+        return int(response_stat.shellcode)
     size = response_statinfo.size
     modtime = response_statinfo.modtimestr
     flags = response_statinfo.flags
@@ -1199,6 +1279,7 @@ def print_pfn_status(pfn: str):
           f'''File opened with POSC flag, not yet successfully closed: {posc_pending}\n'''
           f'''Is readable: {is_readable}\n'''
           f'''Is writable: {is_writable}''')
+    return int(response_stat.shellcode)
 
 
 def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str):
@@ -1999,74 +2080,23 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
 def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
-
-    # make sure we have with whom to talk to; if not, lets redo the connection
-    # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
-    # (if the end of message frame is not received then all message will be lost as it invalidated)
-    if not IsWbConnected(wb): wb = InitConnection()
-
     global AlienSessionInfo
     args = cmd_string.split(" ")
     cmd = args.pop(0)
     args[:] = [x for x in args if x.strip()]
 
-    cert_files = get_files_cert()
-    token_files = get_files_token()
-    tokencert = token_files[0]
-    tokenkey = token_files[1]
+    # these commands do NOT need wb connection
+    if cmd == 'version': return DO_version()
+    if cmd == 'cert-info': return DO_certinfo(args)
+    if cmd == 'token-info': return DO_tokeninfo(args)
+    if cmd == 'token-destroy': return DO_tokendestroy(args)
+    if cmd == 'exitcode': return DO_exitcode()
+    if cmd == "pfn-status": return DO_pfnstatus(args)
 
-    if cmd == 'version':
-        print(f'alien.py version: {ALIENPY_VERSION_DATE}')
-        print(f'alien.py location: {os.path.realpath(__file__)}')
-        print(f'script location: {ALIENPY_EXECUTABLE}')
-        real_interpreter = os.path.realpath(sys.executable)
-        print(f'Interpreter: {real_interpreter}')
-        print(f'Python version: {sys.version}')
-        AlienSessionInfo['exitcode'] = int(0)
-        return AlienSessionInfo['exitcode']
-
-    if cmd == 'cert-info':
-        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-            print("Print user certificate information")
-            AlienSessionInfo['exitcode'] = 0
-            return AlienSessionInfo['exitcode']
-        AlienSessionInfo['exitcode'] = CertInfo(cert_files[0])
-        return AlienSessionInfo['exitcode']
-
-    if cmd == 'token-info':
-        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-            print("Print token certificate information")
-            AlienSessionInfo['exitcode'] = 0
-            return AlienSessionInfo['exitcode']
-
-        if not os.path.isfile(tokencert):  # and is not a file
-            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
-            temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
-            temp_cert.seek(0)
-            tokencert = temp_cert.name
-
-        if os.path.exists(tokencert):
-            AlienSessionInfo['exitcode'] = CertInfo(tokencert)
-        else:
-            print(f"Token >{tokencert}< not found/created", file=sys.stderr, flush = True)
-            AlienSessionInfo['exitcode'] = 1
-        return AlienSessionInfo['exitcode']
-
-    if cmd == 'token-destroy':
-        if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-            print("Delete the token{cert,key}.pem files")
-            AlienSessionInfo['exitcode'] = 0
-            return AlienSessionInfo['exitcode']
-        if os.path.exists(tokencert): os.remove(tokencert)
-        if os.path.exists(tokenkey): os.remove(tokenkey)
-        if not cmd_mode:
-            print("Token was destroyed! Exit and re-connect for token re-creation.")
-        AlienSessionInfo['exitcode'] = 0
-        return AlienSessionInfo['exitcode']
-
-    if cmd == 'exitcode':
-        print(AlienSessionInfo['exitcode'])
-        return int(0)
+    # make sure we have with whom to talk to; if not, lets redo the connection
+    # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
+    # (if the end of message frame is not received then all message will be lost as it invalidated)
+    if not IsWbConnected(wb): wb = InitConnection()
 
     if cmd == 'token':
         if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
@@ -2080,7 +2110,9 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             print("Use >token-init args< for token (re)creation, see below the arguments")
         else:
             wb = token_regen(wb, args)
-
+            token_files = get_files_token()
+            tokencert = token_files[0]
+            tokenkey = token_files[1]
             if os.path.exists(tokencert) and os.path.exists(tokenkey):
                 CertInfo(tokencert)
                 AlienSessionInfo['exitcode'] = int(0)
@@ -2171,15 +2203,6 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         lfn = args.pop(0)
         AlienSessionInfo['exitcode'] = DO_exec(wb, lfn, " ".join(args))
         return AlienSessionInfo['exitcode']
-
-    if cmd == "pfn_status":
-        if '-h' in args or '-help' in args:
-            print('Command format: pfn_status <pfn>'
-                  'It will return all flags reported by the xrootd server', flush = True)
-            return int(0)
-        pfn = args.pop(0)
-        print_pfn_status(pfn)
-        return int(0)
 
     if cmd == "quota":
         DO_quota(wb, args)
@@ -2319,8 +2342,6 @@ def StoreCWD():
 def JAlien(commands: str = ''):
     """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo
-    wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-
     aliases_dict = import_aliases()
 
     # Command mode interaction
@@ -2329,9 +2350,24 @@ def JAlien(commands: str = ''):
         if aliases_dict:
             for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
         cmds_tokens = commands.split(";")
+        if len(cmds_tokens) == 1:
+            args = commands.split(" ")
+            cmd = args.pop(0)
+            args[:] = [x for x in args if x.strip()]
+
+            # FAST-PATH!! these commands do NOT need wb connection
+            if cmd == 'version': return DO_version()
+            if cmd == 'cert-info': return DO_certinfo(args)
+            if cmd == 'token-info': return DO_tokeninfo(args)
+            if cmd == 'token-destroy': return DO_tokendestroy(args)
+            if cmd == 'exitcode': return DO_exitcode()
+            if cmd == "pfn-status": return DO_pfnstatus(args)
+
+        wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
         for token in cmds_tokens: ProcessInput(wb, token, None, True)
         return int(AlienSessionInfo['exitcode'])  # return the exit code of the latest command
 
+    wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
     if has_readline:
         rl.parse_and_bind("tab: complete")
