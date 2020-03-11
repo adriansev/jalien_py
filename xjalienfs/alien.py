@@ -2045,6 +2045,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('exec')
     AlienSessionInfo['commandlist'].append('getSE')
     AlienSessionInfo['commandlist'].append('version')
+    AlienSessionInfo['commandlist'].append('pfn-status')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict['metadata']['user']
 
