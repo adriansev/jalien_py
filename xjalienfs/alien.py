@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200311_212441'
+ALIENPY_VERSION_DATE = '20200312_233439'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -310,6 +310,12 @@ class CopyFile(NamedTuple):
     lfn: str
 
 
+class lfn2file(NamedTuple):
+    """Map a lfn to file (and reverse)"""
+    lfn: str
+    file: str
+
+
 class AliEn:
     def __init__(self, opts = 'dict'):
         self.wb = InitConnection()
@@ -581,17 +587,30 @@ for the recursive copy of directories the following options (of the find command
 ''')
 
 
-def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn: str, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
+def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
     if not wb: return
-    if not lfn: return {}
+    if not lfn2file: return {}
+    lfn = lfn2file.lfn
+    file = lfn2file.file
     if not specs: specs = []
-    access_type = 'write' if isWrite else 'read'
-    get_envelope_arg_list = [access_type, lfn]
-    send_opts = 'nomsg' if not DEBUG else ''
+    if isWrite:
+        access_type = 'write'
+        size = int(os.stat(file).st_size)
+        md5sum = md5(file)
+        get_envelope_arg_list = ['-s', size, '-m', md5sum, access_type, lfn]
+    else:
+        access_type = 'read'
+        get_envelope_arg_list = [access_type, lfn]
     if specs: get_envelope_arg_list.append(str(",".join(specs)))
-    result = SendMsg(wb, 'access', get_envelope_arg_list, send_opts)
-    return {"lfn": lfn, "answer": result}
+    result = SendMsg(wb, 'access', get_envelope_arg_list, 'dict nomsg')
+    replica_list = []
+    for replica in result["results"]:
+        replica_list.append(replica["se"])
+    for replica in result["results"]:
+        replica["SElist"] = ",".join(replica_list)
+        replica["file"] = file
+    return {"lfn": lfn, "answer": json.dumps(result)}
 
 
 def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False) -> list:
@@ -600,8 +619,8 @@ def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, s
     access_list = []
     if not lfn_list: return access_list
     if not specs: specs = []
-    for lfn in lfn_list:
-        lfn_token = getEnvelope_lfn(wb, lfn, specs, isWrite)
+    for l2f in lfn_list:
+        lfn_token = getEnvelope_lfn(wb, l2f, specs, isWrite)
         access_list.append(lfn_token)
     return access_list
 
@@ -646,9 +665,12 @@ def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> s
     """Query if a lfn is a file or directory, return f, d or empty"""
     if not wb: return ''
     if not path: return ''
-    result = SendMsg(wb, 'stat', [path], 'nomsg')
-    json_dict = GetDict(result, print_err = 'debug')
-    return '' if int(AlienSessionInfo['exitcode']) != 0 else str(json_dict['results'][0]["type"])
+    result = SendMsg(wb, 'type', [path], 'nomsg')
+    json_dict = GetDict(result)
+    if int(AlienSessionInfo['exitcode']) != 0:
+        return ''
+    else:
+        return str(json_dict['results'][0]["type"])[0]
 
 
 def pathtype_local(path: str) -> str:
@@ -830,11 +852,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     elif os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
         streams = int(os.getenv('XRD_SUBSTREAMSPERCHANNEL'))
 
-    batch_user_setup = False
+    batch = 8  # a nice enough default
     if '-T' in xrd_copy_command:
         batch_idx = xrd_copy_command.index('-T')
         batch = int(xrd_copy_command.pop(batch_idx + 1))
-        batch_user_setup = True
         xrd_copy_command.pop(batch_idx)
 
     if '-chunks' in xrd_copy_command:
@@ -984,10 +1005,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             return int(42)  # ENOMSG /* No message of desired type */
         if src_type == 'd': isSrcDir = bool(True)
 
-    # For all download use a default of 8 simultaneous downloads;
-    # the parralel uploads does not work yet because of return confirmations needed to commit writes to catalog
-    if isDownload and not batch_user_setup: batch = 8
-
     dst = None
     dst_type = None
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
@@ -1037,7 +1054,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 if os.path.isfile(dst_filename) and not overwrite:
                     print(f'{dst_filename} exists, skipping..', flush = True)
                     continue
-                tokens = getEnvelope_lfn(wb, item['lfn'], specs, isWrite)
+                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
                 token_query = GetDict(tokens['answer'])
                 if token_query["metadata"]["exitcode"] != '0':
                     lfn = tokens['lfn']
@@ -1050,7 +1067,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             if os.path.isfile(dst) and not overwrite:
                 print(f'{dst} exists, skipping..', flush = True)
                 return int(0)  # Destination present we will not overwrite it
-            tokens = getEnvelope_lfn(wb, src, specs, isWrite)
+            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
             token_query = GetDict(tokens['answer'])
             if token_query["metadata"]["exitcode"] != '0':
                 lfn = tokens['lfn']
@@ -1076,7 +1093,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                                 print(f'{lfn} exists, deleting..', flush = True)
                                 result = SendMsg(wb, 'rm', ['-f', lfn], 'nomsg')
                                 json_dict = GetDict(result, print_err = 'print')
-                        tokens = getEnvelope_lfn(wb, lfn, specs, isWrite)
+                        tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
                         token_query = GetDict(tokens['answer'])
                         if token_query["metadata"]["exitcode"] != '0':
                             lfn = tokens['lfn']
@@ -1095,7 +1112,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     print(f'{dst} exists, deleting..', flush = True)
                     result = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
                     json_dict = GetDict(result, print_err = 'print')
-            tokens = getEnvelope_lfn(wb, dst, specs, isWrite)
+            tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
             token_query = GetDict(tokens['answer'])
             if token_query["metadata"]["exitcode"] != '0':
                 lfn = tokens['lfn']
@@ -1167,11 +1184,11 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    token_list_upload_ok = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args)
+    replica_list_upload_failed = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
-    return int(0) if token_list_upload_ok else int(1)
+    return int(1) if replica_list_upload_failed else int(0)
 
 
 if has_xrootd:
@@ -1179,7 +1196,7 @@ if has_xrootd:
         def __init__(self):
             self.wb = None
             self.isDownload = bool(True)
-            self.token_list_upload_ok = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+            self.replica_list_upload_failed = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
@@ -1217,20 +1234,19 @@ if has_xrootd:
                     meta_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
                     lfn = get_lfn_meta(meta_file)
                     if not os.getenv('ALIENPY_KEEP_META'): os.remove(meta_file)  # remove the created metalink
-                    self.token_list_upload_ok.append(lfn)  # append on output list the downloaded lfn to be checked later
                 else:  # isUpload
                     xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
                     link = urlparse(xrd_dst_url)
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
                     copyjob = next(job for job in self.xrdjob_list if job.token_request.get('url') in xrd_dst_url)
                     replica_dict = copyjob.token_request
-                    src_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
-                    size = os.path.getsize(src_file)
-                    md5sum = md5(src_file)
                     perm = '644'
                     expire = '0'
-                    exitcode = commit(self.wb, token, int(size), copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], md5sum)
-                    self.token_list_upload_ok.append(str(token))
+                    exitcode = commit(self.wb, token, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
+
+            if not results['status'].ok and not self.isDownload:  # we have an failed replica upload
+                copyjob = next(job for job in self.xrdjob_list if job.token_request.get('url') in xrd_dst_url)
+                self.replica_list_upload_failed.append(copyjob.token_request)
             print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
 
         def update(self, jobId, processed, total):
@@ -1275,7 +1291,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
     process.prepare()
     process.run(handler)
-    return handler.token_list_upload_ok  # for upload jobs we must return the list of token for succesful uploads
+    return handler.replica_list_upload_failed  # for upload jobs we must return the list of token for succesful uploads
 
 
 def xrd_stat(pfn: str):
@@ -1414,18 +1430,14 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
     result = ProcessXrootdCp(wb, copycmd.split())
-    return tmpfile if result == 0 else ''
+    return tmpfile
 
 
 def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '') -> str:
     """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the oirginal lfn"""
-    # lets recover the lfn from temp file name
     lfn = get_lfn_name(temp_file_name)
-    envelope_list = getEnvelope(wb, [lfn], [upload_specs], isWrite = True)
-    result = envelope_list[0]["answer"]
-    access_request = GetDict(result)
-    replicas = access_request["results"][0]["nSEs"]
 
+    # lets recover the lfn from temp file name
     # let's create a backup of old lfn
     lfn_backup = lfn + "~"
     result = SendMsg(wb, 'rm', ['-f', lfn_backup])
@@ -1435,9 +1447,10 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
         print(f"Could not create backup of lfn : {lfn}", file=sys.stderr, flush = True)
         return ''
 
-    if "disk:" not in upload_specs:
-        upload_specs = "disk:" + replicas
-
+    tokens = getEnvelope_lfn(wb, lfn2file(lfn, temp_file_name), [upload_specs], isWrite = True)
+    access_request = GetDict(tokens['answer'])
+    replicas = access_request["results"][0]["nSEs"]
+    if "disk:" not in upload_specs: upload_specs = "disk:" + replicas
     if upload_specs: upload_specs = "@" + upload_specs
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn + upload_specs
     list_upload = ProcessXrootdCp(wb, copycmd.split())
@@ -2245,9 +2258,9 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
 
     if cmd == "run":
         if '-h' in args or '-help' in args:
-            print('Command format: run <shell_command + arguments> lfn'
-                  'the lfn must be the last element of the command'
-                  'N.B.! The output and error streams will be captured and printed at the end of execution!'
+            print('Command format: run <shell_command + arguments> lfn\n'
+                  'the lfn must be the last element of the command\n'
+                  'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                   'for working within application use <edit>', flush = True)
             return int(0)
         lfn = args.pop(-1)
@@ -2257,8 +2270,8 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
 
     if cmd == "exec":
         if '-h' in args or '-help' in args:
-            print('Command format: run lfn list_of_arguments'
-                  'N.B.! The output and error streams will be captured and printed at the end of execution!'
+            print('Command format: exec lfn list_of_arguments\n'
+                  'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                   'for working within application use <edit>', flush = True)
             return int(0)
         lfn = args.pop(0)
