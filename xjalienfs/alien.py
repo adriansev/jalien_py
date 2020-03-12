@@ -1566,10 +1566,10 @@ def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[No
         jquota_cmd = CreateJsonCommand_str('jquota -nomsg list ' + user)
         fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
 
-    jquota = SendMsg_json(jquota_cmd)
+    jquota = SendMsg_json(wb, jquota_cmd)
     jquota_dict = json.loads(jquota)
 
-    fquota = SendMsg_json(fquota_cmd)
+    fquota = SendMsg_json(wb, fquota_cmd)
     fquota_dict = json.loads(fquota)
 
     username = jquota_dict['results'][0]["username"]
