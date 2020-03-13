@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200313_011921'
+ALIENPY_VERSION_DATE = '20200313_071644'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -2412,6 +2412,11 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if cmd == "less":
         if args[0] != '-h':
             AlienSessionInfo['exitcode'] = DO_less(wb, args[0])
+            return AlienSessionInfo['exitcode']
+
+    if cmd == "more":
+        if args[0] != '-h':
+            AlienSessionInfo['exitcode'] = DO_more(wb, args[0])
             return AlienSessionInfo['exitcode']
 
     if (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
