@@ -2435,16 +2435,16 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return AlienSessionInfo['exitcode']
 
     # default to print / after directories
-    if cmd == 'ls': args[0:0] = ('-F')
+    if cmd == 'ls': args.insert(0, '-F')
     if cmd == 'll':
         cmd = 'ls'
-        args[0:0] = ('-l', '-F')
+        [args.insert(0, flag) for flag in ('-l', '-F')]
     if cmd == 'la':
         cmd = 'ls'
-        args[0:0] = ('-a', '-F')
+        [args.insert(0, flag) for flag in ('-a', '-F')]
     if cmd == 'lla':
         cmd = 'ls'
-        args[0:0] = ('-a', '-l', '-F')
+        [args.insert(0, flag) for flag in ('-a', '-l', '-F')]
 
     send_opt = 'nokeys' if not (DEBUG or JSON_OUT or JSONRAW_OUT) else ''
     result = SendMsg(wb, cmd, args, send_opt)
