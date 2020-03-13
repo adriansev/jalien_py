@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200312_233439'
+ALIENPY_VERSION_DATE = '20200313_005936'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -1512,8 +1512,16 @@ def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, editor: str
         return int(1)
 
 
-def DO_run(wb: websockets.client.WebSocketClientProtocol, cmd: str, lfn: str) -> int:
+def DO_run(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
     """cat lfn :: download lfn as a temporary file and more"""
+    if '-h' in args or '-help' in args:
+        print('Command format: run <shell_command + arguments> lfn\n'
+              'the lfn must be the last element of the command\n'
+              'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
+              'for working within application use <edit>', flush = True)
+        return int(0)
+    lfn = args.pop(-1)
+    cmd = " ".join(args)
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp not in AlienSessionInfo['templist']:
@@ -1522,8 +1530,15 @@ def DO_run(wb: websockets.client.WebSocketClientProtocol, cmd: str, lfn: str) ->
     if tmp and os.path.isfile(tmp): return runShellCMD(cmd + ' ' + tmp)
 
 
-def DO_exec(wb: websockets.client.WebSocketClientProtocol, lfn: str, opt_args: str = '') -> int:
+def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
     """cat lfn :: download lfn as a temporary file and more"""
+    if '-h' in args or '-help' in args:
+        print('Command format: exec lfn list_of_arguments\n'
+              'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
+              'for working within application use <edit>', flush = True)
+        return int(0)
+    lfn = args.pop(0)
+    opt_args = " ".join(args)
     lfn_path = expand_path_grid(lfn)
     tmp = make_tmp_fn(lfn_path)
     if tmp not in AlienSessionInfo['templist']:
@@ -1532,6 +1547,111 @@ def DO_exec(wb: websockets.client.WebSocketClientProtocol, lfn: str, opt_args: s
     os.chmod(tmp, 0o700)
     cmd = tmp + ' ' + opt_args if opt_args else tmp
     if tmp and os.path.isfile(tmp): return runShellCMD(cmd)
+
+
+def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
+    if '-h' in args or '-help' in args:
+        print(f'''-select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-name <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive e.g.:
+-name begin_myf_contain_run1_ends_bla_ext_root
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
+-d  : return also the directories
+-w[h] : long format, optionally human readable file sizes
+-a : show hidden .* files
+-j <queue_id> : filter files created by a certain job
+-l <count> : limit the number of returned entries to at most the indicated value
+-o <offset> : skip over the first <offset> results
+        ''')
+        return int(0)
+
+    find_args = []
+    if '-a' in args:
+        find_args.append('-a')
+        args.remove('-a')
+
+    if '-r' in args:
+        args.remove('-r')
+
+    if '-d' in args:
+        find_args.append('-d')
+        args.remove('-d')
+
+    if '-s' in args:
+        args.remove('-s')
+
+    if '-v' in args:
+        # print("Verbose mode not implemented, ignored")
+        args.remove('-v')
+
+    if '-j' in args:
+        qid_idx = args.index('-j')
+        find_args.append('-j')
+        find_args.append(args.pop(qid_idx + 1))
+        args.pop(qid_idx)
+
+    if '-l' in args:
+        return_nr_idx = args.index('-l')
+        find_args.append('-l')
+        find_args.append(args.pop(return_nr_idx + 1))
+        args.pop(return_nr_idx)
+
+    if '-o' in args:
+        skip_nr_idx = args.index('-o')
+        find_args.append('-o')
+        find_args.append(args.pop(skip_nr_idx + 1))
+        args.pop(skip_nr_idx)
+
+    pattern = '\\/.*'  # default regex selection for find
+    if '-select' in args and '-name' in args:
+        print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
+        return int(22)  # EINVAL /* Invalid argument */
+
+    if '-select' in args:
+        select_idx = args.index('-select')
+        pattern = args.pop(select_idx + 1)
+        args.pop(select_idx)
+
+    if '-name' in args:
+        name_idx = args.index('-name')
+        pattern = args.pop(name_idx + 1)
+        args.pop(name_idx)
+
+        translated_pattern = '.*\\/'
+        verbs = ('begin', 'contain', 'ends', 'ext')
+        if any(verb in pattern for verb in verbs):
+            pattern_list = pattern.split('_')
+            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+                print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+                return int(64)  # EX_USAGE /* command line usage error */
+            for idx, token in enumerate(pattern_list):
+                if token == 'begin':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + string + '.*'
+                if token == 'contain':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*' + string + '.*'
+                if token == 'ends':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
+                if token == 'ext':
+                    string = pattern_list[idx + 1]
+                    translated_pattern = translated_pattern + '.*\\.' + string + '$'
+        pattern = translated_pattern
+
+    try:
+        regex = re.compile(pattern)
+    except re.error:
+        print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
+        return int(64)  # EX_USAGE /* command line usage error */
+
+    if len(args) > 1:
+        print('Too many elements remained in arg list, it should be just the directory')
+        print(args)
+        return int(1)
+    find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern])
+    result = SendMsg(wb, 'find', find_args, 'nokeys')
+    return ProcessReceivedMessage(result)
 
 
 def runShellCMD(INPUT: str = '', captureout: bool = True) -> int:
@@ -1567,10 +1687,10 @@ def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[No
         fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
 
     jquota = SendMsg_json(wb, jquota_cmd)
-    jquota_dict = json.loads(jquota)
+    jquota_dict = GetDict(jquota)
 
     fquota = SendMsg_json(wb, fquota_cmd)
-    fquota_dict = json.loads(fquota)
+    fquota_dict = GetDict(fquota)
 
     username = jquota_dict['results'][0]["username"]
     running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
@@ -1603,6 +1723,7 @@ Unfinished jobs :\t\tMAX={unfinishedjobs_max}
 Waiting :\t\t\t{waiting}
 Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
 Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
+    return int(0)
 
 
 def check_port(address: str, port: Union[str, int]) -> bool:
@@ -1650,19 +1771,11 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
         return re.sub(r"^\.\/", "", ret)
 
     entries_list = None
-    # for cached_item in cache:
-    #    if cached_item['lfn'] == expand_path_grid(lfn):
-    #        entries_list = cached_item['entries']
-    #        break
-
-    if not entries_list:
-        ls_args = ['-nomsg', '-F']
-        result = SendMsg(wb, 'ls', ls_args + [lfn])
-        result_dict = json.loads(result)
-        if result_dict["metadata"]["exitcode"] != '0': entries_list = []
-        entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
-    #    to_be_cached = {'lfn': expand_path_grid(lfn), 'entries': entries_list}
-    #    cache.append(to_be_cached)
+    ls_args = ['-nomsg', '-F']
+    result = SendMsg(wb, 'ls', ls_args + [lfn])
+    result_dict = json.loads(result)
+    if result_dict["metadata"]["exitcode"] != '0': entries_list = []
+    entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
     return entries_list
 
 
@@ -2257,30 +2370,19 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return int(0)
 
     if cmd == "run":
-        if '-h' in args or '-help' in args:
-            print('Command format: run <shell_command + arguments> lfn\n'
-                  'the lfn must be the last element of the command\n'
-                  'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
-                  'for working within application use <edit>', flush = True)
-            return int(0)
-        lfn = args.pop(-1)
-        cmd = " ".join(args)
-        AlienSessionInfo['exitcode'] = DO_run(wb, cmd, lfn)
+        AlienSessionInfo['exitcode'] = DO_run(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "exec":
-        if '-h' in args or '-help' in args:
-            print('Command format: exec lfn list_of_arguments\n'
-                  'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
-                  'for working within application use <edit>', flush = True)
-            return int(0)
-        lfn = args.pop(0)
-        AlienSessionInfo['exitcode'] = DO_exec(wb, lfn, " ".join(args))
+        AlienSessionInfo['exitcode'] = DO_exec(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "quota":
-        DO_quota(wb, args)
-        AlienSessionInfo['exitcode'] = int(0)
+        AlienSessionInfo['exitcode'] = DO_quota(wb, args)
+        return AlienSessionInfo['exitcode']
+
+    if cmd == "find2":
+        AlienSessionInfo['exitcode'] = DO_find2(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "pfn":
