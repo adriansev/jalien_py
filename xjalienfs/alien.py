@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200313_071644'
+ALIENPY_VERSION_DATE = '20200313_093727'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -559,17 +559,16 @@ def DO_exitcode():
 
 def xrdcp_help():
     print(f'''at least 2 arguments are needed : src dst
-the command is of the form of (with the strict order of arguments):
-cp args src dst
-where src|dst are local files if prefixed with file:// or grid files otherwise
+the command is of the form of (with the strict order of arguments): cp <args> src dst
+where src|dst are local files if prefixed with file:// or file: or grid files otherwise
 after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
 where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
 args are the following :
 -h : print help
--f : replace any existing output file
+-f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
 -y <nr_sources> : use up to the number of sources specified in parallel
--S <aditional TPC streams> : uses num additional parallel streams to do the transfer. The maximum value is 15. The default is 0 (i.e., use only the main stream).
+-S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
@@ -577,14 +576,14 @@ args are the following :
 for the recursive copy of directories the following options (of the find command) can be used:
 -select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
+verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 {PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
 -l <count> : copy only <count> nr of files (for recursive copy)
--o <offset> : skip first <offset> files found in the src directory (for recursive copy)
-''')
+-o <offset> : skip first <offset> files found in the src directory (for recursive copy)''')
 
 
 def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
