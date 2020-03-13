@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200313_005936'
+ALIENPY_VERSION_DATE = '20200313_011921'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -1489,6 +1489,16 @@ def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
     if tmp and os.path.isfile(tmp): return runShellCMD('more ' + tmp, False)
 
 
+def DO_pfn(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
+    cmd = 'whereis'
+    args.insert(0, '-r')
+    result = SendMsg(wb, cmd, args, 'nomsg')
+    json_dict = GetDict(result, 'print')
+    output = '\n'.join(str(item['pfn']) for item in json_dict['results']).strip()
+    print(output, flush = True)
+    return AlienSessionInfo['exitcode']
+
+
 def DO_edit(wb: websockets.client.WebSocketClientProtocol, lfn: str, editor: str = 'mcedit') -> int:
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if editor == 'mcedit': editor = 'mc -c -e'
@@ -2232,6 +2242,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('getSE')
     AlienSessionInfo['commandlist'].append('version')
     AlienSessionInfo['commandlist'].append('pfn-status')
+    AlienSessionInfo['commandlist'].append('find2')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict['metadata']['user']
 
@@ -2386,35 +2397,21 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         return AlienSessionInfo['exitcode']
 
     if cmd == "pfn":
-        cmd = 'whereis'
-        args.insert(0, '-r')
-        result = SendMsg(wb, cmd, args)
-        json_dict = json.loads(result)
-        message = str(json_dict['results'][0]['message'])
-        if message:
-            arr = message.split()
-            if 'archive' in arr: print('IS_ARCHIVED')
-            [print(i) for i in arr if i.startswith('root:')]
-        error = str(json_dict["metadata"]["error"])
-        AlienSessionInfo['error'] = error
-        AlienSessionInfo['exitcode'] = int(json_dict["metadata"]["exitcode"])
-        if AlienSessionInfo['exitcode'] != 0: print(f'{error}', file=sys.stderr, flush = True)
+        AlienSessionInfo['exitcode'] = DO_pfn(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "cp":  # defer cp processing to ProcessXrootdCp
-        exitcode = ProcessXrootdCp(wb, args)
-        AlienSessionInfo['exitcode'] = exitcode
+        AlienSessionInfo['exitcode'] = ProcessXrootdCp(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "cat":
         if args[0] != '-h':
-            DO_cat(wb, args[0])
-            AlienSessionInfo['exitcode'] = int(0)
+            AlienSessionInfo['exitcode'] = DO_cat(wb, args[0])
             return AlienSessionInfo['exitcode']
 
     if cmd == "less":
         if args[0] != '-h':
-            DO_less(wb, args[0])
+            AlienSessionInfo['exitcode'] = DO_less(wb, args[0])
             return AlienSessionInfo['exitcode']
 
     if (cmd == 'mcedit' or cmd == 'vi' or cmd == 'nano' or cmd == 'vim'):
