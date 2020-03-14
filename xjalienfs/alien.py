@@ -1686,14 +1686,14 @@ def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[No
     if len(quota_args) > 0:
         if quota_args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
             user = quota_args[0]
-            jquota_cmd = CreateJsonCommand_str('jquota -nomsg list ' + user)
-            fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
+            jquota_cmd = CreateJsonCommand('jquota -nomsg list ' + user)
+            fquota_cmd = CreateJsonCommand('fquota -nomsg list ' + user)
         else:
             print('set functionality not implemented yet')
     else:
         user = AlienSessionInfo['user']
-        jquota_cmd = CreateJsonCommand_str('jquota -nomsg list ' + user)
-        fquota_cmd = CreateJsonCommand_str('fquota -nomsg list ' + user)
+        jquota_cmd = CreateJsonCommand('jquota -nomsg list ' + user)
+        fquota_cmd = CreateJsonCommand('fquota -nomsg list ' + user)
 
     jquota = SendMsg_json(wb, jquota_cmd)
     jquota_dict = GetDict(jquota)
@@ -1749,19 +1749,22 @@ def check_port(address: str, port: Union[str, int]) -> bool:
         return True
 
 
-def CreateJsonCommand(cmd: str, options: Union[None, list] = None) -> str:
+def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None) -> str:
     """Return a json with command and argument list"""
-    if not options: options = []
-    jsoncmd = {"command": cmd, "options": options}
-    if DEBUG: logging.debug(f'send json: {jsoncmd}')
+    if not args: args = []
+    if type(cmdline) == dict:
+        if DEBUG: PrintDict(cmdline, 'debug')
+        return json.dumps(cmdline)
+
+    if type(cmdline) == str and args:
+        jsoncmd = {"command": cmdline, "options": args}
+    if type(cmdline) == str and not args:
+        args = cmdline.split()
+        cmd = args.pop(0)
+        jsoncmd = {"command": cmd, "options": args}
+    if DEBUG: PrintDict(jsoncmd, 'debug')
     return json.dumps(jsoncmd)
-
-
-def CreateJsonCommand_str(cmdline: str) -> str:
-    """Return a json by spliting the input string in first element(command) and the rest asa a list of arguments"""
-    args = cmdline.split()
-    command = args.pop(0)
-    return CreateJsonCommand(command, args)
+    print(f'Error creating json command!! Args were : {cmdline} ${type(cmdline)} and {args} ${type(args)}')
 
 
 def get_help(wb, cmd):
