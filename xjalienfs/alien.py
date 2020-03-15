@@ -186,7 +186,13 @@ async def msg_proxy(websocket, path, use_usercert = False):
 
 
 @syncify
-async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[str, dict]:
+async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, json: str) -> str:
+    await wb.send(json)
+    result = await wb.recv()
+    return result
+
+
+def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[str, dict]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
         logging.info(f"SendMsg_json:: websocket not initialized")
@@ -215,8 +221,7 @@ async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, a
             break
         try:
             nr_tries += 1
-            await wb.send(json)
-            result = await wb.recv()
+            result = __sendmsg(wb, json)
         except Exception as e:
             logging.exception(e)
             wb_status = IsWbConnected(wb)
