@@ -17,22 +17,17 @@ print()
 
 out = j.run('pwd', ' ')  # let's disable the defaults, it will return a string
 print(f"Output of type {type(out)}")
-alien.PrintDict(out)  # PrintDict take either a string (which will be loaded as json dict) or a dictionary
+alien.PrintDict(alien.GetDict(out))
 print()
 
-out = j.run('pwd', 'dict')
+out = j.run('pwd')
 print(f"Output of type {type(out)}")
 print('No metadata')
-alien.PrintDict(out, 'nometa')  # let's not print metadata
+no_meta = alien.GetDict(out, 'nometa')
+alien.PrintDict(no_meta)  # let's not print metadata
 print('Just the content of \'results\'')
-alien.PrintDict(out, 'results')  # let's not print metadata
-print()
-
-# in fact lets just keep the results in a variable
-another_out = alien.PrintDict(out, 'results return')  # let's not print metadata
-print(f"Output of type {type(another_out)}")
-print('Just the content of \'results\' saved in a variable')
-alien.PrintDict(another_out)
+results_list = alien.GetDict(out, 'results')
+alien.PrintDict(results_list)  # let's print just the results
 print()
 
 print('Let\'s just log the dictionary to the logfile with warning tag')
@@ -51,8 +46,4 @@ print(f"Output of type {type(out)}")
 print('Let\'s not receive the \'message\' values in the server response')
 alien.PrintDict(out)
 print()
-print('Maybe we need a clean results list without un-needed \'message\' key')
-my_clean_list = alien.PrintDict(out, 'return results')
-print(f"Output of type {type(my_clean_list)}")
-alien.PrintDict(my_clean_list)
-print()
+
