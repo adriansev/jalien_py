@@ -304,7 +304,14 @@ def GetDict(result: Union[dict, list, str], opts: str = '') -> Union[None, dict,
     """Convert server reply string to dict, update all relevant globals, do some filtering"""
     if not result: return None
     out_dict = None
-    out_dict = json.loads(result) if type(result) == str else result.copy()
+    if type(result) == str:
+        try:
+            out_dict = json.loads(result)
+        except Exception as e:
+            print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'')
+            return None
+    else:
+        out_dict = result.copy()
     if type(out_dict) == dict and 'metadata' in out_dict:  # these works only for AliEn responses
         try:
             global AlienSessionInfo
