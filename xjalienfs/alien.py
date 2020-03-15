@@ -78,8 +78,8 @@ hasColor = False
 if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
 
 # environment debug variable
-JSON_OUT = os.getenv('ALIENPY_JSON', '')
-JSONRAW_OUT = os.getenv('ALIENPY_JSONRAW', '')
+JSON_OUT = True if os.getenv('ALIENPY_JSON') else False
+JSONRAW_OUT = True if os.getenv('ALIENPY_JSONRAW') else False
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
@@ -229,9 +229,9 @@ async def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, a
         logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
 
-    if result and 'dict' in opts:
-        return GetDict(result, opts)
-    return result
+    if not result: return {}
+    if 'rawstr' in opts: return result
+    return GetDict(result, opts)
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '') -> str:
@@ -263,7 +263,17 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
 
 def PrintDict(in_arg: Union[str, dict, list], opts: str = ''):
     """Print a dictionary in a nice format and optionaly send the string """
-    dict_str = in_arg if type(in_arg) == str else json.dumps(in_arg, sort_keys = True, indent = 4)
+    if type(in_arg) == str:
+        if 'rawstr' in opts:
+            dict_str = in_arg
+        else:
+            try:
+                in_arg = json.loads(in_arg)
+            except Exception as e:
+                print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'')
+                return
+
+    dict_str = json.dumps(in_arg, sort_keys = True, indent = 4)
     if 'info' in opts: logging.info(dict_str)
     elif 'warn' in opts: logging.warning(dict_str)
     elif 'err' in opts: logging.error(dict_str)
@@ -405,7 +415,7 @@ class lfn2file(NamedTuple):
 
 
 class AliEn:
-    def __init__(self, opts = 'dict'):
+    def __init__(self, opts = ''):
         self.wb = InitConnection()
         self.opts = opts
 
@@ -513,10 +523,8 @@ def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
     except Exception as e:
         logging.warning('RestoreCWD:: failed to read file')
         logging.exception(e)
-
     if cwd:
-        resp = SendMsg(wb, 'cd ' + cwd)
-        GetDict(resp, 'log')
+        resp = SendMsg(wb, 'cd ' + cwd, opts = 'log')
 
 
 def StoreCWD():
@@ -649,7 +657,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn
         access_type = 'read'
         get_envelope_arg_list = [access_type, lfn]
     if specs: get_envelope_arg_list.append(str(",".join(specs)))
-    result = SendMsg(wb, 'access', get_envelope_arg_list, 'dict nomsg')
+    result = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     replica_list = []
     for replica in result["results"]:
         replica_list.append(replica["se"])
@@ -711,8 +719,7 @@ def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> s
     """Query if a lfn is a file or directory, return f, d or empty"""
     if not wb: return ''
     if not path: return ''
-    result = SendMsg(wb, 'type', [path], 'nomsg')
-    json_dict = GetDict(result, 'log')
+    json_dict = SendMsg(wb, 'type', [path], opts = 'nomsg log')
     if int(AlienSessionInfo['exitcode']) != 0: return ''
     return str(json_dict['results'][0]["type"])[0]
 
@@ -796,8 +803,7 @@ def format_dst_fn(src_dir, src_file, dst, parent):
 def commit(wb: websockets.client.WebSocketClientProtocol, token: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> int:
     if not wb: return int(1)
     arg_list = [token, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-    commit_results = SendMsg(wb, 'commit', arg_list)
-    result_dict = GetDict(commit_results, 'log')
+    result_dict = SendMsg(wb, 'commit', arg_list, opts = 'log')
     if DEBUG: PrintDict(result_dict, 'debug')
     return int(AlienSessionInfo['exitcode'])
 
@@ -1073,8 +1079,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         dst_type = pathtype_grid(wb, dst)
         if not dst_type:
             mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
-            result = SendMsg(wb, 'mkdir', ['-p', mk_path], 'nomsg')
-            json_dict = GetDict(result, 'print')
+            json_dict = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')
             if AlienSessionInfo['exitcode'] != 0:
                 print(f"check log file {DEBUG_FILE}", file=sys.stderr, flush = True)
                 return int(42)  # ENOMSG /* No message of desired type */
@@ -1090,8 +1095,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
             find_args.extend(['-r', '-a', '-s', src, pattern])
             send_opts = 'nomsg' if not DEBUG else ''
-            result = SendMsg(wb, 'find', find_args, send_opts)
-            src_list_files_dict = GetDict(result, 'print')
+            src_list_files_dict = SendMsg(wb, 'find', find_args, opts = send_opts + ' print')
             if AlienSessionInfo['exitcode'] != 0:
                 print(f"check log file {DEBUG_FILE}", file=sys.stderr, flush = True)
                 return int(42)  # ENOMSG /* No message of desired type */
@@ -1137,8 +1141,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                                 continue
                             else:  # clear up the destination lfn
                                 print(f'{lfn} exists, deleting..', flush = True)
-                                result = SendMsg(wb, 'rm', ['-f', lfn], 'nomsg')
-                                json_dict = GetDict(result, 'print')
+                                json_dict = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg print')
                         tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
                         token_query = GetDict(tokens['answer'], 'print')
                         if AlienSessionInfo['exitcode'] != 0:
@@ -1156,8 +1159,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     return int(0)  # Destination present we will not overwrite it
                 else:  # clear up the destination lfn
                     print(f'{dst} exists, deleting..', flush = True)
-                    result = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
-                    json_dict = GetDict(result, 'print')
+                    json_dict = SendMsg(wb, 'rm', ['-f', dst], 'nomsg print')
             tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
             token_query = GetDict(tokens['answer'])
             if AlienSessionInfo['exitcode'] != 0:
@@ -1404,16 +1406,14 @@ def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str):
     if not lfn: return ''
     type = pathtype_grid(wb, lfn)
     if type != 'f': return ''
-    result = SendMsg(wb, 'whereis', [lfn], 'nomsg')
-    json_dict = GetDict(result, 'debug')
+    json_dict = SendMsg(wb, 'whereis', [lfn], opts = 'nomsg debug')
     pfn_list = [str(item['pfn']) for item in json_dict['results']]
 
 
 def get_SE_id(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
     if not wb: return ''
     if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, 'debug')
+    json_dict = SendMsg(wb, 'listSEs', [], 'nomsg debug')
     if int(AlienSessionInfo['exitcode']): return ''
     return [se["seNumber"].strip() if re.search(se_name, str(se.values())) else '' for se in json_dict["results"]]
 
@@ -1421,8 +1421,7 @@ def get_SE_id(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> li
 def get_SE_name(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
     if not wb: return ''
     if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, 'debug')
+    json_dict = SendMsg(wb, 'listSEs', [], 'nomsg debug')
     if int(AlienSessionInfo['exitcode']): return ''
     if se_name.isdecimal():
         return [se["seName"].strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
@@ -1433,8 +1432,7 @@ def get_SE_name(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> 
 def get_SE_srv(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> list:
     if not wb: return ''
     if not se_name: return ''
-    result = SendMsg(wb, 'listSEs', [], 'nomsg')
-    json_dict = GetDict(result, 'debug')
+    json_dict = SendMsg(wb, 'listSEs', [], 'nomsg debug')
     if int(AlienSessionInfo['exitcode']): return ''
     if se_name.isdecimal():
         return [urlparse(se["endpointUrl"]).netloc.strip() if se_name in se['seNumber'] else '' for se in json_dict["results"]]
@@ -1486,8 +1484,8 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     # lets recover the lfn from temp file name
     # let's create a backup of old lfn
     lfn_backup = lfn + "~"
-    result = SendMsg(wb, 'rm', ['-f', lfn_backup])
-    result = SendMsg(wb, 'mv', [lfn, lfn_backup])
+    result = SendMsg(wb, 'rm', ['-f', lfn_backup], opts = 'log')
+    result = SendMsg(wb, 'mv', [lfn, lfn_backup], opts = 'log')
     json_dict = GetDict(result)
     if json_dict["metadata"]["exitcode"] != '0':
         print(f"Could not create backup of lfn : {lfn}", file=sys.stderr, flush = True)
@@ -1501,7 +1499,7 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     copycmd = "-f " + 'file://' + temp_file_name + " " + lfn + upload_specs
     list_upload = ProcessXrootdCp(wb, copycmd.split())
     if list_upload == 0: return lfn
-    result = SendMsg(wb, 'mv', [lfn_backup, lfn])
+    result = SendMsg(wb, 'mv', [lfn_backup, lfn], opts = 'log')
     return ''
 
 
@@ -1538,8 +1536,7 @@ def DO_more(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
 def DO_pfn(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
     cmd = 'whereis'
     args.insert(0, '-r')
-    result = SendMsg(wb, cmd, args, 'nomsg')
-    json_dict = GetDict(result, 'print')
+    json_dict = SendMsg(wb, cmd, args, opts = 'nomsg print')
     output = '\n'.join(str(item['pfn']) for item in json_dict['results']).strip()
     print(output, flush = True)
     return AlienSessionInfo['exitcode']
@@ -1706,7 +1703,7 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
         print(args)
         return int(1)
     find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern])
-    result = SendMsg(wb, 'find', find_args, 'nokeys')
+    result = SendMsg(wb, 'find', find_args, opts = 'nokeys')
     return ProcessReceivedMessage(result)
 
 
@@ -1742,11 +1739,8 @@ def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[No
         jquota_cmd = CreateJsonCommand('jquota -nomsg list ' + user)
         fquota_cmd = CreateJsonCommand('fquota -nomsg list ' + user)
 
-    jquota = SendMsg(wb, jquota_cmd)
-    jquota_dict = GetDict(jquota)
-
-    fquota = SendMsg(wb, fquota_cmd)
-    fquota_dict = GetDict(fquota)
+    jquota_dict = SendMsg(wb, jquota_cmd)
+    fquota_dict = SendMsg(wb, fquota_cmd)
 
     username = jquota_dict['results'][0]["username"]
     running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
@@ -1813,10 +1807,11 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
 
     entries_list = None
     ls_args = ['-nomsg', '-F']
-    result = SendMsg(wb, 'ls', ls_args + [lfn])
-    result_dict = json.loads(result)
-    if result_dict["metadata"]["exitcode"] != '0': entries_list = []
-    entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
+    result_dict = SendMsg(wb, 'ls', ls_args + [lfn])
+    if result_dict["metadata"]["exitcode"] != '0':
+        entries_list = []
+    else:
+        entries_list = list(cleanup_item(item[key]) for item in result_dict['results'])
     return entries_list
 
 
@@ -2175,8 +2170,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
     global AlienSessionInfo
     if not args: args = []
 
-    answer = SendMsg(wb, 'token', args, 'nomsg')
-    json_dict = GetDict(answer, 'print')
+    json_dict = SendMsg(wb, 'token', args, opts = 'nomsg print')
 
     tokencert_content = json_dict.get('results')[0].get('tokencert', '')
     if not tokencert_content:
@@ -2229,8 +2223,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     global AlienSessionInfo
     # get the command list
     AlienSessionInfo['commandlist'].clear()
-    result = SendMsg(wb, 'commandlist', [])
-    json_dict = json.loads(result)
+    json_dict = SendMsg(wb, 'commandlist', [])
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
     cmd_list = json_dict["results"][0]['message'].split()
     regex = re.compile(r'.*_csd$')
@@ -2292,10 +2285,20 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
 def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process a command line within shell or from command line mode input"""
     if not cmd_string: return
-    global AlienSessionInfo
+    global JSON_OUT, JSONRAW_OUT, AlienSessionInfo
     args = cmd_string.split(" ")
     cmd = args.pop(0)
     args[:] = [x for x in args if x.strip()]
+
+    INI_JSONOUT_STATE = True  # enable per command json output only if was not per-session enabled at start
+    if not (JSON_OUT or JSONRAW_OUT):
+        INI_JSONOUT_STATE = False
+        if '-json' in args:
+            args.remove('-json')
+            JSON_OUT = True
+        if '-jsonraw' in args:
+            args.remove('-jsonraw')
+            JSONRAW_OUT = True
 
     # these commands do NOT need wb connection
     if cmd == 'version': return DO_version()
@@ -2460,30 +2463,34 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         cmd = 'ls'
         [args.insert(0, flag) for flag in ('-a', '-l', '-F')]
 
-    send_opt = 'nokeys' if not (DEBUG or JSON_OUT or JSONRAW_OUT) else ''
-    result = SendMsg(wb, cmd, args, send_opt)
+    send_opt = 'nokeys'
+    if DEBUG: send_opt = ''
+    if JSON_OUT or JSONRAW_OUT: send_opt = 'rawstr'
+    result = SendMsg(wb, cmd, args, opts = send_opt + ' print')
     if message_begin:
         message_delta = (datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
+    if not INI_JSONOUT_STATE:
+        JSON_OUT = False
+        JSONRAW_OUT = False
     return int(ProcessReceivedMessage(result, shellcmd, cmd_mode))
 
 
-def ProcessReceivedMessage(message: str = '', shellcmd: Union[str, None] = None, cmd_mode: bool = False):
+def ProcessReceivedMessage(message: Union[dict, str], shellcmd: Union[str, None] = None, cmd_mode: bool = False):
     """Process the printing/formating of the received message from the server"""
     if not message: return int(61)  # ENODATA
     global AlienSessionInfo
-    json_dict = GetDict(message, 'print')
 
     if JSON_OUT:  # print nice json for debug or json mode
-        PrintDict(json_dict)
+        PrintDict(message)
         return int(AlienSessionInfo['exitcode'])
     if JSONRAW_OUT:  # print the raw byte stream received from the server
-        print(message, flush = True)
+        PrintDict(message, opts = 'rawstr')
         return int(AlienSessionInfo['exitcode'])
 
     websocket_output = ''
-    if json_dict['results']:
-        websocket_output = '\n'.join(str(item['message']) for item in json_dict['results'])
+    if message['results']:
+        websocket_output = '\n'.join(str(item['message']) for item in message['results'])
         websocket_output.strip()
     if websocket_output:
         if shellcmd:
@@ -2626,10 +2633,10 @@ def main():
     if verb: sys.argv.insert(0, verb)
     if '-json' in sys.argv:
         sys.argv.remove('-json')
-        JSON_OUT = 1
+        JSON_OUT = True
     if '-jsonraw' in sys.argv:
         sys.argv.remove('-jsonraw')
-        JSONRAW_OUT = 1
+        JSONRAW_OUT = True
 
     cmd_string = ' '.join(sys.argv)
     try:
