@@ -15,9 +15,12 @@ print(f"Output of type {type(out)}")
 alien.PrintDict(out)
 print()
 
-out = j.run('pwd', ' ')  # let's disable the defaults, it will return a string
+out = j.run('pwd', 'rawstr')  # let's request to have the actual string
 print(f"Output of type {type(out)}")
-alien.PrintDict(alien.GetDict(out))
+print('formated:')
+alien.PrintDict(out)
+print('raw and unformated:')
+alien.PrintDict(out, opts = 'rawstr')
 print()
 
 out = j.run('pwd')
@@ -35,13 +38,13 @@ print(f'Check the log file {alien.DEBUG_FILE}')
 alien.PrintDict(out, 'warn')  # let's not print metadata
 print()
 
-out = j.run('pwd', 'dict nokeys')
+out = j.run('pwd', 'nokeys')
 print(f"Output of type {type(out)}")
 print('Let\'s not receive the keys values in the server response')
 alien.PrintDict(out)
 print()
 
-out = j.run('pwd', 'dict nomsg')
+out = j.run('pwd', 'nomsg')
 print(f"Output of type {type(out)}")
 print('Let\'s not receive the \'message\' values in the server response')
 alien.PrintDict(out)
