@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200313_093727'
+ALIENPY_VERSION_DATE = '20200315_154256'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -446,7 +446,7 @@ class AliEn:
         print(f'Methods of AliEn session:\n'
               f'.run(cmd, opts) : alias to SendMsg(cmd, opts)\n'
               f'.ProcessMsg(cmd_list) : alias to ProcessInput, it will have the same output as in the alien.py interaction\n'
-              f'.wb : return the session WebSocket to be used with other function within alien.py'
+              f'.wb() : return the session WebSocket to be used with other function within alien.py'
               )
 
 
