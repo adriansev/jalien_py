@@ -439,6 +439,16 @@ class AliEn:
         command_list = cmd.split(";")
         for cmd in command_list: ProcessInput(self.wb, cmd)
 
+    def wb(self):
+        return self.wb
+
+    def help(self):
+        print(f'Methods of AliEn session:\n'
+              f'.run(cmd, opts) : alias to SendMsg(cmd, opts)\n'
+              f'.ProcessMsg(cmd_list) : alias to ProcessInput, it will have the same output as in the alien.py interaction\n'
+              f'.wb : return the session WebSocket to be used with other function within alien.py'
+              )
+
 
 def PrintColor(color: str) -> str:
     """Print colored string if terminal has color, print nothing otherwise"""
@@ -2641,8 +2651,7 @@ def main():
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv[0])
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
-    verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
-    if verb: sys.argv.insert(0, verb)
+
     if '-json' in sys.argv:
         sys.argv.remove('-json')
         JSON_OUT = True
@@ -2650,6 +2659,18 @@ def main():
         sys.argv.remove('-jsonraw')
         JSONRAW_OUT = True
 
+    if sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console':
+        import code
+        jalien = AliEn()
+        term = code.InteractiveConsole(locals = globals())
+        term.push('jalien = AliEn()')
+        banner = f'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
+        exitmsg = f'Exiting..'
+        term.interact(banner, exitmsg)
+        os._exit(int(AlienSessionInfo['exitcode']))
+
+    verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
+    if verb: sys.argv.insert(0, verb)
     cmd_string = ' '.join(sys.argv)
     try:
         JAlien(cmd_string)
