@@ -196,7 +196,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
         logging.info(f"SendMsg_json:: websocket not initialized")
-        return ''
+        return '' if 'rawstr' in opts else {}
     if not args: args = []
     if '{"command":' in cmdline and '"options":' in cmdline:
         json = cmdline
@@ -205,12 +205,10 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
 
     if not json:
         logging.info(f"SendMsg_json:: json message is empty or invalid")
-        return ''
+        return '' if 'rawstr' in opts else {}
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
         init_begin = datetime.now().timestamp()
-        logging.debug(f"COMMAND TIMESTAMP BEGIN: {init_begin}")
-
     nr_tries = int(0)
     result = None
     while result is None:
@@ -222,16 +220,30 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         try:
             nr_tries += 1
             result = __sendmsg(wb, json)
+        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK) as e:
+            logging.exception(e)
+            try:
+                wb = InitConnection()
+            except Exception as e:
+                logging.exception(e)
+                msg = f'Could not recover connection when disconnected!! Check {DEBUG_FILE}'
+                logging.error(msg)
+                print(msg, file=sys.stderr, flush = True)
         except Exception as e:
             logging.exception(e)
-            wb_status = IsWbConnected(wb)
-            if not wb_status: wb = InitConnection()
+            if not IsWbConnected(wb):
+                try:
+                    wb = InitConnection()
+                except Exception as e:
+                    logging.exception(e)
+                    msg = f'Could not recover connection after non-connection related exception!! Check {DEBUG_FILE}'
+                    logging.error(msg)
+                    print(msg, file=sys.stderr, flush = True)
+                    break
         time.sleep(0.2)
 
     if DEBUG:
-        init_end = datetime.now().timestamp()
-        init_delta = (init_end - init_begin) * 1000
-        logging.debug(f"COMMAND TIMESTAMP END: {init_end}")
+        init_delta = (datetime.now().timestamp() - init_begin) * 1000
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
 
     if not result: return {}
@@ -245,7 +257,6 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
         out_dict = cmdline.copy()
         if 'nomsg' in opts: out_dict["options"].insert(0, '-nomsg')
         if 'nokeys' in opts: out_dict["options"].insert(0, '-nokeys')
-        if DEBUG: PrintDict(out_dict, 'debug')
         return json.dumps(out_dict)
 
     if not args:
@@ -261,9 +272,7 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     if 'nomsg' in opts: args.insert(0, '-nomsg')
     if 'nokeys' in opts: args.insert(0, '-nokeys')
     jsoncmd = {"command": cmd, "options": args}
-    if DEBUG: PrintDict(jsoncmd, 'debug')
     return json.dumps(jsoncmd)
-    print(f'Error creating json command!! Args were : {cmdline} ${type(cmdline)} and {args} ${type(args)}')
 
 
 def PrintDict(in_arg: Union[str, dict, list], opts: str = ''):
@@ -275,7 +284,7 @@ def PrintDict(in_arg: Union[str, dict, list], opts: str = ''):
             try:
                 in_arg = json.loads(in_arg)
             except Exception as e:
-                print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'')
+                print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'', file=sys.stderr, flush = True)
                 return
 
     dict_str = json.dumps(in_arg, sort_keys = True, indent = 4)
@@ -313,7 +322,7 @@ def GetDict(result: Union[dict, list, str], opts: str = '') -> Union[None, dict,
         try:
             out_dict = json.loads(result)
         except Exception as e:
-            print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'')
+            print('PrintDict:: Could not load argument as json! For non-dictionaries try opts=\'rawstr\'', file=sys.stderr, flush = True)
             return None
     else:
         out_dict = result.copy()
@@ -446,8 +455,7 @@ class AliEn:
         print(f'Methods of AliEn session:\n'
               f'.run(cmd, opts) : alias to SendMsg(cmd, opts)\n'
               f'.ProcessMsg(cmd_list) : alias to ProcessInput, it will have the same output as in the alien.py interaction\n'
-              f'.wb() : return the session WebSocket to be used with other function within alien.py'
-              )
+              f'.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
 
 
 def PrintColor(color: str) -> str:
@@ -2073,15 +2081,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             if DEBUG:
                 logging.debug(f"TRY ENDPOINT: {host}:{port}")
                 init_begin = datetime.now().timestamp()
-                logging.debug(f"TCP SOCKET BEGIN: {init_begin}")
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
             if DEBUG:
-                init_end = datetime.now().timestamp()
-                init_delta = (init_end - init_begin) * 1000
-                logging.debug(f"TCP SOCKET END: {init_end}")
+                init_delta = (datetime.now().timestamp() - init_begin) * 1000
                 logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
@@ -2093,17 +2098,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
-                if DEBUG:
-                    init_begin = datetime.now().timestamp()
-                    logging.debug(f"WEBSOCKET BEGIN: {init_begin}")
-
+                if DEBUG: init_begin = datetime.now().timestamp()
                 deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(server_max_window_bits=14, client_max_window_bits=14, compress_settings={'memLevel': 6},)
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
                 if DEBUG:
-                    init_end = datetime.now().timestamp()
-                    init_delta = (init_end - init_begin) * 1000
-                    logging.debug(f"WEBSOCKET END: {init_end}")
+                    init_delta = (datetime.now().timestamp() - init_begin) * 1000
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
             except Exception as e:
                 logging.debug(traceback.format_exc())
@@ -2638,7 +2638,8 @@ def JAlien(commands: str = ''):
 def setup_logging():
     MSG_LVL = logging.INFO
     if DEBUG: MSG_LVL = logging.DEBUG
-    log = logging.basicConfig(filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
+    line_fmt = '%(levelname)s:%(asctime)s %(message)s'
+    log = logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
