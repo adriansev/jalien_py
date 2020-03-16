@@ -2659,7 +2659,7 @@ def main():
         sys.argv.remove('-jsonraw')
         JSONRAW_OUT = True
 
-    if sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console':
+    if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
         jalien = AliEn()
         term = code.InteractiveConsole(locals = globals())
