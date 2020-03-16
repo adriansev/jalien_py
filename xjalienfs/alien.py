@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200315_154256'
+ALIENPY_VERSION_DATE = '20200316_233542'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -195,7 +195,7 @@ async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, json: str) ->
 def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[str, dict]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.info(f"SendMsg_json:: websocket not initialized")
+        logging.info(f"SendMsg:: websocket not initialized")
         return '' if 'rawstr' in opts else {}
     if not args: args = []
     if '{"command":' in cmdline and '"options":' in cmdline:
@@ -204,7 +204,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         json = CreateJsonCommand(cmdline, args, opts)
 
     if not json:
-        logging.info(f"SendMsg_json:: json message is empty or invalid")
+        logging.info(f"SendMsg:: json message is empty or invalid")
         return '' if 'rawstr' in opts else {}
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
@@ -213,7 +213,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     result = None
     while result is None:
         if nr_tries > 3:
-            msg = f"SendMsg_json:: {nr_tries - 1} communication errors!\nSent command: {json}"
+            msg = f"SendMsg:: {nr_tries - 1} communication errors!\nSent command: {json}"
             print(msg, file=sys.stderr, flush = True)
             logging.error(msg)
             break
@@ -226,7 +226,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                 wb = InitConnection()
             except Exception as e:
                 logging.exception(e)
-                msg = f'Could not recover connection when disconnected!! Check {DEBUG_FILE}'
+                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {DEBUG_FILE}'
                 logging.error(msg)
                 print(msg, file=sys.stderr, flush = True)
         except Exception as e:
@@ -236,7 +236,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                     wb = InitConnection()
                 except Exception as e:
                     logging.exception(e)
-                    msg = f'Could not recover connection after non-connection related exception!! Check {DEBUG_FILE}'
+                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {DEBUG_FILE}'
                     logging.error(msg)
                     print(msg, file=sys.stderr, flush = True)
                     break
