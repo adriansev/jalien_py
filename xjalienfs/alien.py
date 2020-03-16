@@ -737,7 +737,10 @@ def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
-    exp_path = re.sub(r"^\.{2}\/*$", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)  # single .. to be replaced with parent of current dir
+    if AlienSessionInfo['currentdir'] == '/':
+        exp_path = exp_path.replace('..', '')
+    else:
+        exp_path = re.sub(r"^\.{2}\/*$", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)  # single .. to be replaced with parent of current dir
     if re.search(r"^\/*.*\.{2}\/*\/*", exp_path): exp_path = exp_path.replace("../", "")  # if .. is a within path just remove it
     exp_path = re.sub(r"^\.{1}\/*$", AlienSessionInfo['currentdir'], exp_path)
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
