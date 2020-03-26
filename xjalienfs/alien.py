@@ -725,11 +725,11 @@ def setDst(file: str = '', parent: int = 0) -> str:
 def expand_path_local(path: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
+    tail_slash = True if exp_path.endswith("/") else False
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
-    exp_path = re.sub(r"^\/*\.{2}[\/\s]", Path.cwd().parents[0].as_posix() + "/", exp_path)
-    exp_path = re.sub(r"^\/*\.{1}[\/\s]", Path.cwd().as_posix() + "/", exp_path)
-    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
-    exp_path = re.sub(r"\/{2,}", "/", exp_path)
+    exp_path = os.path.normpath(exp_path)
+    exp_path = os.path.realpath(exp_path)
+    if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
