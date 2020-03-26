@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200326_163547'
+ALIENPY_VERSION_DATE = '20200326_215916'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -727,6 +727,7 @@ def expand_path_local(path: str) -> str:
     exp_path = path
     tail_slash = True if exp_path.endswith("/") else False
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
+    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
     exp_path = os.path.normpath(exp_path)
     exp_path = os.path.realpath(exp_path)
     if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
@@ -736,15 +737,11 @@ def expand_path_local(path: str) -> str:
 def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
+    tail_slash = True if exp_path.endswith("/") else False
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
-    if AlienSessionInfo['currentdir'] == '/':
-        exp_path = exp_path.replace('..', '')
-    else:
-        exp_path = re.sub(r"^\.{2}\/*$", Path(AlienSessionInfo['currentdir']).parents[0].as_posix(), exp_path)  # single .. to be replaced with parent of current dir
-    if re.search(r"^\/*.*\.{2}\/*\/*", exp_path): exp_path = exp_path.replace("../", "")  # if .. is a within path just remove it
-    exp_path = re.sub(r"^\.{1}\/*$", AlienSessionInfo['currentdir'], exp_path)
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
-    exp_path = re.sub(r"\/{2,}", "/", exp_path)
+    exp_path = os.path.normpath(exp_path)
+    if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
