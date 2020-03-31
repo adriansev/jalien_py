@@ -725,7 +725,7 @@ def setDst(file: str = '', parent: int = 0) -> str:
 def expand_path_local(path: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
-    if exp_path.startswith('file:'): exp_path = exp_path.replace("file://", "", 1)
+    if exp_path.startswith('file://'): exp_path = exp_path.replace("file://", "", 1)
     if exp_path.startswith('file:'): exp_path = exp_path.replace("file:", "", 1)
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
     if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
@@ -739,7 +739,7 @@ def expand_path_local(path: str) -> str:
 def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
-    if exp_path.startswith('alien:'): exp_path = exp_path.replace("alien://", "", 1)
+    if exp_path.startswith('alien://'): exp_path = exp_path.replace("alien://", "", 1)
     if exp_path.startswith('alien:'): exp_path = exp_path.replace("alien:", "", 1)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
@@ -1058,15 +1058,15 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     # Cleanup the alien: and file: specifications
     # there are only 2 cases : either file,alien:// and the remainder is the path or just file,alien: ; the unspoken contract is that no one will do file:/ + /full_local_path
-    if arg_source.startswith('alien:'): arg_source = arg_source.replace("alien://", "", 1)
-    if arg_source.startswith('alien:'): arg_source = arg_source.replace("alien:", "", 1)
-    if arg_target.startswith('alien:'): arg_target = arg_target.replace("alien://", "", 1)
-    if arg_target.startswith('alien:'): arg_target = arg_target.replace("alien:", "", 1)
+    if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "", 1)
+    if arg_source.startswith('alien:'):   arg_source = arg_source.replace("alien:", "", 1)
+    if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
+    if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
 
-    if arg_source.startswith('file:'):  arg_source = arg_source.replace("file://", "", 1)
-    if arg_source.startswith('file:'):  arg_source = arg_source.replace("file:", "", 1)
-    if arg_target.startswith('file:'):  arg_target = arg_target.replace("file://", "", 1)
-    if arg_target.startswith('file:'):  arg_target = arg_target.replace("file:", "", 1)
+    if arg_source.startswith('file://'):  arg_source = arg_source.replace("file://", "", 1)
+    if arg_source.startswith('file:'):    arg_source = arg_source.replace("file:", "", 1)
+    if arg_target.startswith('file://'):  arg_target = arg_target.replace("file://", "", 1)
+    if arg_target.startswith('file:'):    arg_target = arg_target.replace("file:", "", 1)
 
     src = None
     src_type = None
