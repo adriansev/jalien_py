@@ -2400,8 +2400,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return AlienSessionInfo['exitcode']
 
     # intercept all commands that take a lfn as argument and proper expand it
-    if cmd == 'ls' or cmd == "stat" or cmd == "xrdstat" or cmd == "rm" or cmd == "lfn2guid" or cmd == "whereis" or cmd == "pfn" or cmd == "type":
-        # or cmd == "find" # find expect pattern after lfn, and if pattern is . it will be replaced with current dir
+    if cmd in ['cd', 'ls', 'stat', 'xrdstat', 'rm', 'rmdir', 'lfn2guid', 'whereis', 'pfn', 'type', 'chown', 'md5sum', 'mv', 'submit', 'touch', 'whereis']:
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
 
