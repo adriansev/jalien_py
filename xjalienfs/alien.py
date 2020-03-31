@@ -737,6 +737,9 @@ def expand_path_local(path: str) -> str:
 def expand_path_grid(path: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path
+    if exp_path.startswith('alien:'):
+        exp_path = exp_path.replace("alien://", "")
+        exp_path = exp_path.replace("alien:", "")
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
     tail_slash = True if exp_path.endswith("/") else False
