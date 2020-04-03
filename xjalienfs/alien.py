@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200403_190539'
+ALIENPY_VERSION_DATE = '20200403_234347'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -1369,14 +1369,18 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         if streams > 15: streams = 15
         client.EnvPutInt('SubStreamsPerChannel', streams)
 
-    if cksum: client.EnvPutInt('ZipMtlnCksum', 1)
-    print(f"ZipMtlnCksum = {client.EnvGetInt('ZipMtlnCksum')}")
+    cksum_mode = 'none'
+    cksum_type = ''
+    if cksum:
+        client.EnvPutInt('ZipMtlnCksum', 1)
+        cksum_mode = 'end2end'
+        cksum_type = 'md5'
     handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
     for copy_job in job_list:
         if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
+        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks, checksummode = cksum_mode, checksumtype = cksum_type)
     process.prepare()
     process.run(handler)
     return handler.replica_list_upload_failed  # for upload jobs we must return the list of token for succesful uploads
