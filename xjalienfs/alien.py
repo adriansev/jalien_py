@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200326_215916'
+ALIENPY_VERSION_DATE = '20200403_190539'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
@@ -418,6 +418,7 @@ class XrdCpArgs(NamedTuple):
     posc: bool
     hashtype: str
     streams: int
+    cksum: bool
 
 
 class CopyFile(NamedTuple):
@@ -885,6 +886,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     makedir = bool(True)  # create the parent directories when creating a file
     overwrite = bool(False)  # overwrite target if it exists
     posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+    cksum = bool(False)
 
     cwd_grid_path = Path(AlienSessionInfo['currentdir'])
     home_grid_path = Path(AlienSessionInfo['alienHome'])
@@ -918,6 +920,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     if '-P' in xrd_copy_command:
         posc = True
         xrd_copy_command.remove('-P')
+
+    if '-cksum' in xrd_copy_command:
+        cksum = True
+        xrd_copy_command.remove('-cksum')
 
     # if '-tpc' in xrd_copy_command:
         # tpc = str('first')
@@ -1261,7 +1267,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         logging.debug("XRootD copy jobs:")
         for file in xrdcopy_job_list: logging.debug(file)
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams)
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams, cksum)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     replica_list_upload_failed = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args)
 
@@ -1354,6 +1360,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     posc = xrd_cp_args.posc
     hashtype = xrd_cp_args.hashtype
     streams = xrd_cp_args.streams
+    cksum = xrd_cp_args.cksum
 
     process = client.CopyProcess()
     handler = MyCopyProgressHandler()
@@ -1362,6 +1369,8 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         if streams > 15: streams = 15
         client.EnvPutInt('SubStreamsPerChannel', streams)
 
+    if cksum: client.EnvPutInt('ZipMtlnCksum', 1)
+    print(f"ZipMtlnCksum = {client.EnvGetInt('ZipMtlnCksum')}")
     handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
