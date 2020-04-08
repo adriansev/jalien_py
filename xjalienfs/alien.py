@@ -85,13 +85,21 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'xrd_th_id': ''}
 
 
-def signal_handler(sig, frame):
-    """Generig signal handler: just print the signal and exit"""
-    print(f'\nCought signal {signal.Signals(sig).name}, let\'s exit')
-    os._exit(int(AlienSessionInfo['exitcode']))
+##############################
+# Signal handlers
+def sigint_catch(sig, frame):
+    global AlienSessionInfo
+    if AlienSessionInfo['xrd_th_id']:
+        print('doing xrd thread term')
+        signal.pthread_kill(AlienSessionInfo['xrd_th_id'], 15)
+    else:
+        exit_message()
+
+
+signal.signal(signal.SIGINT, sigint_catch)
 
 
 def exit_message(exitcode: int = 0):
@@ -101,7 +109,6 @@ def exit_message(exitcode: int = 0):
 
 def start_asyncio():
     """Initialization of main thread that will keep the asyncio loop"""
-    signal.signal(signal.SIGINT, signal_handler)
     loop = None
     ready = threading.Event()
 
@@ -1285,12 +1292,7 @@ if has_xrootd:
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
-            self.sigint = False
-            signal.signal(signal.SIGINT, self.catch)
-            signal.siginterrupt(signal.SIGINT, False)
-
-        def catch(self, signum, frame):
-            self.sigint = True
+            print("XRootD CopyProcess is starting..")
 
         def begin(self, jobId, total, source, target):
             timestamp_begin = datetime.now().timestamp()
@@ -1339,7 +1341,23 @@ if has_xrootd:
             self.job_list[jobId - 1]['bytes_total'] = total
 
         def should_cancel(self, jobId):
-            return self.sigint
+            return False
+
+        def __del__(self):
+            print("XRootD CopyProcess finished.")
+
+
+class my_copyprocess(client.CopyProcess):
+    def __init__(self):
+        global AlienSessionInfo
+        AlienSessionInfo['xrd_th_id'] = threading.get_ident()
+        # print(AlienSessionInfo['xrd_th_id'])
+        super(my_copyprocess, self).__init__()
+
+    def __del__(self):
+        global AlienSessionInfo
+        AlienSessionInfo['xrd_th_id'] = ''
+        print(f"thid: {AlienSessionInfo['xrd_th_id']}")
 
 
 def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
@@ -1362,9 +1380,6 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     streams = xrd_cp_args.streams
     cksum = xrd_cp_args.cksum
 
-    process = client.CopyProcess()
-    handler = MyCopyProgressHandler()
-    process.parallel(int(batch))
     if streams > 0:
         if streams > 15: streams = 15
         client.EnvPutInt('SubStreamsPerChannel', streams)
@@ -1378,9 +1393,15 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         cksum_type = 'auto'
         delete_invalid_chk = True
 
+    handler = MyCopyProgressHandler()
     handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
+
+    # process = client.CopyProcess()
+    process = my_copyprocess()
+    process.parallel(int(batch))
+
     for copy_job in job_list:
         if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir,
