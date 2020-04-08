@@ -1371,16 +1371,21 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
 
     cksum_mode = 'none'
     cksum_type = ''
+    delete_invalid_chk = False
     if cksum:
         client.EnvPutInt('ZipMtlnCksum', 1)
         cksum_mode = 'end2end'
-        cksum_type = 'md5'
+        cksum_type = 'auto'
+        delete_invalid_chk = True
+
     handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
     for copy_job in job_list:
         if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks, checksummode = cksum_mode, checksumtype = cksum_type)
+        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir,
+                        chunksize = chunksize, parallelchunks = chunks,
+                        checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
     process.prepare()
     process.run(handler)
     return handler.replica_list_upload_failed  # for upload jobs we must return the list of token for succesful uploads
