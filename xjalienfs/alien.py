@@ -901,14 +901,27 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     # Override the application name reported to the server.
     os.environ["XRD_APPNAME"] = "alien.py"
 
-    # Default value for the time after which an error is declared if it was impossible to get a response to a request.
-    if not os.getenv('XRD_REQUESTTIMEOUT'): os.environ["XRD_REQUESTTIMEOUT"] = "60"
+    # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
+    if not os.getenv('XRD_CONNECTIONRETRY'): os.environ["XRD_CONNECTIONRETRY"] = "3"
 
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
-    if not os.getenv('XRD_CONNECTIONWINDOW'): os.environ["XRD_CONNECTIONWINDOW"] = "15"
+    # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
+    if not os.getenv('XRD_CONNECTIONWINDOW'): os.environ["XRD_CONNECTIONWINDOW"] = "10"
 
-    # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
-    if not os.getenv('XRD_CONNECTIONRETRY'): os.environ["XRD_CONNECTIONRETRY"] = "4"
+    # Default value for the time after which an error is declared if it was impossible to get a response to a request.
+    if not os.getenv('XRD_REQUESTTIMEOUT'): os.environ["XRD_REQUESTTIMEOUT"] = "30"
+
+    # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
+    if not os.getenv('XRD_CPINITTIMEOUT'): os.environ["XRD_CPINITTIMEOUT"] = "90"  #
+
+    # Maximum time allowed for a third-party copy operation to finish.
+    if not os.getenv('XRD_CPTPCTIMEOUT'): os.environ["XRD_CPTPCTIMEOUT"] = "1800"  # this is the default
+
+    # Time period after which an idle connection to a data server should be closed.
+    if not os.getenv('XRD_DATASERVERTTL'): os.environ["XRD_DATASERVERTTL"] = "15"  # we have no reasons to keep idle connections
+
+    # Time period after which an idle connection to a manager or a load balancer should be closed.
+    if not os.getenv('XRD_LOADBALANCERTTL'): os.environ["XRD_LOADBALANCERTTL"] = "30"  # we have no reasons to keep idle connections
 
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     if not os.getenv('XRD_TIMEOUTRESOLUTION'): os.environ["XRD_TIMEOUTRESOLUTION"] = "1"
