@@ -1068,15 +1068,15 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         print("The operands cannot have the same type: one must be local and one grid", file=sys.stderr, flush = True)
         return int(22)  # EINVAL /* Invalid argument */
 
+    # set the defaults to downloading scenario
+    isSrcLocal = False
+    isDstLocal = True
+    isDownload = True
+
     if arg_source.startswith('file:') or arg_target.startswith('alien:'):  # second to last argument (should be the source)
         isSrcLocal = True
         isDstLocal = False
         isDownload = False
-
-    if arg_source.startswith('alien:') or arg_target.startswith('file:'):  # last argument (should be the destination)
-        isSrcLocal = False
-        isDstLocal = True
-        isDownload = True
 
     slashend_src = True if arg_source.endswith('/') else False
     slashend_dst = True if arg_target.endswith('/') else False
