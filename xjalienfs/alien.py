@@ -699,6 +699,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn
     for replica in result["results"]:
         replica["SElist"] = ",".join(replica_list)
         replica["file"] = file
+        replica["lfn"] = lfn
     return {"lfn": lfn, "answer": json.dumps(result)}
 
 
@@ -1067,13 +1068,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                     translated_pattern_regex = translated_pattern_regex + '.*\\.' + string + '$'
         pattern_regex = translated_pattern_regex
 
-    if use_regex:
-        try:
-            regex = re.compile(pattern_regex)
-        except re.error:
-            print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
-            return int(64)  # EX_USAGE /* command line usage error */
-
     isSrcDir = bool(False)
     isDstDir = bool(False)
     isDownload = bool(True)
@@ -1096,6 +1090,14 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isSrcLocal = True
         isDstLocal = False
         isDownload = False
+        use_regex = True
+
+    if use_regex:
+        try:
+            regex = re.compile(pattern_regex)
+        except re.error:
+            print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
+            return int(64)  # EX_USAGE /* command line usage error */
 
     slashend_src = True if arg_source.endswith('/') else False
     slashend_dst = True if arg_target.endswith('/') else False
@@ -1295,14 +1297,14 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             if is_zip:
                 sources = 1
                 download_link = download_link + '?xrdcl.unzip=' + file_in_zip
-            xrdcopy_job_list.append(CopyFile(download_link, dst, cpfile.isUpload, {}, ''))  # we do not need the tokens in job list when downloading
+            xrdcopy_job_list.append(CopyFile(download_link, dst, cpfile.isUpload, {}, lfn))  # we do not need the tokens in job list when downloading
         else:  # is upload
             src = cpfile.src
             lfn = cpfile.dst
             if not cpfile.token_request['results']: continue
-            for replica in cpfile.token_request['results']:
-                complete_url = replica['url'] + "?" + "authz=" + replica['envelope']
-                xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, replica, lfn))
+            for request in cpfile.token_request['results']:
+                complete_url = request['url'] + "?" + "authz=" + request['envelope']
+                xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, request, lfn))
 
     if not xrdcopy_job_list:
         msg = f"No XRootD operations in list! enable the DEBUG mode for more info"
@@ -1350,16 +1352,13 @@ if has_xrootd:
             if results['status'].error: status = PrintColor(COLORS.BRed) + 'ERROR' + PrintColor(COLORS.ColorReset)
             if results['status'].fatal: status = PrintColor(COLORS.BIRed) + 'FATAL' + PrintColor(COLORS.ColorReset)
 
+            xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
             speed_str = '0 B/s'
             if results['status'].ok:
                 deltaT = datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
                 speed_str = str(GetHumanReadable(speed)) + '/s'
-                if self.isDownload:
-                    meta_file = urlparse(str(self.job_list[jobId - 1]['src'])).path
-                    lfn = get_lfn_meta(meta_file)
-                    if not os.getenv('ALIENPY_KEEP_META'): os.remove(meta_file)  # remove the created metalink
-                else:  # isUpload
+                if not self.isDownload:  # isUpload
                     xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
                     link = urlparse(xrd_dst_url)
                     token = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
@@ -1369,9 +1368,14 @@ if has_xrootd:
                     expire = '0'
                     exitcode = commit(self.wb, token, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
 
-            if not results['status'].ok and not self.isDownload:  # we have an failed replica upload
-                copyjob = next(job for job in self.xrdjob_list if job.token_request.get('url') in xrd_dst_url)
-                self.replica_list_upload_failed.append(copyjob.token_request)
+            if not results['status'].ok:
+                if self.isDownload:  # we have an failed replica upload
+                    print(f"Failed download: {xrdjob.lfn}", flush = True)
+                else:
+                    self.replica_list_upload_failed.append(xrdjob.token_request)
+                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} total replicas", flush = True)
+            if self.isDownload and not os.getenv('ALIENPY_KEEP_META'):
+                os.remove(xrdjob.src)  # remove the created metalink
             print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
 
         def update(self, jobId, processed, total):
@@ -1533,9 +1537,8 @@ def get_SE_srv(wb: websockets.client.WebSocketClientProtocol, se_name: str) -> l
 def get_lfn_meta(meta_fn: str) -> str:
     if not os.path.isfile(meta_fn): return ''
     import xml.dom.minidom
-    content = xml.dom.minidom.parse(meta_fn)
-    lfn = content.getElementsByTagName('lfn')[0].firstChild.nodeValue
-    return lfn
+    content = xml.dom.minidom.parse(meta_fn).documentElement
+    return content.getElementsByTagName('lfn')[0].firstChild.nodeValue
 
 
 def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
