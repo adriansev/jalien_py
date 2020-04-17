@@ -1078,6 +1078,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isDstLocal = True
         isDownload = True
 
+    slashend_src = True if arg_source.endswith('/') else False
+    slashend_dst = True if arg_target.endswith('/') else False
+
     # Cleanup the alien: and file: specifications
     # there are only 2 cases : either file,alien:// and the remainder is the path or just file,alien: ; the unspoken contract is that no one will do file:/ + /full_local_path
     if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "", 1)
@@ -1096,7 +1099,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     if isSrcLocal:
         src = expand_path_local(arg_source)
         src_type = pathtype_local(src)
-        if src_type == 'd': isSrcDir = bool(True)
+        if src_type == 'd':
+            isSrcDir = bool(True)
+            if not slashend_src: parent = parent + 1
     else:
         src_specs_remotes = arg_source.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
@@ -1143,9 +1148,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     copy_list = []
     # if src is directory, then create list of files coresponding with options
     isWrite = bool(False)
-    if isDownload:
+    if isDownload:  # src is GRID, we are DOWNLOADING from GRID directory
         specs = src_specs_remotes
-        if isSrcDir:  # src is GRID, we are DOWNLOADING from GRID directory
+        if isSrcDir:  # recursive download
             find_args.extend(['-r', '-a', '-s', src, pattern])
             send_opts = 'nomsg' if not DEBUG else ''
             src_list_files_dict = SendMsg(wb, 'find', find_args, opts = send_opts + ' print')
@@ -1178,10 +1183,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 msg = f"{lfn} -> {error}"
             else:
                 copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
-    else:  # it is upload
+    else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
         specs = dst_specs_remotes
-        if isSrcDir:  # src is LOCAL, we are UPLOADING from LOCAL directory
+        if isSrcDir:  # recursive upload
             for root, dirs, files in os.walk(src):
                 for file in files:
                     filepath = os.path.join(root, file)
