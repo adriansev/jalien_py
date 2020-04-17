@@ -1012,7 +1012,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '\\/.*'  # default regex selection for find
+    pattern = '.*'  # default regex selection for find
     if '-select' in xrd_copy_command and '-name' in xrd_copy_command:
         print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
         return int(22)  # EINVAL /* Invalid argument */
