@@ -663,8 +663,9 @@ args are the following :
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
 
 for the recursive copy of directories the following options (of the find command) can be used:
--select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+-glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
+-select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
+-name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
 -name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
 verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 {PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
@@ -1012,48 +1013,66 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
-    pattern = '.*'  # default regex selection for find
-    if '-select' in xrd_copy_command and '-name' in xrd_copy_command:
-        print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
-        return int(22)  # EINVAL /* Invalid argument */
+    pattern = '*'
+    pattern_regex = '.*'  # default regex selection for find
+    use_regex = False
+    filtering_enabled = False
 
-    if '-select' in xrd_copy_command:
-        select_idx = xrd_copy_command.index('-select')
+    if '-glob' in xrd_copy_command:
+        select_idx = xrd_copy_command.index('-glob')
         pattern = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
+        use_regex = False
+        filtering_enabled = True
+
+    if '-select' in xrd_copy_command:
+        if filtering_enabled:
+            print("Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")
+            return int(22)  # EINVAL /* Invalid argument */
+        select_idx = xrd_copy_command.index('-select')
+        pattern_regex = xrd_copy_command.pop(select_idx + 1)
+        xrd_copy_command.pop(select_idx)
+        use_regex = True
+        filtering_enabled = True
 
     if '-name' in xrd_copy_command:
+        if filtering_enabled:
+            print("Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")
+            return int(22)  # EINVAL /* Invalid argument */
         name_idx = xrd_copy_command.index('-name')
-        pattern = xrd_copy_command.pop(name_idx + 1)
+        pattern_regex = xrd_copy_command.pop(name_idx + 1)
         xrd_copy_command.pop(name_idx)
+        use_regex = True
+        filtering_enabled = True
 
-        translated_pattern = '.*\\/'
+        translated_pattern_regex = '.*\\/'
         verbs = ('begin', 'contain', 'ends', 'ext')
-        if any(verb in pattern for verb in verbs):
-            pattern_list = pattern.split('_')
-            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+        if any(verb in pattern_regex for verb in verbs):
+            pattern_regex_list = pattern_regex.split('_')
+            if pattern_regex_list.count('begin') > 1 or pattern_regex_list.count('end') > 1 or pattern_regex_list.count('ext') > 1:
                 print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
                 return int(64)  # EX_USAGE /* command line usage error */
-            for idx, token in enumerate(pattern_list):
+            for idx, token in enumerate(pattern_regex_list):
                 if token == 'begin':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + string + '.*'
+                    string = pattern_regex_list[idx + 1]
+                    translated_pattern_regex = translated_pattern_regex + string + '.*'
                 if token == 'contain':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*' + string + '.*'
+                    string = pattern_regex_list[idx + 1]
+                    translated_pattern_regex = translated_pattern_regex + '.*' + string + '.*'
                 if token == 'ends':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
+                    string = pattern_regex_list[idx + 1]
+                    translated_pattern_regex = translated_pattern_regex + '.*' + string + '.*\\..*'
                 if token == 'ext':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*\\.' + string + '$'
-        pattern = translated_pattern
+                    string = pattern_regex_list[idx + 1]
+                    translated_pattern_regex = translated_pattern_regex + '.*\\.' + string + '$'
+        pattern_regex = translated_pattern_regex
 
-    try:
-        regex = re.compile(pattern)
-    except re.error:
-        print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
-        return int(64)  # EX_USAGE /* command line usage error */
+    if use_regex:
+        try:
+            regex = re.compile(pattern_regex)
+        except re.error:
+            print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
+            return int(64)  # EX_USAGE /* command line usage error */
 
     isSrcDir = bool(False)
     isDstDir = bool(False)
@@ -1151,7 +1170,13 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     if isDownload:  # src is GRID, we are DOWNLOADING from GRID directory
         specs = src_specs_remotes
         if isSrcDir:  # recursive download
-            find_args.extend(['-r', '-a', '-s', src, pattern])
+            find_defaults = ['-a', '-s', src]
+            if use_regex:
+                find_defaults.insert(0, '-r')
+                find_defaults.append(pattern_regex)
+            else:
+                find_defaults.append(pattern)
+            find_args.extend(find_defaults)
             send_opts = 'nomsg' if not DEBUG else ''
             src_list_files_dict = SendMsg(wb, 'find', find_args, opts = send_opts + ' print')
             if AlienSessionInfo['exitcode'] != 0:
