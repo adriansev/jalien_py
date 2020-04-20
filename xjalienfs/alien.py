@@ -656,6 +656,7 @@ args are the following :
 -h : print help
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
+-cksum : check hash sum of the file and remove the file if not valid (download only)
 -y <nr_sources> : use up to the number of sources specified in parallel
 -S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
@@ -1091,6 +1092,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isDstLocal = False
         isDownload = False
         use_regex = True
+        cksum = False  # for uploads we should not use checksum verification
 
     if use_regex:
         try:
