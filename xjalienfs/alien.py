@@ -439,6 +439,12 @@ class lfn2file(NamedTuple):
     file: str
 
 
+class KV(NamedTuple):
+    """Assign a value to a key"""
+    key: str
+    val: str
+
+
 class AliEn:
     def __init__(self, opts = ''):
         self.wb = InitConnection()
@@ -1049,24 +1055,35 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
         translated_pattern_regex = '.*\\/'
         verbs = ('begin', 'contain', 'ends', 'ext')
+        pattern_list = pattern_regex.split('_')
         if any(verb in pattern_regex for verb in verbs):
-            pattern_regex_list = pattern_regex.split('_')
-            if pattern_regex_list.count('begin') > 1 or pattern_regex_list.count('end') > 1 or pattern_regex_list.count('ext') > 1:
+            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
                 print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
                 return int(64)  # EX_USAGE /* command line usage error */
-            for idx, token in enumerate(pattern_regex_list):
-                if token == 'begin':
-                    string = pattern_regex_list[idx + 1]
-                    translated_pattern_regex = translated_pattern_regex + string + '.*'
-                if token == 'contain':
-                    string = pattern_regex_list[idx + 1]
-                    translated_pattern_regex = translated_pattern_regex + '.*' + string + '.*'
-                if token == 'ends':
-                    string = pattern_regex_list[idx + 1]
-                    translated_pattern_regex = translated_pattern_regex + '.*' + string + '.*\\..*'
-                if token == 'ext':
-                    string = pattern_regex_list[idx + 1]
-                    translated_pattern_regex = translated_pattern_regex + '.*\\.' + string + '$'
+
+            list_begin = []
+            list_contain = []
+            list_ends = []
+            list_ext = []
+            for idx, token in enumerate(pattern_list):
+                if token == 'begin': list_begin.append(KV(token, pattern_list[idx + 1]))
+                if token == 'contain': list_contain.append(KV(token, pattern_list[idx + 1]))
+                if token == 'ends': list_ends.append(KV(token, pattern_list[idx + 1]))
+                if token == 'ext': list_ext.append(KV(token, pattern_list[idx + 1]))
+
+            for patt in list_begin: translated_pattern_regex = translated_pattern_regex + patt.val + '[^\\/]+'  # first string after the last slash (last match explude /)
+            for patt in list_contain: translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + patt.val + '[^\\/]+'
+            for patt in list_ends:
+                translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + patt.val
+                if list_ext:
+                    translated_pattern_regex = translated_pattern_regex + '\\.' + list_ext[0].val
+                else:
+                    translated_pattern_regex = translated_pattern_regex + '\\.[^\\/]+'
+
+            for path in list_ext:
+                if not list_ends:  # we already added the ext in list_ends
+                    translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + '\\.' + list_ext[0].val
+
             pattern_regex = translated_pattern_regex
         else:
             print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
@@ -1769,24 +1786,35 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
 
         translated_pattern = '.*\\/'
         verbs = ('begin', 'contain', 'ends', 'ext')
+        pattern_list = pattern.split('_')
         if any(verb in pattern for verb in verbs):
-            pattern_list = pattern.split('_')
             if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
                 print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
                 return int(64)  # EX_USAGE /* command line usage error */
+
+            list_begin = []
+            list_contain = []
+            list_ends = []
+            list_ext = []
             for idx, token in enumerate(pattern_list):
-                if token == 'begin':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + string + '.*'
-                if token == 'contain':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*' + string + '.*'
-                if token == 'ends':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*' + string + '.*\\..*'
-                if token == 'ext':
-                    string = pattern_list[idx + 1]
-                    translated_pattern = translated_pattern + '.*\\.' + string + '$'
+                if token == 'begin': list_begin.append(KV(token, pattern_list[idx + 1]))
+                if token == 'contain': list_contain.append(KV(token, pattern_list[idx + 1]))
+                if token == 'ends': list_ends.append(KV(token, pattern_list[idx + 1]))
+                if token == 'ext': list_ext.append(KV(token, pattern_list[idx + 1]))
+
+            for patt in list_begin: translated_pattern = translated_pattern + patt.val + '[^\\/]+'  # first string after the last slash (last match explude /)
+            for patt in list_contain: translated_pattern = translated_pattern + '[^\\/]+' + patt.val + '[^\\/]+'
+            for patt in list_ends:
+                translated_pattern = translated_pattern + '[^\\/]+' + patt.val
+                if list_ext:
+                    translated_pattern = translated_pattern + '\\.' + list_ext[0].val
+                else:
+                    translated_pattern = translated_pattern + '\\.[^\\/]+'
+
+            for path in list_ext:
+                if not list_ends:  # we already added the ext in list_ends
+                    translated_pattern = translated_pattern + '[^\\/]+' + '\\.' + list_ext[0].val
+
             pattern = translated_pattern
         else:
             print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
