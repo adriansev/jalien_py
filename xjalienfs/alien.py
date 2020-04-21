@@ -1067,7 +1067,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 if token == 'ext':
                     string = pattern_regex_list[idx + 1]
                     translated_pattern_regex = translated_pattern_regex + '.*\\.' + string + '$'
-        pattern_regex = translated_pattern_regex
+            pattern_regex = translated_pattern_regex
+        else:
+            print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
 
     isSrcDir = bool(False)
     isDstDir = bool(False)
@@ -1785,7 +1787,9 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
                 if token == 'ext':
                     string = pattern_list[idx + 1]
                     translated_pattern = translated_pattern + '.*\\.' + string + '$'
-        pattern = translated_pattern
+            pattern = translated_pattern
+        else:
+            print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
 
     try:
         regex = re.compile(pattern)
