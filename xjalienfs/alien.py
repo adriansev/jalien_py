@@ -20,7 +20,7 @@ import shlex
 import argparse
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
 from urllib.parse import urlparse
@@ -575,6 +575,23 @@ def StoreCWD():
         except Exception as e:
             logging.warning("StoreCWD:: failed to write file")
             logging.exception(e)
+
+
+def unixtime2local(timestamp: Union[str, int]) -> str:
+    """Convert unix time to a nice custom format"""
+    utc_time = datetime.fromtimestamp(int(timestamp), timezone.utc)
+    local_time = utc_time.astimezone()
+    return str(local_time.strftime("%Y-%m-%d %H:%M:%S.%f%z"))  # (%Z)"))
+
+
+def convert_time(str_line: str) -> str:
+    """Convert the first 10 digit unix time like string from str argument to a nice time"""
+    timestamp = re.findall(r"^(\d{10}) \[.*", str_line)
+    if timestamp:
+        nice_timestamp = f"{PrintColor(COLORS.BIGreen)}{unixtime2local(timestamp[0])}{PrintColor(COLORS.ColorReset)}"
+        return str_line.replace(str(timestamp[0]), nice_timestamp)
+    else:
+        return ''
 
 
 def DO_version():
@@ -1617,6 +1634,24 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     return ''
 
 
+def DO_ps(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
+    """ps : show and process ps output"""
+    result = SendMsg(wb, 'ps', args, opts = 'log print')
+    if JSON_OUT:  # print nice json for debug or json mode
+        PrintDict(result)
+        return int(AlienSessionInfo['exitcode'])
+    if JSONRAW_OUT:  # print the raw byte stream received from the server
+        PrintDict(result, opts = 'rawstr')
+        return int(AlienSessionInfo['exitcode'])
+    if int(AlienSessionInfo['exitcode']) != 0: return int(AlienSessionInfo['exitcode'])
+    msg_str = '\n'.join(str(item['message']) for item in result['results'])
+    if '-trace' in args:
+        nice_lines = [convert_time(msgline) for msgline in msg_str.split('\n')]
+        msg_str = '\n'.join(nice_lines)
+    print(msg_str, flush = True)
+    return int(AlienSessionInfo['exitcode'])
+
+
 def DO_cat(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> int:
     """cat lfn :: download lfn as a temporary file and cat"""
     lfn_path = expand_path_grid(lfn)
@@ -2514,6 +2549,10 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             ans_list = get_SE_srv(wb, args[1])
             print(" ".join(ans_list).strip())
             return int(0)
+
+    if cmd == "ps":
+        AlienSessionInfo['exitcode'] = DO_ps(wb, args)
+        return AlienSessionInfo['exitcode']
 
     if cmd == "run":
         AlienSessionInfo['exitcode'] = DO_run(wb, args)
