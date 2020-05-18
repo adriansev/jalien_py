@@ -1107,27 +1107,52 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     isSrcDir = bool(False)
     isDstDir = bool(False)
-    isDownload = bool(True)
     file_name = ''
 
     arg_source = xrd_copy_command[-2]
     arg_target = xrd_copy_command[-1]
+    slashend_src = True if arg_source.endswith('/') else False
+    slashend_dst = True if arg_target.endswith('/') else False
 
-    # identify the types of src,dst and prepare context describing vars
-    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
-        print("The operands cannot have the same type: one must be local and one grid", file=sys.stderr, flush = True)
-        return int(22)  # EINVAL /* Invalid argument */
+    isSrcLocal = None
+    isDstLocal = None
+    isDownload = None
 
-    # set the defaults to downloading scenario
-    isSrcLocal = False
-    isDstLocal = True
-    isDownload = True
+    arg_err_msg = 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments'
 
-    if arg_source.startswith('file:') or arg_target.startswith('alien:'):  # second to last argument (should be the source)
+    if arg_source.startswith('file:'):
+        if arg_target.startswith('file:'):
+            print(arg_err_msg, file=sys.stderr, flush = True)
+            return int(22)  # EINVAL /* Invalid argument */
         isSrcLocal = True
-        isDstLocal = False
-        isDownload = False
-        use_regex = True
+        isDstLocal = not isSrcLocal
+        if arg_source.startswith('file://'):  arg_source = arg_source.replace("file://", "", 1)
+        if arg_source.startswith('file:'):    arg_source = arg_source.replace("file:", "", 1)
+    if arg_source.startswith('alien:'):
+        if arg_target.startswith('alien:'):
+            print(arg_err_msg, file=sys.stderr, flush = True)
+            return int(22)  # EINVAL /* Invalid argument */
+        isSrcLocal = False
+        isDstLocal = not isSrcLocal
+        if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "", 1)
+        if arg_source.startswith('alien:'):   arg_source = arg_source.replace("alien:", "", 1)
+
+    if isSrcLocal is None and arg_target.startswith('file:'):
+        isSrcLocal = False
+        isDstLocal = not isSrcLocal
+        if arg_target.startswith('file://'):  arg_target = arg_target.replace("file://", "", 1)
+        if arg_target.startswith('file:'):    arg_target = arg_target.replace("file:", "", 1)
+    if isSrcLocal is None and arg_target.startswith('alien:'):
+        isSrcLocal = True
+        isDstLocal = not isSrcLocal
+        if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
+        if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
+
+    isDownload = isDstLocal
+    if isSrcLocal is None:
+        print(arg_err_msg, file=sys.stderr, flush = True)
+        return int(22)  # EINVAL /* Invalid argument */
+    if not isDownload: use_regex = True
 
     if use_regex:
         try:
@@ -1135,21 +1160,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         except re.error:
             print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
             return int(64)  # EX_USAGE /* command line usage error */
-
-    slashend_src = True if arg_source.endswith('/') else False
-    slashend_dst = True if arg_target.endswith('/') else False
-
-    # Cleanup the alien: and file: specifications
-    # there are only 2 cases : either file,alien:// and the remainder is the path or just file,alien: ; the unspoken contract is that no one will do file:/ + /full_local_path
-    if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "", 1)
-    if arg_source.startswith('alien:'):   arg_source = arg_source.replace("alien:", "", 1)
-    if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
-    if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
-
-    if arg_source.startswith('file://'):  arg_source = arg_source.replace("file://", "", 1)
-    if arg_source.startswith('file:'):    arg_source = arg_source.replace("file:", "", 1)
-    if arg_target.startswith('file://'):  arg_target = arg_target.replace("file://", "", 1)
-    if arg_target.startswith('file:'):    arg_target = arg_target.replace("file:", "", 1)
 
     src = None
     src_type = None
