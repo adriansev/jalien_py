@@ -62,6 +62,10 @@ setuptools.setup(
             'alien-token-init = xjalienfs.alien:cmd_token_init',
             'alien-token-destroy = xjalienfs.alien:cmd_token_destroy',
         ]
-    }
+    },
+    keywords = 'client to ALICE GRID services',
+
+
+
 )
 
