@@ -2832,7 +2832,10 @@ def main():
         print("Received keyboard intrerupt, exiting..")
         sys.exit(int(AlienSessionInfo['exitcode']))
     except Exception as e:
-        print(f"Exception encountered, it will be logged to {DEBUG_FILE}", file=sys.stderr, flush = True)
+        print(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
+Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
+If the exception is reproductible including on lxplus, please create a detailed debug report this way:
+ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''', file=sys.stderr, flush = True)
         logging.error(traceback.format_exc())
         sys.exit(1)
     os._exit(int(AlienSessionInfo['exitcode']))
