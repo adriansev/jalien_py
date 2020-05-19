@@ -456,7 +456,9 @@ class AliEn:
 
     def ProcessMsg(self, cmd):
         command_list = cmd.split(";")
-        for cmd in command_list: ProcessInput(self.wb, cmd)
+        exitcode = None
+        for cmd in command_list: exitcode = ProcessInput(self.wb, cmd)
+        return exitcode
 
     def wb(self):
         return self.wb
