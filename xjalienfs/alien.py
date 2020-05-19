@@ -1484,7 +1484,9 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
             xrdver_minor = xrd_ver_arr[1]
             has_cksum = True  # minor version is not proper digit, it is assumed a version with this feature
     else:
-        has_cksum = True
+        xrdver_git = xrd_ver_arr[0].split("-")
+        xrdver_date = int(xrdver_git[0][1:])
+        if xrdver_date > 20200408: has_cksum = True
 
     process = client.CopyProcess()
     process.parallel(int(batch))
