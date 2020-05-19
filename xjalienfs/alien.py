@@ -1475,7 +1475,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     xrd_ver_arr = client.__version__.split(".")
     xrdver_major = xrd_ver_arr[0]
     xrdver_minor = int(xrd_ver_arr[1])
-    xrdver_patch = int(xrd_ver_arr[2])
+    # xrdver_patch = xrd_ver_arr[2]
 
     process = client.CopyProcess()
     process.parallel(int(batch))
