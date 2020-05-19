@@ -1472,20 +1472,29 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     handler.xrdjob_list = job_list
 
     # get xrootd client version
+    has_cksum = False
     xrd_ver_arr = client.__version__.split(".")
-    xrdver_major = xrd_ver_arr[0]
-    xrdver_minor = int(xrd_ver_arr[1])
-    # xrdver_patch = xrd_ver_arr[2]
+    if len(xrd_ver_arr) > 1:
+        xrdver_major = xrd_ver_arr[0]
+        if xrd_ver_arr[1].isdigit():
+            xrdver_minor = int(xrd_ver_arr[1])
+            # xrdver_patch = xrd_ver_arr[2]
+            if xrdver_major == 'v4' and xrdver_minor > 12: has_cksum = True
+        else:
+            xrdver_minor = xrd_ver_arr[1]
+            has_cksum = True  # minor version is not proper digit, it is assumed a version with this feature
+    else:
+        has_cksum = True
 
     process = client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
         if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        if xrdver_major == 'v4' and xrdver_minor < 12:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
-        else:
+        if has_cksum:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
                             checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
+        else:
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
 
     process.prepare()
     process.run(handler)
