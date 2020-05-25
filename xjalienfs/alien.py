@@ -2560,9 +2560,12 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return AlienSessionInfo['exitcode']
 
     # intercept all commands that take a lfn as argument and proper expand it
-    if cmd in ['cd', 'ls', 'stat', 'xrdstat', 'rm', 'rmdir', 'lfn2guid', 'whereis', 'pfn', 'type', 'chown', 'md5sum', 'mv', 'submit', 'touch', 'whereis']:
+    if cmd in ['cd', 'ls', 'stat', 'xrdstat', 'rm', 'rmdir', 'lfn2guid', 'whereis', 'pfn', 'type', 'chown', 'md5sum', 'mv', 'touch', 'whereis']:
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
+
+    if cmd == 'submit':  # submit have only first arg as lfn
+        args[0] = expand_path_grid(args[0])
 
     if cmd == 'getSE':
         if not args or '-h' in args or '-help' in args:
