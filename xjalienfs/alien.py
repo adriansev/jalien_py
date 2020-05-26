@@ -883,7 +883,7 @@ def GetHumanReadable(size, precision = 2):
     return "%.*f %s" % (precision, size, suffixes[suffixIndex])
 
 
-def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None) -> int:
+def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not has_xrootd:
         print('python XRootD module cannot be found, the copy process cannot continue')
@@ -1366,7 +1366,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams, cksum)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    replica_list_upload_failed = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args)
+    replica_list_upload_failed = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args, printout)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -1382,10 +1382,12 @@ if has_xrootd:
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
+            self.printout = ''
 
         def begin(self, jobId, total, source, target):
             timestamp_begin = datetime.now().timestamp()
-            print("jobID: {0}/{1} >>> Start".format(jobId, total), flush = True)
+            if not ('quiet' in self.printout or 'silent' in self.printout):
+                print("jobID: {0}/{1} >>> Start".format(jobId, total), flush = True)
             self.jobs = int(total)
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
@@ -1402,6 +1404,16 @@ if has_xrootd:
             if results['status'].fatal: status = PrintColor(COLORS.BIRed) + 'FATAL' + PrintColor(COLORS.ColorReset)
 
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
+            if self.isDownload and not os.getenv('ALIENPY_KEEP_META'): os.remove(xrdjob.src)  # remove the created metalink
+
+            if not results['status'].ok:
+                if self.isDownload:  # we have an failed replica upload
+                    print(f"Failed download: {xrdjob.lfn}", flush = True)
+                else:
+                    self.replica_list_upload_failed.append(xrdjob.token_request)
+                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} total replicas", flush = True)
+                return
+
             speed_str = '0 B/s'
             if results['status'].ok:
                 deltaT = datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
@@ -1417,15 +1429,8 @@ if has_xrootd:
                     expire = '0'
                     exitcode = commit(self.wb, token, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
 
-            if not results['status'].ok:
-                if self.isDownload:  # we have an failed replica upload
-                    print(f"Failed download: {xrdjob.lfn}", flush = True)
-                else:
-                    self.replica_list_upload_failed.append(xrdjob.token_request)
-                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} total replicas", flush = True)
-            if self.isDownload and not os.getenv('ALIENPY_KEEP_META'):
-                os.remove(xrdjob.src)  # remove the created metalink
-            print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
+            if not ('quiet' in self.printout or 'silent' in self.printout):
+                print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
@@ -1435,7 +1440,7 @@ if has_xrootd:
             return False
 
 
-def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDownload: bool, xrd_cp_args: XrdCpArgs) -> list:
+def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDownload: bool, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not has_xrootd:
         print("XRootD not found", file=sys.stderr, flush = True)
@@ -1472,6 +1477,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
+    handler.printout = printout
 
     # get xrootd client version
     has_cksum = False
@@ -1633,9 +1639,11 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
 
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
+    global AlienSessionInfo
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     copycmd = "-f " + lfn + " " + 'file://' + tmpfile
-    result = ProcessXrootdCp(wb, copycmd.split())
+    result = ProcessXrootdCp(wb, copycmd.split(), printout = 'silent')  # print only errors for temporary downloads
+    if os.path.isfile(tmpfile): AlienSessionInfo['templist'].append(tmpfile)
     return tmpfile
 
 
@@ -2854,7 +2862,7 @@ If the exception is reproductible including on lxplus, please create a detailed 
 ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''', file=sys.stderr, flush = True)
         logging.error(traceback.format_exc())
         sys.exit(1)
-    os._exit(int(AlienSessionInfo['exitcode']))
+    sys.exit(int(AlienSessionInfo['exitcode']))
 
 
 def _cmd(what):
