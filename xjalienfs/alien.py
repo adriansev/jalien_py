@@ -2177,7 +2177,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             temp_key.seek(0)
             tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
 
-    if IsValidCert(tokencert):
+    if IsValidCert(tokencert) and not use_usercert:
         cert = tokencert
         key  = tokenkey
         AlienSessionInfo['use_usercert'] = False
