@@ -602,7 +602,8 @@ def convert_time(str_line: str) -> str:
 
 def DO_version():
     global AlienSessionInfo
-    print(f'alien.py version: {ALIENPY_VERSION_DATE}\n'
+    print(f'alien.py version: {ALIENPY_VERSION_STR}\n'
+          f'alien.py version date: {ALIENPY_VERSION_DATE}\n'
           f'alien.py location: {os.path.realpath(__file__)}\n'
           f'script location: {ALIENPY_EXECUTABLE}\n'
           f'Interpreter: {os.path.realpath(sys.executable)}\n'
