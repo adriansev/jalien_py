@@ -6,6 +6,7 @@ tag=$(git describe --tags --abbrev=0 --exact-match)
 [[ -n ${tag} ]] && echo ${tag} >> ./VERSION
 
 ./update_version
+git commit -m "alien.py update version info" alienpy/alien.py
 
 mkdir -p dist
 rm -rf dist/*
