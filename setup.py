@@ -19,7 +19,7 @@ else:
 
 setuptools.setup(
     name="alienpy",
-    version="1.1.1.post2",
+    version="1.1.1.post3",
     author="ALICE JAliEn",
     author_email="jalien@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
