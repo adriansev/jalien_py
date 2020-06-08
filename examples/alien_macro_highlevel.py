@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import xjalienfs.alien as alien
+import alienpy.alien as alien
 alien.setup_logging()
 j = alien.AliEn()
 

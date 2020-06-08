@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import xjalienfs.alien as alien
+import alienpy.alien as alien
 
 # in the case of AliEnMsg class just low-level json messages are exchanged with the server
 # there are no client side implementations available, only message exchange with the AliEn central services

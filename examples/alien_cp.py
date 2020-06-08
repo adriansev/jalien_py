@@ -2,7 +2,7 @@
 import sys
 import os
 import websockets
-import xjalienfs.alien as alien
+import alienpy.alien as alien
 
 alien.setup_logging()
 wb = alien.InitConnection()
