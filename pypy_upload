@@ -1,0 +1,2 @@
+./pypy_build
+twine upload --verbose dist/*

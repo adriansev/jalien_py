@@ -1,6 +1,18 @@
 import setuptools
 import os
 
+
+def get_version_from_file():
+    try:
+        f = open('./VERSION')
+        version = f.read().split('/n')[0]
+        f.close()
+        return version
+    except:
+        print('Failed to get version from file. Using unknown')
+        return 'unknown'
+
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
@@ -19,7 +31,7 @@ else:
 
 setuptools.setup(
     name="alienpy",
-    version="1.1.1.post3",
+    version=get_version_from_file(),
     author="ALICE JAliEn",
     author_email="jalien@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",

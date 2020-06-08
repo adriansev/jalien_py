@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 [[ ! -e alienpy/alien.py ]] && { echo "alien.py was not found"; exit 1; }
+
+tag=$(git describe --tags --abbrev=0 --exact-match)
+[[ -n ${tag} ]] && echo ${tag} >> ./VERSION
+
 ./update_version
 
 mkdir -p dist
