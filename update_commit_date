@@ -1,2 +1,0 @@
-#!/bin/env bash
-sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" */alien.py

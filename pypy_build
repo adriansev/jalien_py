@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+[[ ! -e alienpy/alien.py ]] && { echo "alien.py was not found"; exit 1; }
+./update_version
+
+mkdir -p dist
+rm -rf dist/*
+python3 setup.py sdist bdist_wheel
+

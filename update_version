@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" alienpy/alien.py
+
+# get version definition from setup.py
+eval $(grep version= setup.py | sed 's/,$//')
+sed -i "/^ALIENPY_VERSION_STR = /c\ALIENPY_VERSION_STR = \'$version\'" alienpy/alien.py
+

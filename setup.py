@@ -19,7 +19,7 @@ else:
 
 setuptools.setup(
     name="alienpy",
-    version="1.1.1post2",
+    version="1.1.1.post2",
     author="ALICE JAliEn",
     author_email="jalien@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
@@ -35,7 +35,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     project_urls={
-        "Project": "https://gitlab.cern.ch/jalien/xjalienfs",
         "Dev git": "https://github.com/adriansev/jalien_py",
         "Issues": "https://github.com/adriansev/jalien_py/issues",
         "Documentation": "https://jalien.docs.cern.ch",
