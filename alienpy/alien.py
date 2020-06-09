@@ -1795,6 +1795,17 @@ def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
     if tmp and os.path.isfile(tmp): return runShellCMD(cmd)
 
 
+def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[None, list, str] = None) -> int:
+    """run system command with all the arguments but all alien: specifications are downloaded to temporaries"""
+    global AlienSessionInfo
+    if args is None or not args or not cmd:
+        AlienSessionInfo['exitcode'] = int(1)
+        return AlienSessionInfo['exitcode']
+    if type(args) == str: args = args.split()
+    new_arg_list = [download_tmp(wb, arg) if arg.startswith('alien:') else arg for arg in args]
+    return runShellCMD(cmd + ' ' + ' '.join(new_arg_list))
+
+
 def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
     if '-h' in args or '-help' in args:
         print(f'''-select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
@@ -2654,6 +2665,9 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
         if args[0] != '-h':
             DO_edit(wb, args[0], editor=cmd)
             return AlienSessionInfo['exitcode']
+
+    if cmd not in AlienSessionInfo['commandlist']:
+        return DO_syscmd(wb, cmd, args)
 
     # default to print / after directories
     if cmd == 'ls': args.insert(0, '-F')
