@@ -1642,13 +1642,15 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     return lfn
 
 
-def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> str:
+def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     global AlienSessionInfo
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
-    copycmd = "-f " + lfn + " " + 'file://' + tmpfile
-    result = ProcessXrootdCp(wb, copycmd.split(), printout = 'silent')  # print only errors for temporary downloads
-    if os.path.isfile(tmpfile): AlienSessionInfo['templist'].append(tmpfile)
+    if overwrite and os.path.isfile(tmpfile): os.remove(tmpfile)
+    if tmpfile not in AlienSessionInfo['templist'] and not os.path.isfile(tmpfile):
+        copycmd = "-f " + lfn + " " + 'file://' + tmpfile
+        result = ProcessXrootdCp(wb, copycmd.split(), printout = 'silent')  # print only errors for temporary downloads
+        AlienSessionInfo['templist'].append(tmpfile)
     return tmpfile
 
 
