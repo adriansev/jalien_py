@@ -96,9 +96,6 @@ def signal_handler(sig, frame):
     # signal.signal(sig, signal.SIG_DFL)  # default signal handler usage (for sigint it does nothing)
 
 
-signal.signal(signal.SIGINT, signal_handler)
-
-
 def exit_message(exitcode: int = 0):
     print('Exit')
     sys.exit(exitcode)
@@ -2847,6 +2844,7 @@ def setup_logging():
 
 
 def main():
+    signal.signal(signal.SIGINT, signal_handler)
     global JSON_OUT, JSONRAW_OUT, ALIENPY_EXECUTABLE
     setup_logging()
     # at exit delete all temporary files
