@@ -2162,7 +2162,6 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     alice_cvmfs_ca_path_macos = '/Users/Shared' + alice_cvmfs_ca_path_lx
-    alice_cvmfs_ca_path = alice_cvmfs_ca_path_macos if os.path.exists('/Users/Shared') else alice_cvmfs_ca_path_lx
 
     x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
     x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
@@ -2170,8 +2169,10 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     capath_default = ''
     if x509dir:
         capath_default = x509dir
-    elif os.path.exists(alice_cvmfs_ca_path):
-        capath_default = alice_cvmfs_ca_path
+    elif os.path.exists(alice_cvmfs_ca_path_lx):
+        capath_default = alice_cvmfs_ca_path_lx
+    elif os.path.exists(alice_cvmfs_ca_path_macos):
+        capath_default = alice_cvmfs_ca_path_macos
     else:
         if os.path.isdir(system_ca_path): capath_default = system_ca_path
 
