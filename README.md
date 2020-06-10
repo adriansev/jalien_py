@@ -46,6 +46,14 @@ For debugging purposes there are a few environment toggles :
    
 For XRootD operations the native XRootD environment toggles are used, see [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")   
 
+## Authentication
+The authentication process needs the presence of a X509 certificate (enrolled into ALICE VO, see [here](https://alien.web.cern.ch/content/vo/alice/userregistration))
+and of a CA certificates directory for verification.
+The default CA location that will be searched is within alice.cern.ch cvmfs repository
+If not found, the CApath will default to /etc/grid-security/certificates
+If these locations are not available, one _must_ set X509_CERT_DIR to a valid location
+
+
 ## Command usage and examples  
 
 The list of available commands can seen with: `?` or `help`   
