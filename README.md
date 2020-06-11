@@ -1,3 +1,5 @@
+![PyPI](https://img.shields.io/pypi/v/alienpy?style=plastic)  
+
 ## alien.py - Python interface to websocket endpoint of ALICE Grid Services  
 
 ### Basic usage
