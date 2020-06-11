@@ -31,7 +31,7 @@ import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
 
-ALIENPY_VERSION_DATE = '20200611_101044'
+ALIENPY_VERSION_DATE = '20200611_101110'
 ALIENPY_VERSION_STR = '1.1.1.post6'
 ALIENPY_EXECUTABLE = ''
 
