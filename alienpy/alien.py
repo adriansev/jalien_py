@@ -14,6 +14,7 @@ import ssl
 import uuid
 import statistics
 import math
+from collections import deque
 from typing import NamedTuple
 import OpenSSL
 import shlex
@@ -86,7 +87,43 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': []}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'pathq': deque()}
+
+
+def pushd(wb: websockets.client.WebSocketClientProtocol, args: str = ''):
+    global AlienSessionInfo
+    if args == '':
+        if len(AlienSessionInfo['pathq']) >= 2:
+            last = AlienSessionInfo['pathq'].pop()
+            AlienSessionInfo['pathq'].insert(len(AlienSessionInfo['pathq']) - 1 - 1, last)  # last position is len -1, before last is len -1 -1
+            return
+
+    arg_list = args.split()
+    do_not_cd = False
+    if '-n' in arg_list:
+        do_not_cd = True
+        arg_list.remove('-n')
+
+    # deque start with 0 (on the left) and increase towards right
+    # dirs queue have the 0th elemen (top of stack) on the left
+    if arg_list[0][0] == '+':
+        # Brings the Nth directory (counting from the left of the list printed by dirs, starting with zero) to the top of the list (first element on left)
+        positions = str(arg_list[0][1:])
+        if positions.isdecimal():
+            AlienSessionInfo['pathq'].rotate(-int(positions))
+            resp = SendMsg(wb, 'cd ' + AlienSessionInfo['pathq'][0], opts = 'log')
+            return
+
+    if arg_list[0][0] == '-':
+        # Brings the Nth directory (counting from the right of the list printed by dirs, starting with zero) to the top of the list
+        positions = str(arg_list[0][1:])
+        if positions.isdecimal():
+            AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - int(positions)))  # Get position counting from left and then rotate that towards left
+            resp = SendMsg(wb, 'cd ' + AlienSessionInfo['pathq'][0], opts = 'log')
+            return
+
+    AlienSessionInfo['pathq']
+
 
 
 def signal_handler(sig, frame):
