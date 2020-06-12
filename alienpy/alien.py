@@ -122,9 +122,6 @@ def pushd(wb: websockets.client.WebSocketClientProtocol, args: str = ''):
             resp = SendMsg(wb, 'cd ' + AlienSessionInfo['pathq'][0], opts = 'log')
             return
 
-    AlienSessionInfo['pathq']
-
-
 
 def signal_handler(sig, frame):
     """Generig signal handler: just print the signal and exit"""
@@ -813,7 +810,7 @@ def expand_path_grid(path: str) -> str:
     if exp_path.startswith('alien://'): exp_path = exp_path.replace("alien://", "", 1)
     if exp_path.startswith('alien:'): exp_path = exp_path.replace("alien:", "", 1)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
-    if not exp_path.startswith('/'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
+    if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
     tail_slash = True if exp_path.endswith("/") else False
     exp_path = os.path.normpath(exp_path)
     if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
