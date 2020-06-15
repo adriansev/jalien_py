@@ -90,39 +90,6 @@ TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'pathq': deque()}
 
 
-def pushd(wb: websockets.client.WebSocketClientProtocol, args: str = ''):
-    global AlienSessionInfo
-    if args == '':
-        if len(AlienSessionInfo['pathq']) >= 2:
-            last = AlienSessionInfo['pathq'].pop()
-            AlienSessionInfo['pathq'].insert(len(AlienSessionInfo['pathq']) - 1 - 1, last)  # last position is len -1, before last is len -1 -1
-            return
-
-    arg_list = args.split()
-    do_not_cd = False
-    if '-n' in arg_list:
-        do_not_cd = True
-        arg_list.remove('-n')
-
-    # deque start with 0 (on the left) and increase towards right
-    # dirs queue have the 0th elemen (top of stack) on the left
-    if arg_list[0][0] == '+':
-        # Brings the Nth directory (counting from the left of the list printed by dirs, starting with zero) to the top of the list (first element on left)
-        positions = str(arg_list[0][1:])
-        if positions.isdecimal():
-            AlienSessionInfo['pathq'].rotate(-int(positions))
-            resp = SendMsg(wb, 'cd ' + AlienSessionInfo['pathq'][0], opts = 'log')
-            return
-
-    if arg_list[0][0] == '-':
-        # Brings the Nth directory (counting from the right of the list printed by dirs, starting with zero) to the top of the list
-        positions = str(arg_list[0][1:])
-        if positions.isdecimal():
-            AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - int(positions)))  # Get position counting from left and then rotate that towards left
-            resp = SendMsg(wb, 'cd ' + AlienSessionInfo['pathq'][0], opts = 'log')
-            return
-
-
 def signal_handler(sig, frame):
     """Generig signal handler: just print the signal and exit"""
     print(f'\nCought signal {signal.Signals(sig).name}, let\'s exit')
@@ -368,6 +335,8 @@ def GetDict(result: Union[dict, list, str], opts: str = '') -> Union[None, dict,
         try:
             global AlienSessionInfo
             AlienSessionInfo['currentdir'] = out_dict["metadata"]["currentdir"]
+            if AlienSessionInfo['pathq'] and AlienSessionInfo['currentdir']:
+                if AlienSessionInfo['pathq'][0] != AlienSessionInfo['currentdir']: AlienSessionInfo['pathq'][0] = AlienSessionInfo['currentdir']
             AlienSessionInfo['user'] = out_dict["metadata"]["user"]
             AlienSessionInfo['error'] = out_dict["metadata"]["error"]
             AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
@@ -629,6 +598,106 @@ def convert_time(str_line: str) -> str:
         return str_line.replace(str(timestamp[0]), nice_timestamp)
     else:
         return ''
+
+
+def cd(wb: websockets.client.WebSocketClientProtocol, path: str):
+    res = SendMsg(wb, 'cd', [path], opts = 'log')
+
+
+def push2stack(path: str):
+    if not str: return
+    global AlienSessionInfo
+    AlienSessionInfo['pathq'].appendleft(path.replace(AlienSessionInfo['alienHome'], '~'))
+
+
+def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list] = None):
+    if not cmd: return
+    if args is None: return
+    global AlienSessionInfo
+    arg_list = args.split() if type(args) == str else args
+    size = len(AlienSessionInfo['pathq'])
+
+    do_not_cd = False
+    if '-n' in arg_list:
+        do_not_cd = True
+        arg_list.remove('-n')
+
+    choose_item = None
+    if len(arg_list) > 1:
+        print('The folloswinf syntax is required'
+              'dirs [-clpv] [+N | -N]'
+              'popd [-n] [+N | -N]'
+              'pushd [-n] [+N | -N | dir]')
+
+    chose_item_regex = re.compile('\\+|-\\d+')
+    sign = None
+    position = None
+    for arg in arg_list:
+        match = re.search(chose_item_regex, arg)
+        if match:
+            N_arg = match.group()
+            sign = N_arg[0]
+            position = N_arg[1:]
+            if not position.isdecimal():
+                print("-N | +N argument is invalid")
+                return
+            arg_list.remove(N_arg)
+
+    if cmd == "dirs":
+        if '-c' in arg_list:
+            AlienSessionInfo['pathq'].clear()
+            return
+        if not arg_list:
+            for path in AlienSessionInfo['pathq']: print(f"{path} ", end='')
+            print()
+
+        if position and sign:
+            if position > size - 1: return
+            if sign == "+":
+                print(AlienSessionInfo['pathq'][position])  # Nth position from top (last/top element have the index 0)
+            if sign == "-":
+                print(AlienSessionInfo['pathq'][size - 1 - position])  # Nth position from last
+        return  # end of dirs
+
+    if cmd == "popd":
+        if position and sign:
+            if position > size - 1: return
+            if sign == "+": remove = AlienSessionInfo['pathq'].popleft(position)
+            if sign == "-": remove = AlienSessionInfo['pathq'].pop(position)
+            return
+        if not arg_list:
+            remove = AlienSessionInfo['pathq'].popleft()
+            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+        return  # end of popd
+
+    if cmd == "pushd":
+        if position and sign:
+            if position > size - 1: return
+            if sign == "+":
+                AlienSessionInfo['pathq'].rotate(-position)
+                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            if sign == "-":
+                AlienSessionInfo['pathq'].rotate(-(size - 1 - position))
+                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            return  # end of +N|-N
+
+        if not arg_list:
+            if size < 2: return
+            old_cwd = AlienSessionInfo['pathq'].popleft()
+            new_cwd = AlienSessionInfo['pathq'].popleft()
+            push2stack(old_cwd)
+            push2stack(new_cwd)
+            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])
+            return
+
+        if do_not_cd:
+            cwd = AlienSessionInfo['pathq'].popleft()
+            push2stack(arg_list[0])
+            push2stack(cwd)
+        else:
+            push2stack(arg_list[0])
+            cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+        return
 
 
 def DO_version():
@@ -2496,17 +2565,21 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('version')
     AlienSessionInfo['commandlist'].append('pfn-status')
     AlienSessionInfo['commandlist'].append('find2')
+    AlienSessionInfo['commandlist'].append('dirs')
+    AlienSessionInfo['commandlist'].append('popd')
+    AlienSessionInfo['commandlist'].append('pushd')
     AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['user'] = json_dict['metadata']['user']
 
     # if we were intrerupted and re-connect than let's get back to the old currentdir
     if AlienSessionInfo['currentdir'] and (AlienSessionInfo['currentdir'] != json_dict['metadata']['currentdir']):
-        tmp_res = SendMsg(wb, 'cd', [AlienSessionInfo['currentdir']])
+        tmp_res = cd(wb, AlienSessionInfo['currentdir'])
     else:
         AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
 
     # if this is first query then current dir is alienHOME
     if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']
+    push2stack(AlienSessionInfo['currentdir'])
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
@@ -2621,9 +2694,17 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return AlienSessionInfo['exitcode']
 
     # intercept all commands that take a lfn as argument and proper expand it
-    if cmd in ['cd', 'ls', 'stat', 'xrdstat', 'rm', 'rmdir', 'lfn2guid', 'whereis', 'pfn', 'type', 'chown', 'md5sum', 'mv', 'touch', 'whereis']:
+    if cmd in ['ls', 'stat', 'xrdstat', 'rm', 'rmdir', 'lfn2guid', 'whereis', 'pfn', 'type', 'chown', 'md5sum', 'mv', 'touch', 'whereis']:
         for i, arg in enumerate(args):
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
+
+    if cmd == "cd":
+        cd(wb, " ".join(args))
+        return AlienSessionInfo['exitcode']
+
+    if cmd in ['dirs', 'popd', 'pushd']:
+        path_stack(wb, cmd, args)
+        return AlienSessionInfo['exitcode']
 
     if cmd == 'submit':  # submit have only first arg as lfn
         args[0] = expand_path_grid(args[0])
