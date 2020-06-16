@@ -87,7 +87,7 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'pathq': deque()}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'error': '', 'exitcode': 0, 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'pathq': deque()}
 
 
 def signal_handler(sig, frame):
@@ -253,7 +253,9 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
 
     if not result: return {}
     if 'rawstr' in opts: return result
-    return GetDict(result, opts)
+    processed_result = GetDict(result, opts)
+    SessionSave()
+    return processed_result
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '') -> str:
@@ -332,23 +334,31 @@ def GetDict(result: Union[dict, list, str], opts: str = '') -> Union[None, dict,
     else:
         out_dict = result.copy()
     if type(out_dict) == dict and 'metadata' in out_dict:  # these works only for AliEn responses
-        try:
-            global AlienSessionInfo
-            AlienSessionInfo['currentdir'] = out_dict["metadata"]["currentdir"]
-            if AlienSessionInfo['pathq'] and AlienSessionInfo['currentdir']:
-                if AlienSessionInfo['pathq'][0] != AlienSessionInfo['currentdir']: AlienSessionInfo['pathq'][0] = AlienSessionInfo['currentdir']
-            AlienSessionInfo['user'] = out_dict["metadata"]["user"]
-            AlienSessionInfo['error'] = out_dict["metadata"]["error"]
-            AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
-            if int(AlienSessionInfo['exitcode']) != 0:
-                err_msg = AlienSessionInfo['error']
-                flags = ['log', 'err', 'debug']
-                if any(flag in opts for flag in flags):
-                    logging.error(f"{err_msg}")
-                if 'print' in opts:
-                    print(f'{err_msg}', file=sys.stderr, flush = True)
-        except Exception as e:
-            pass
+        global AlienSessionInfo
+        prev_dir_tmp = AlienSessionInfo['currentdir']
+        current_dir = out_dict["metadata"]["currentdir"]
+        # this is first connection, current dir is alien home
+        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
+
+        if AlienSessionInfo['currentdir'] != current_dir:
+            AlienSessionInfo['currentdir'] = current_dir
+            AlienSessionInfo['prevdir'] = prev_dir_tmp
+        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
+        short_current_dir = short_current_dir[:-1]  # remove the last /
+        if AlienSessionInfo['pathq']:
+            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
+        else:
+            push2stack(short_current_dir)
+        AlienSessionInfo['user'] = out_dict["metadata"]["user"]
+        AlienSessionInfo['error'] = out_dict["metadata"]["error"]
+        AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
+        if int(AlienSessionInfo['exitcode']) != 0:
+            err_msg = AlienSessionInfo['error']
+            flags = ['log', 'err', 'debug']
+            if any(flag in opts for flag in flags):
+                logging.error(f"{err_msg}")
+            if 'print' in opts:
+                print(f'{err_msg}', file=sys.stderr, flush = True)
         if 'nometa' in opts: del out_dict["metadata"]
         if 'results' in opts: out_dict = out_dict['results']
     return out_dict
@@ -561,26 +571,29 @@ def GetCWDFilename() -> str:
     return os.path.join(os.path.expanduser("~"), ".alienpy_cwd")
 
 
-def RestoreCWD(wb: websockets.client.WebSocketClientProtocol):
-    cwd = ''
+def GetSessionFilename() -> str:
+    return os.path.join(os.path.expanduser("~"), ".alienpy_session")
+
+
+def SessionSave():
     try:
-        with open(GetCWDFilename()) as f:
-            cwd = f.read()
+        with open(GetSessionFilename(), "w") as f:
+            line1 = f"CWD = {AlienSessionInfo['currentdir']}\n"
+            line2 = f"CWDPREV = {AlienSessionInfo['prevdir']}\n"
+            f.writelines([line1, line2])
     except Exception as e:
-        logging.warning('RestoreCWD:: failed to read file')
+        logging.warning("SessionSave:: failed to write file")
         logging.exception(e)
-    if cwd:
-        resp = SendMsg(wb, 'cd ' + cwd, opts = 'log')
 
 
-def StoreCWD():
-    if not os.getenv('ALIENPY_NO_CWD_RESTORE'):
-        try:
-            with open(GetCWDFilename(), "w") as f:
-                f.write(AlienSessionInfo["currentdir"])
-        except Exception as e:
-            logging.warning("StoreCWD:: failed to write file")
-            logging.exception(e)
+def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
+    if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
+    global AlienSessionInfo
+    if os.path.exists(GetSessionFilename()):
+        session = read_conf_file(GetSessionFilename())
+        AlienSessionInfo['currentdir'] = session['CWD']
+        AlienSessionInfo['prevdir'] = session['CWDPREV']
+        cd(wb, AlienSessionInfo['currentdir'])
 
 
 def unixtime2local(timestamp: Union[str, int]) -> str:
@@ -601,13 +614,22 @@ def convert_time(str_line: str) -> str:
 
 
 def cd(wb: websockets.client.WebSocketClientProtocol, path: str):
-    res = SendMsg(wb, 'cd', [path], opts = 'log')
+    global AlienSessionInfo
+    tmp_current = AlienSessionInfo['currentdir']
+    if not path:
+        res = SendMsg(wb, 'cd', [AlienSessionInfo['alienHome']], opts = 'log')
+    elif path is '-':
+        res = SendMsg(wb, 'cd', [AlienSessionInfo['prevdir']], opts = 'log')
+    else:
+        res = SendMsg(wb, 'cd', [path], opts = 'log')
 
 
 def push2stack(path: str):
     if not str: return
     global AlienSessionInfo
-    AlienSessionInfo['pathq'].appendleft(path.replace(AlienSessionInfo['alienHome'], '~'))
+    if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
+    if home and home in path: path = path.replace(home, '~')
+    AlienSessionInfo['pathq'].appendleft(path)
 
 
 def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list] = None):
@@ -690,12 +712,13 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])
             return
 
+        path = expand_path_grid(arg_list[0])
         if do_not_cd:
             cwd = AlienSessionInfo['pathq'].popleft()
-            push2stack(arg_list[0])
+            push2stack(path)
             push2stack(cwd)
         else:
-            push2stack(arg_list[0])
+            push2stack(path)
             cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
         return
 
@@ -2569,17 +2592,10 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('popd')
     AlienSessionInfo['commandlist'].append('pushd')
     AlienSessionInfo['commandlist'].sort()
-    AlienSessionInfo['user'] = json_dict['metadata']['user']
 
-    # if we were intrerupted and re-connect than let's get back to the old currentdir
-    if AlienSessionInfo['currentdir'] and (AlienSessionInfo['currentdir'] != json_dict['metadata']['currentdir']):
-        tmp_res = cd(wb, AlienSessionInfo['currentdir'])
-    else:
-        AlienSessionInfo['currentdir'] = json_dict["metadata"]["currentdir"]
-
-    # if this is first query then current dir is alienHOME
-    if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = AlienSessionInfo['currentdir']
-    push2stack(AlienSessionInfo['currentdir'])
+    if AlienSessionInfo['alienHome']:  # if set, this is a reconnect
+        cd(wb, AlienSessionInfo['prevdir'])  # at reconnection return to last previous directory
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
@@ -2890,7 +2906,6 @@ def JAlien(commands: str = ''):
         setupHistory()  # enable history saving
 
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
-    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): RestoreCWD(wb)
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     while True:
@@ -2946,7 +2961,7 @@ def JAlien(commands: str = ''):
 
             if input_list[0] == 'exit' or input_list[0] == 'quit' or input_list[0] == 'logout': exit_message()
             ProcessInput(wb, ' '.join(input_list), pipe_to_shell_cmd)
-            if input_list[0] == 'cd': StoreCWD()
+            if input_list[0] == 'cd': SessionSave()
 
 
 def setup_logging():
