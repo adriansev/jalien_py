@@ -11,8 +11,6 @@ import statistics
 import math
 import alienpy.alien as alien
 
-alien.DEBUG = 1
-alien.DEBUG_FILE = Path.home().as_posix() + '/alienpy_connection_time.log'
 alien.setup_logging()
 
 jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
