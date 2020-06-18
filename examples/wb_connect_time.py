@@ -48,8 +48,8 @@ def do_wb_connect():
         return float(999999.0)
 
 
-if len(sys.argv) > 1 and sys.argv[0].isdigit():
-    count = int(sys.argv[0])
+if len(sys.argv) > 1 and sys.argv[1].isdigit():
+    count = int(sys.argv[1])
 else:
     count = int(3)
 if count < 1: count = 1
