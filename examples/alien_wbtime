@@ -2,20 +2,17 @@
 
 import os
 import sys
-import logging
-from pathlib import Path
 import time
 from datetime import datetime, timezone
 import traceback
 import statistics
-import math
 import alienpy.alien as alien
 
 alien.setup_logging()
 
+jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
 jalien_websocket_path = '/websocket/json'
-jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
 connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', 3))
 connect_tries_interval = int(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', 0.5))
 use_usercert = False
@@ -64,11 +61,4 @@ rtt_max = max(results)
 rtt_avg = statistics.mean(results)
 rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
 print(f"Websocket connect time : {count} time(s) to {jalien_server}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}", flush = True)
-
-
-
-
-
-
-
 
