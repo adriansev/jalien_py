@@ -4,6 +4,8 @@
 
 ./update_version
 git commit -m "alien.py update version info" alienpy/alien.py
+git push
+git push xjalienfs master
 
 git tag $(< VERSION)
 git push --tags
