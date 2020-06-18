@@ -2429,20 +2429,45 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     return wb
 
 
+def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
+    wb = None
+    nr_tries = 0
+    init_begin = None
+    init_delta = None
+    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
+    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', 3))
+    connect_tries_interval = int(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', 0.5))
+
+    while wb is None:
+        try:
+            nr_tries += 1
+            wb = wb_create(host, str(port), path, use_usercert, localConnect)
+        except Exception as e:
+            logging.debug(traceback.format_exc())
+        if not wb:
+            if nr_tries + 1 > connect_tries:
+                logging.debug(f"We tried on {host}:{port}{path} {nr_tries} times")
+                break
+            time.sleep(connect_tries_interval)
+
+    if wb and init_begin:
+        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
+        if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
+
+    return wb
+
+
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
+    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', 3))
 
     # let's try to get a websocket
     wb = None
-    nr_tries = 0
-    init_begin = None
-    init_delta = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
-
     if localConnect:
         wb = wb_create(localConnect = True)
     else:
@@ -2454,34 +2479,13 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
                     jalien_server = jalien_info['JALIEN_HOST']
                     jalien_websocket_port = jalien_info['JALIEN_WSPORT']
 
-        while wb is None:
-            try:
-                nr_tries += 1
-                wb = wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
-            except Exception as e:
-                logging.debug(traceback.format_exc())
-            if not wb:
-                if nr_tries + 1 > 3:
-                    logging.debug(f"We tried on {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} {nr_tries} times")
-                    break
-                time.sleep(1)
+        wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
         # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
         if not wb and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
             jalien_websocket_port = 8097
             jalien_server = 'alice-jcentral.cern.ch'
-            nr_tries = 0
-            while wb is None:
-                try:
-                    nr_tries += 1
-                    wb = wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
-                except Exception as e:
-                    logging.debug(traceback.format_exc())
-                if not wb:
-                    if nr_tries + 1 > 3:
-                        logging.debug(f"Even {jalien_server}:{jalien_websocket_port}{jalien_websocket_path} failed for {nr_tries} times, giving up")
-                        break
-                    time.sleep(1)
+            wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
 
     if not wb:
         print(f"Check the logfile: {DEBUG_FILE}", file=sys.stderr, flush = True)
@@ -2489,10 +2493,6 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         logging.error(msg)
         print(msg, file=sys.stderr, flush = True)
         sys.exit(1)
-    if init_begin:
-        init_delta = (datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
-        if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
     if AlienSessionInfo['use_usercert']: token(wb, token_args)  # if we connect with usercert then let get a default token
     return wb
