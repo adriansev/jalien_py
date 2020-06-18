@@ -76,9 +76,10 @@ setuptools.setup(
             'alien-token-destroy = alienpy.alien:cmd_token_destroy',
         ]
     },
+    scripts = [
+        'examples/alien_wbtime',
+        ],
     keywords = 'CERN ALICE JAliEn GRID',
-
-
 
 )
 
