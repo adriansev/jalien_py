@@ -254,7 +254,6 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     if not result: return {}
     if 'rawstr' in opts: return result
     processed_result = GetDict(result, opts)
-    SessionSave()
     return processed_result
 
 
@@ -567,10 +566,6 @@ def is_my_pid(pid: int) -> bool:
     return True if pid_uid(int(pid)) == os.getuid() else False
 
 
-def GetCWDFilename() -> str:
-    return os.path.join(os.path.expanduser("~"), ".alienpy_cwd")
-
-
 def GetSessionFilename() -> str:
     return os.path.join(os.path.expanduser("~"), ".alienpy_session")
 
@@ -579,6 +574,7 @@ def SessionSave():
     try:
         with open(GetSessionFilename(), "w") as f:
             line1 = f"CWD = {AlienSessionInfo['currentdir']}\n"
+            if not AlienSessionInfo['prevdir']: AlienSessionInfo['prevdir'] = AlienSessionInfo['currentdir']
             line2 = f"CWDPREV = {AlienSessionInfo['prevdir']}\n"
             f.writelines([line1, line2])
     except Exception as e:
@@ -2595,7 +2591,6 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
 
     if AlienSessionInfo['alienHome']:  # if set, this is a reconnect
         cd(wb, AlienSessionInfo['prevdir'])  # at reconnection return to last previous directory
-    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
@@ -2908,6 +2903,7 @@ def JAlien(commands: str = ''):
     print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
