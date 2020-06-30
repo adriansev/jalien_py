@@ -647,19 +647,17 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
               'popd [-n] [+N | -N]'
               'pushd [-n] [+N | -N | dir]')
 
-    chose_item_regex = re.compile('\\+|-\\d+')
     sign = None
     position = None
     for arg in arg_list:
-        match = re.search(chose_item_regex, arg)
-        if match:
-            N_arg = match.group()
-            sign = N_arg[0]
-            position = N_arg[1:]
-            if not position.isdecimal():
+        if arg[0] == '+' or arg[0] == '-':
+            sign = arg[0]
+            if not arg[1:].isdecimal():
                 print("-N | +N argument is invalid")
                 return
-            arg_list.remove(N_arg)
+            else:
+                position = int(arg[1:])
+            arg_list.remove(arg)
 
     if cmd == "dirs":
         if '-c' in arg_list:
@@ -670,42 +668,47 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             print()
 
         if position and sign:
-            if position > size - 1: return
+            if position > len(AlienSessionInfo['pathq']) - 1: return
             if sign == "+":
                 print(AlienSessionInfo['pathq'][position])  # Nth position from top (last/top element have the index 0)
             if sign == "-":
-                print(AlienSessionInfo['pathq'][size - 1 - position])  # Nth position from last
+                print(AlienSessionInfo['pathq'][len(AlienSessionInfo['pathq']) - 1 - position])  # Nth position from last
         return  # end of dirs
 
     if cmd == "popd":
         if position and sign:
-            if position > size - 1: return
+            if position > len(AlienSessionInfo['pathq']) - 1: return
             if sign == "+": remove = AlienSessionInfo['pathq'].popleft(position)
             if sign == "-": remove = AlienSessionInfo['pathq'].pop(position)
+            print(" ".join(AlienSessionInfo['pathq']))
             return
+
         if not arg_list:
             remove = AlienSessionInfo['pathq'].popleft()
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+        print(" ".join(AlienSessionInfo['pathq']))
         return  # end of popd
 
     if cmd == "pushd":
         if position and sign:
-            if position > size - 1: return
+            if position > len(AlienSessionInfo['pathq']) - 1: return
             if sign == "+":
                 AlienSessionInfo['pathq'].rotate(-position)
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
             if sign == "-":
-                AlienSessionInfo['pathq'].rotate(-(size - 1 - position))
+                AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - 1 - position))
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            print(" ".join(AlienSessionInfo['pathq']))
             return  # end of +N|-N
 
         if not arg_list:
-            if size < 2: return
+            if len(AlienSessionInfo['pathq']) < 2: return
             old_cwd = AlienSessionInfo['pathq'].popleft()
             new_cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(old_cwd)
             push2stack(new_cwd)
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])
+            print(" ".join(AlienSessionInfo['pathq']))
             return
 
         path = expand_path_grid(arg_list[0])
@@ -716,6 +719,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
         else:
             push2stack(path)
             cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+        print(" ".join(AlienSessionInfo['pathq']))
         return
 
 
