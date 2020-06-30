@@ -1803,6 +1803,20 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     return ''
 
 
+def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
+    """submit: process submit commands for local jdl cases"""
+    global AlienSessionInfo
+    if args[0].startswith("file:"):
+        print("Specifications as where to upload the jdl to be submitted and with what parameters are not yet defined"
+              "Upload first the jdl to a suitable location and with a safe number of replicas and then submit")
+        AlienSessionInfo['exitcode'] = 0
+        AlienSessionInfo['error'] = ''
+        return int(AlienSessionInfo['exitcode'])
+    else:
+        result = SendMsg(wb, 'submit', args, opts = 'log print')
+    return int(AlienSessionInfo['exitcode'])
+
+
 def DO_ps(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
     """ps : show and process ps output"""
     result = SendMsg(wb, 'ps', args, opts = 'log print')
@@ -2743,6 +2757,10 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
 
     if cmd == "ps":
         AlienSessionInfo['exitcode'] = DO_ps(wb, args)
+        return AlienSessionInfo['exitcode']
+
+    if cmd == "submit":
+        AlienSessionInfo['exitcode'] = DO_submit(wb, args)
         return AlienSessionInfo['exitcode']
 
     if cmd == "run":
