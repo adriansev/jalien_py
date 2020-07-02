@@ -18,13 +18,12 @@ from collections import deque
 from typing import NamedTuple
 import OpenSSL
 import shlex
-import argparse
 import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from enum import Enum
 from urllib.parse import urlparse
+import urllib.request as urlreq
 import socket
 import threading
 import asyncio
@@ -1803,6 +1802,79 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     return ''
 
 
+def queryML(args: list = None) -> str:
+    """submit: process submit commands for local jdl cases"""
+    global AlienSessionInfo
+    if args is None: args = []
+    if args and args[0] == '-h':
+        print('usage: queryML <ML node>')
+
+    alimon = 'http://alimonitor.cern.ch/rest/'
+    type_json = '?Accept=application/json'
+    type_xml = '?Accept=text/xml'
+    type_plain = '?Accept=text/plain'
+    type_default = ''
+    predicate = ''
+
+    if 'text' in args:
+        type_default = type_plain
+        args.remove('text')
+    if 'xml' in args:
+        type_default = type_xml
+        args.remove('xml')
+    if 'json' in args:
+        type_default = type_json
+        args.remove('json')
+
+    if args: predicate = args[0]
+    url = f"{alimon}{predicate}{type_default}"
+    req = urlreq.urlopen(url)
+    ansraw = req.read().decode()
+
+    if req.getcode() == 200:
+        AlienSessionInfo['exitcode'] = 0
+    else:
+        AlienSessionInfo['exitcode'] = req.getcode()
+    return ansraw
+
+
+def DO_queryML(args: list = None) -> int:
+    """submit: process submit commands for local jdl cases"""
+    global AlienSessionInfo
+    if args is None: args = []
+    types = ('text', 'xml', 'json')
+    if any(type in types for arg in args): args.remove(type)
+    args.append('json')
+    ansraw = queryML(args)
+    ans2dict = json.loads(ansraw)
+    ans_list = ans2dict["results"]
+    if len(ans_list) == 0:
+        AlienSessionInfo['exitcode'] = 1
+        return int(AlienSessionInfo['exitcode'])
+
+    # all elements will have the same key names
+    n_columns = len(ans_list[0])
+    keys = ans_list[0].keys()
+
+    # establish keys width
+    max_value_size = [len(key) for key in keys]
+    for row in ans_list:
+        for idx, key in enumerate(keys):
+            max_value_size[idx] = max(max_value_size[idx], len(str(row.get(key))))
+    max_value_size[:] = [w + 3 for w in max_value_size]
+
+    # create width specification list
+    row_format_list = ['{: <' + str(w) + '}' for w in max_value_size]
+    row_format = "".join(row_format_list)
+
+    print(row_format.format(*keys))
+    for row in ans_list:
+        value_list = [row.get(key) for key in keys]
+        print(row_format.format(*value_list))
+
+    return int(AlienSessionInfo['exitcode'])
+
+
 def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
     """submit: process submit commands for local jdl cases"""
     global AlienSessionInfo
@@ -2605,6 +2677,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('dirs')
     AlienSessionInfo['commandlist'].append('popd')
     AlienSessionInfo['commandlist'].append('pushd')
+    AlienSessionInfo['commandlist'].append('queryML')
     AlienSessionInfo['commandlist'].sort()
 
     if AlienSessionInfo['alienHome']:  # if set, this is a reconnect
@@ -2655,6 +2728,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if cmd == 'token-destroy': return DO_tokendestroy(args)
     if cmd == 'exitcode': return DO_exitcode()
     if cmd == "pfn-status": return DO_pfnstatus(args)
+    if cmd == "queryML": return DO_queryML(args)
 
     # make sure we have with whom to talk to; if not, lets redo the connection
     # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
@@ -2896,6 +2970,7 @@ def JAlien(commands: str = ''):
             if cmd == 'token-destroy': return DO_tokendestroy(args)
             if cmd == 'exitcode': return DO_exitcode()
             if cmd == "pfn-status": return DO_pfnstatus(args)
+            if cmd == "queryML": return DO_queryML(args)
 
         wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
         for token in cmds_tokens: ProcessInput(wb, token, None, True)
