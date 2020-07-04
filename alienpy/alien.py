@@ -20,7 +20,7 @@ import OpenSSL
 import shlex
 import tempfile
 import time
-from datetime import datetime, timezone
+import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 import urllib.request as urlreq
@@ -212,7 +212,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         return '' if 'rawstr' in opts else {}
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
-        init_begin = datetime.now().timestamp()
+        init_begin = datetime.datetime.now().timestamp()
     nr_tries = int(0)
     result = None
     while result is None:
@@ -247,7 +247,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         time.sleep(0.2)
 
     if DEBUG:
-        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
 
     if not result: return {}
@@ -601,11 +601,31 @@ def error():
     return int(0)
 
 
-def unixtime2local(timestamp: Union[str, int]) -> str:
+def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
     """Convert unix time to a nice custom format"""
-    utc_time = datetime.fromtimestamp(int(timestamp), timezone.utc)
+    timestr = str(timestamp)
+    if len(timestr) < 10: return ''
+    micros = None
+    millis = None
+    if len(timestr) > 10:
+        time_decimals = timestr[10:]
+        if len(time_decimals) <= 3:
+            time_decimals = time_decimals.ljust(3, '0')
+            millis = datetime.timedelta(milliseconds=int(time_decimals))
+        else:
+            time_decimals = time_decimals.ljust(6, '0')
+            micros = datetime.timedelta(microseconds=int(time_decimals))
+
+    unixtime = timestr[:10]
+    utc_time = datetime.datetime.fromtimestamp(int(unixtime), datetime.timezone.utc)
     local_time = utc_time.astimezone()
-    return str(local_time.strftime("%Y-%m-%d %H:%M:%S.%f%z"))  # (%Z)"))
+    if decimals and millis:
+        local_time = local_time + millis
+        return str(local_time.strftime("%Y-%m-%d %H:%M:%S")) + "." + time_decimals + str(local_time.strftime("%z"))
+    if decimals and micros:
+        local_time = local_time + micros
+        return str(local_time.strftime("%Y-%m-%d %H:%M:%S.%f%z"))  # (%Z)"))
+    return str(local_time.strftime("%Y-%m-%d %H:%M:%S%z"))  # (%Z)"))
 
 
 def convert_time(str_line: str) -> str:
@@ -952,7 +972,7 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> bool:
 def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5: str, replica_list: Union[None, list] = None):
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not replica_list: return
-    published = str(datetime.now().replace(microsecond=0).isoformat())
+    published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
     with open(meta_filename, 'w') as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
@@ -1516,7 +1536,7 @@ if has_xrootd:
             self.printout = ''
 
         def begin(self, jobId, total, source, target):
-            timestamp_begin = datetime.now().timestamp()
+            timestamp_begin = datetime.datetime.now().timestamp()
             if not ('quiet' in self.printout or 'silent' in self.printout):
                 print("jobID: {0}/{1} >>> Start".format(jobId, total), flush = True)
             self.jobs = int(total)
@@ -1547,7 +1567,7 @@ if has_xrootd:
 
             speed_str = '0 B/s'
             if results['status'].ok:
-                deltaT = datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
+                deltaT = datetime.datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
                 speed_str = str(GetHumanReadable(speed)) + '/s'
                 if not self.isDownload:  # isUpload
@@ -1855,6 +1875,9 @@ def DO_queryML(args: list = None) -> int:
     if len(ans_list) == 0:
         AlienSessionInfo['exitcode'] = 1
         return int(AlienSessionInfo['exitcode'])
+
+    if 'Timestamp' in ans_list[0]:
+        for item in ans_list: item['Timestamp'] = unixtime2local(item['Timestamp'])
 
     # all elements will have the same key names
     n_columns = len(ans_list[0])
@@ -2277,9 +2300,9 @@ def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
 def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_delta = float(-999.0)
-    init_begin = datetime.now().timestamp()
+    init_begin = datetime.datetime.now().timestamp()
     status = IsWbConnected(wb)
-    init_end = datetime.now().timestamp()
+    init_end = datetime.datetime.now().timestamp()
     init_delta = float((init_end - init_begin) * 1000)
     return init_delta
 
@@ -2325,9 +2348,9 @@ def IsValidCert(fname: str):
         return False
 
     x509_notafter = x509.get_notAfter()
-    utc_time = datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
-    time_notafter = int((utc_time - datetime(1970, 1, 1)).total_seconds())
-    time_current  = int(datetime.now().timestamp())
+    utc_time = datetime.datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
+    time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
+    time_current  = int(datetime.datetime.now().timestamp())
     time_remaining = time_notafter - time_current
     return True if (time_remaining > 300) else False
 
@@ -2347,8 +2370,8 @@ def CertInfo(fname: str):
         print(f"Could not load certificate >>>{fname}<<<", file=sys.stderr, flush = True)
         return int(5)  # EIO /* I/O error */
 
-    utc_time_notafter = datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
-    utc_time_notbefore = datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
+    utc_time_notafter = datetime.datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
+    utc_time_notbefore = datetime.datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
     issuer = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_issuer().get_components()]))
     subject = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_subject().get_components()]))
     print(f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}", flush = True)
@@ -2486,13 +2509,13 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         try:
             if DEBUG:
                 logging.debug(f"TRY ENDPOINT: {host}:{port}")
-                init_begin = datetime.now().timestamp()
+                init_begin = datetime.datetime.now().timestamp()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
             if DEBUG:
-                init_delta = (datetime.now().timestamp() - init_begin) * 1000
+                init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                 logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             logging.debug(traceback.format_exc())
@@ -2504,12 +2527,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
-                if DEBUG: init_begin = datetime.now().timestamp()
+                if DEBUG: init_begin = datetime.datetime.now().timestamp()
                 deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(server_max_window_bits=14, client_max_window_bits=14, compress_settings={'memLevel': 6},)
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
                 if DEBUG:
-                    init_delta = (datetime.now().timestamp() - init_begin) * 1000
+                    init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
             except Exception as e:
                 logging.debug(traceback.format_exc())
@@ -2524,7 +2547,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     nr_tries = 0
     init_begin = None
     init_delta = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
+    if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', 3))
     connect_tries_interval = int(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', 0.5))
 
@@ -2541,7 +2564,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
             time.sleep(connect_tries_interval)
 
     if wb and init_begin:
-        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         if DEBUG: logging.debug(f">>>   Endpoint total connecting time: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Endpoint total connecting time: {init_delta:.3f} ms", flush = True)
 
@@ -2698,13 +2721,13 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     init_begin = None
     init_delta = None
     wb = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.now().timestamp()
+    if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
     wb = AlienConnect(token_args, use_usercert)
 
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     getSessionVars(wb)
     if init_begin:
-        init_delta = (datetime.now().timestamp() - init_begin) * 1000
+        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         if DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
         if TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
     return wb
@@ -2781,7 +2804,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             return int(64)  # EX_USAGE /* command line usage error */
         else:
             cmd = args.pop(0)
-            message_begin = datetime.now().timestamp()
+            message_begin = datetime.datetime.now().timestamp()
 
     # then we process the help commands
     if (cmd == "?") or (cmd == "-h") or (cmd.endswith('help')):
@@ -2919,7 +2942,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if JSON_OUT or JSONRAW_OUT: send_opt = 'rawstr'
     result = SendMsg(wb, cmd, args, opts = send_opt + ' print')
     if message_begin:
-        message_delta = (datetime.now().timestamp() - message_begin) * 1000
+        message_delta = (datetime.datetime.now().timestamp() - message_begin) * 1000
         print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
     if not INI_JSONOUT_STATE:
         JSON_OUT = False
@@ -3013,7 +3036,7 @@ def JAlien(commands: str = ''):
     while True:
         INPUT = ''
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
-        if AlienSessionInfo['show_date']: prompt = str(datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
+        if AlienSessionInfo['show_date']: prompt = str(datetime.datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
         if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
         prompt = prompt + ' >'
 
