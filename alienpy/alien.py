@@ -591,6 +591,16 @@ def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
         cd(wb, AlienSessionInfo['currentdir'])
 
 
+def exitcode():
+    print(AlienSessionInfo['exitcode'])
+    return int(0)
+
+
+def error():
+    print(AlienSessionInfo['error'])
+    return int(0)
+
+
 def unixtime2local(timestamp: Union[str, int]) -> str:
     """Convert unix time to a nice custom format"""
     utc_time = datetime.fromtimestamp(int(timestamp), timezone.utc)
@@ -608,15 +618,15 @@ def convert_time(str_line: str) -> str:
         return ''
 
 
-def cd(wb: websockets.client.WebSocketClientProtocol, path: str):
+def cd(wb: websockets.client.WebSocketClientProtocol, path: str, opts: str = ''):
     global AlienSessionInfo
     tmp_current = AlienSessionInfo['currentdir']
     if not path:
-        res = SendMsg(wb, 'cd', [AlienSessionInfo['alienHome']], opts = 'log')
+        res = SendMsg(wb, 'cd', [AlienSessionInfo['alienHome']], opts)
     elif path is '-':
-        res = SendMsg(wb, 'cd', [AlienSessionInfo['prevdir']], opts = 'log')
+        res = SendMsg(wb, 'cd', [AlienSessionInfo['prevdir']], opts)
     else:
-        res = SendMsg(wb, 'cd', [path], opts = 'log')
+        res = SendMsg(wb, 'cd', [path], opts)
 
 
 def push2stack(path: str):
@@ -684,7 +694,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
 
         if not arg_list:
             remove = AlienSessionInfo['pathq'].popleft()
-            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
         print(" ".join(AlienSessionInfo['pathq']))
         return  # end of popd
 
@@ -693,10 +703,10 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             if position > len(AlienSessionInfo['pathq']) - 1: return
             if sign == "+":
                 AlienSessionInfo['pathq'].rotate(-position)
-                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
             if sign == "-":
                 AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - 1 - position))
-                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+                if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
             print(" ".join(AlienSessionInfo['pathq']))
             return  # end of +N|-N
 
@@ -706,7 +716,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             new_cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(old_cwd)
             push2stack(new_cwd)
-            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])
+            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')
             print(" ".join(AlienSessionInfo['pathq']))
             return
 
@@ -717,7 +727,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             push2stack(cwd)
         else:
             push2stack(path)
-            cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
         print(" ".join(AlienSessionInfo['pathq']))
         return
 
@@ -790,12 +800,6 @@ def DO_tokendestroy(args: list = None):
     print("Token was destroyed! Re-connect for token re-creation.")
     AlienSessionInfo['exitcode'] = 0
     return AlienSessionInfo['exitcode']
-
-
-def DO_exitcode():
-    global AlienSessionInfo
-    print(AlienSessionInfo['exitcode'])
-    return int(0)
 
 
 def xrdcp_help():
@@ -2663,6 +2667,9 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('quit')
     AlienSessionInfo['commandlist'].append('exit')
     AlienSessionInfo['commandlist'].append('exitcode')
+    AlienSessionInfo['commandlist'].append('$?')
+    AlienSessionInfo['commandlist'].append('$?err')
+    AlienSessionInfo['commandlist'].append('error')
     AlienSessionInfo['commandlist'].append('pfn')
     AlienSessionInfo['commandlist'].append('logout')
     AlienSessionInfo['commandlist'].append('ll')
@@ -2681,7 +2688,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].sort()
 
     if AlienSessionInfo['alienHome']:  # if set, this is a reconnect
-        cd(wb, AlienSessionInfo['prevdir'])  # at reconnection return to last previous directory
+        cd(wb, AlienSessionInfo['prevdir'], 'log')  # at reconnection return to last previous directory
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False) -> websockets.client.WebSocketClientProtocol:
@@ -2726,7 +2733,8 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if cmd == 'cert-info': return DO_certinfo(args)
     if cmd == 'token-info': return DO_tokeninfo(args)
     if cmd == 'token-destroy': return DO_tokendestroy(args)
-    if cmd == 'exitcode': return DO_exitcode()
+    if cmd == 'exitcode' or cmd == '$?': return exitcode()
+    if cmd == 'error' or cmd == '$?err': return error()
     if cmd == "pfn-status": return DO_pfnstatus(args)
     if cmd == "queryML": return DO_queryML(args)
 
@@ -2802,7 +2810,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
             if args[i][0] != '-': args[i] = expand_path_grid(args[i])
 
     if cmd == "cd":
-        cd(wb, " ".join(args))
+        cd(wb, " ".join(args), 'print')
         return AlienSessionInfo['exitcode']
 
     if cmd in ['dirs', 'popd', 'pushd']:
@@ -2968,7 +2976,8 @@ def JAlien(commands: str = ''):
             if cmd == 'cert-info': return DO_certinfo(args)
             if cmd == 'token-info': return DO_tokeninfo(args)
             if cmd == 'token-destroy': return DO_tokendestroy(args)
-            if cmd == 'exitcode': return DO_exitcode()
+            if cmd == 'exitcode' or cmd == '$?': return exitcode()
+            if cmd == 'error' or cmd == '$?err': return error()
             if cmd == "pfn-status": return DO_pfnstatus(args)
             if cmd == "queryML": return DO_queryML(args)
 
