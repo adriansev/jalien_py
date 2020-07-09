@@ -1319,6 +1319,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if isSrcLocal:
         src = expand_path_local(arg_source)
+        if not os.path.exists(src):
+            print("source does not exist (or is not accessible)", file=sys.stderr, flush = True)
+            return int(2)  # ENOENT /* No such file or directory */
         src_type = pathtype_local(src)
         if src_type == 'd':
             isSrcDir = bool(True)
@@ -1331,7 +1334,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         if not src_type:
             error = AlienSessionInfo['error']
             print(f"Could not check source argument type: {error}", file=sys.stderr, flush = True)
-            return int(42)  # ENOMSG /* No message of desired type */
+            return int(2)  # ENOENT /* No such file or directory */
         if src_type == 'd': isSrcDir = bool(True)
 
     dst = None
