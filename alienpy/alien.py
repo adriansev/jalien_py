@@ -1928,6 +1928,8 @@ def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: list) -> int:
         return int(AlienSessionInfo['exitcode'])
     else:
         result = SendMsg(wb, 'submit', args, opts = 'log print')
+        msg_str = '\n'.join(str(item['message']) for item in result['results'])
+        print(msg_str, flush = True)
     return int(AlienSessionInfo['exitcode'])
 
 
