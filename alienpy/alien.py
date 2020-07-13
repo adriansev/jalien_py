@@ -1271,6 +1271,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     isDstLocal = None
     isDownload = None
 
+    if '*' in arg_source:
+        print("Globbing is not supported as part of source argument. Do source selection/filtering with '-glob', '-select' or '-name', see 'cp -h'", file=sys.stderr, flush = True)
+        return int(22)  # EINVAL /* Invalid argument */
+
     arg_err_msg = 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments'
 
     if arg_source.startswith('file:'):
