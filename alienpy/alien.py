@@ -1279,10 +1279,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
     isDstLocal = None
     isDownload = None
 
-    if '*' in arg_source:
-        print("Globbing is not supported as part of source argument. Do source selection/filtering with '-glob', '-select' or '-name', see 'cp -h'", file=sys.stderr, flush = True)
-        return int(22)  # EINVAL /* Invalid argument */
-
     arg_err_msg = 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments'
 
     if arg_source.startswith('file:'):
@@ -1312,6 +1308,24 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         isDstLocal = not isSrcLocal
         if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
         if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
+
+    if '*' in arg_source:
+        if isSrcLocal:
+            print("Globbing is not supported as part of source argument if the source is local. Do source selection/filtering with '-select' or '-name', see 'cp -h'", file=sys.stderr, flush = True)
+            return int(22)  # EINVAL /* Invalid argument */
+
+        src_arr = arg_source.split("/")
+        base_path_arr = []
+        for el in src_arr:
+            if '*' not in el:
+                base_path_arr.append(el)
+            else:
+                break
+        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
+        for el in base_path_arr: src_arr.remove(el)  # remove the base path
+        pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+        use_regex = False
+        filtering_enabled = True
 
     isDownload = isDstLocal
     if isSrcLocal is None:
