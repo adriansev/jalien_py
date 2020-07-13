@@ -1309,11 +1309,9 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
         if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
 
+    arg_glob = False
     if '*' in arg_source:
-        if isSrcLocal:
-            print("Globbing is not supported as part of source argument if the source is local. Do source selection/filtering with '-select' or '-name', see 'cp -h'", file=sys.stderr, flush = True)
-            return int(22)  # EINVAL /* Invalid argument */
-
+        arg_glob = True
         src_arr = arg_source.split("/")
         base_path_arr = []
         for el in src_arr:
@@ -1321,11 +1319,20 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
                 base_path_arr.append(el)
             else:
                 break
-        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
+
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
-        use_regex = False
-        filtering_enabled = True
+        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
+        if arg_source: arg_source = arg_source + '/'
+
+        if isSrcLocal:
+            pattern_regex = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+            pattern_regex = pattern_regex.replace('*', '.*')
+            use_regex = True
+            filtering_enabled = True
+        else:
+            pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+            use_regex = False
+            filtering_enabled = True
 
     isDownload = isDstLocal
     if isSrcLocal is None:
@@ -1351,7 +1358,7 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         src_type = pathtype_local(src)
         if src_type == 'd':
             isSrcDir = bool(True)
-            if not slashend_src: parent = parent + 1
+            if not arg_glob and not slashend_src: parent = parent + 1
     else:
         src_specs_remotes = arg_source.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
@@ -1362,6 +1369,8 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             print(f"Could not check source argument type: {error}", file=sys.stderr, flush = True)
             return int(2)  # ENOENT /* No such file or directory */
         if src_type == 'd': isSrcDir = bool(True)
+
+    if isSrcDir and not src.endswith('/'): src = src + '/'
 
     dst = None
     dst_type = None
