@@ -1034,6 +1034,44 @@ def GetHumanReadable(size, precision = 2):
     return "%.*f %s" % (precision, size, suffixes[suffixIndex])
 
 
+def name2regex(pattern_regex: str = ''):
+    if not pattern_regex: return ''
+    translated_pattern_regex = '.*'
+    all = '.*'
+    verbs = ('begin', 'contain', 'ends', 'ext')
+    pattern_list = pattern_regex.split('_')
+    if any(verb in pattern_regex for verb in verbs):
+        if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+            print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+            return int(64)  # EX_USAGE /* command line usage error */
+
+        list_begin = []
+        list_contain = []
+        list_ends = []
+        list_ext = []
+        for idx, token in enumerate(pattern_list):
+            if token == 'begin': list_begin.append(KV(token, pattern_list[idx + 1]))
+            if token == 'contain': list_contain.append(KV(token, pattern_list[idx + 1]))
+            if token == 'ends': list_ends.append(KV(token, pattern_list[idx + 1]))
+            if token == 'ext': list_ext.append(KV(token, pattern_list[idx + 1]))
+
+        if list_begin: translated_pattern_regex = all + list_begin[0].val  # first string after the last slash (last match explude /)
+        for patt in list_contain: translated_pattern_regex = translated_pattern_regex + all + patt.val
+        for patt in list_ends:
+            translated_pattern_regex = translated_pattern_regex + all + patt.val
+            if list_ext:
+                translated_pattern_regex = translated_pattern_regex + '\\.' + list_ext[0].val
+            else:
+                translated_pattern_regex = translated_pattern_regex + all
+
+        for path in list_ext:
+            if not list_ends:  # we already added the ext in list_ends
+                translated_pattern_regex = translated_pattern_regex + list_ext[0].val
+
+        if DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
+        return translated_pattern_regex
+
+
 def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> int:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not has_xrootd:
@@ -1223,40 +1261,10 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
         use_regex = True
         filtering_enabled = True
 
-        translated_pattern_regex = '.*\\/'
-        verbs = ('begin', 'contain', 'ends', 'ext')
-        pattern_list = pattern_regex.split('_')
-        if any(verb in pattern_regex for verb in verbs):
-            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
-                print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
-                return int(64)  # EX_USAGE /* command line usage error */
-
-            list_begin = []
-            list_contain = []
-            list_ends = []
-            list_ext = []
-            for idx, token in enumerate(pattern_list):
-                if token == 'begin': list_begin.append(KV(token, pattern_list[idx + 1]))
-                if token == 'contain': list_contain.append(KV(token, pattern_list[idx + 1]))
-                if token == 'ends': list_ends.append(KV(token, pattern_list[idx + 1]))
-                if token == 'ext': list_ext.append(KV(token, pattern_list[idx + 1]))
-
-            for patt in list_begin: translated_pattern_regex = translated_pattern_regex + patt.val + '[^\\/]+'  # first string after the last slash (last match explude /)
-            for patt in list_contain: translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + patt.val + '[^\\/]+'
-            for patt in list_ends:
-                translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + patt.val
-                if list_ext:
-                    translated_pattern_regex = translated_pattern_regex + '\\.' + list_ext[0].val
-                else:
-                    translated_pattern_regex = translated_pattern_regex + '\\.[^\\/]+'
-
-            for path in list_ext:
-                if not list_ends:  # we already added the ext in list_ends
-                    translated_pattern_regex = translated_pattern_regex + '[^\\/]+' + '\\.' + list_ext[0].val
-
-            pattern_regex = translated_pattern_regex
-        else:
+        pattern_regex = name2regex(pattern_regex)
+        if not pattern_regex:
             print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
+            return int(22)  # EINVAL /* Invalid argument */
 
     isSrcDir = bool(False)
     isDstDir = bool(False)
@@ -2104,58 +2112,30 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
         find_args.append(args.pop(skip_nr_idx + 1))
         args.pop(skip_nr_idx)
 
-    pattern = '\\/.*'  # default regex selection for find
-    if '-select' in args and '-name' in args:
-        print("Only one rule of selection can be used, either -select (full path match) or -name (match on file name)")
-        return int(22)  # EINVAL /* Invalid argument */
-
+    pattern_regex = '.*'  # default regex selection for find
+    filtering_enabled = False
     if '-select' in args:
         select_idx = args.index('-select')
-        pattern = args.pop(select_idx + 1)
+        pattern_regex = args.pop(select_idx + 1)
         args.pop(select_idx)
+        filtering_enabled = True
 
     if '-name' in args:
+        if filtering_enabled:
+            print("Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")
+            return int(22)  # EINVAL /* Invalid argument */
         name_idx = args.index('-name')
-        pattern = args.pop(name_idx + 1)
+        pattern_regex = args.pop(name_idx + 1)
         args.pop(name_idx)
+        filtering_enabled = True
 
-        translated_pattern = '.*\\/'
-        verbs = ('begin', 'contain', 'ends', 'ext')
-        pattern_list = pattern.split('_')
-        if any(verb in pattern for verb in verbs):
-            if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
-                print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
-                return int(64)  # EX_USAGE /* command line usage error */
-
-            list_begin = []
-            list_contain = []
-            list_ends = []
-            list_ext = []
-            for idx, token in enumerate(pattern_list):
-                if token == 'begin': list_begin.append(KV(token, pattern_list[idx + 1]))
-                if token == 'contain': list_contain.append(KV(token, pattern_list[idx + 1]))
-                if token == 'ends': list_ends.append(KV(token, pattern_list[idx + 1]))
-                if token == 'ext': list_ext.append(KV(token, pattern_list[idx + 1]))
-
-            for patt in list_begin: translated_pattern = translated_pattern + patt.val + '[^\\/]+'  # first string after the last slash (last match explude /)
-            for patt in list_contain: translated_pattern = translated_pattern + '[^\\/]+' + patt.val + '[^\\/]+'
-            for patt in list_ends:
-                translated_pattern = translated_pattern + '[^\\/]+' + patt.val
-                if list_ext:
-                    translated_pattern = translated_pattern + '\\.' + list_ext[0].val
-                else:
-                    translated_pattern = translated_pattern + '\\.[^\\/]+'
-
-            for path in list_ext:
-                if not list_ends:  # we already added the ext in list_ends
-                    translated_pattern = translated_pattern + '[^\\/]+' + '\\.' + list_ext[0].val
-
-            pattern = translated_pattern
-        else:
+        pattern_regex = name2regex(pattern_regex)
+        if not pattern_regex:
             print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
+            return int(22)  # EINVAL /* Invalid argument */
 
     try:
-        regex = re.compile(pattern)
+        regex = re.compile(pattern_regex)
     except re.error:
         print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
         return int(64)  # EX_USAGE /* command line usage error */
@@ -2164,7 +2144,7 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> int:
         print('Too many elements remained in arg list, it should be just the directory')
         print(args)
         return int(1)
-    find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern])
+    find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern_regex])
     result = SendMsg(wb, 'find', find_args, opts = 'nokeys')
     return ProcessReceivedMessage(result)
 
