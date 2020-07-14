@@ -1384,8 +1384,6 @@ def ProcessXrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_comm
             return int(2)  # ENOENT /* No such file or directory */
         if src_type == 'd': isSrcDir = bool(True)
 
-    if isSrcDir and not src.endswith('/'): src = src + '/'
-
     dst = None
     dst_type = None
     dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
