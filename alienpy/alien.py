@@ -657,6 +657,19 @@ def push2stack(path: str):
     AlienSessionInfo['pathq'].appendleft(path)
 
 
+def deque_pop_pos(dq: deque, pos: int = 1):
+    if abs(pos) > len(dq) - 1: return
+    pos = - pos
+    dq.rotate(pos)
+    if pos > 0:
+        val = dq.pop()
+        if len(dq) > 1: dq.rotate(- (pos - 1))
+    else:
+        val = dq.popleft()
+        if len(dq) > 1: dq.rotate(abs(pos) - 1)
+    return val
+
+
 def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list] = None):
     if not cmd: return
     if args is None: return
@@ -678,6 +691,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
 
     sign = None
     position = None
+    pos = None
     for arg in arg_list:
         if arg[0] == '+' or arg[0] == '-':
             sign = arg[0]
@@ -687,6 +701,7 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
             else:
                 position = int(arg[1:])
             arg_list.remove(arg)
+            pos = int(arg)
 
     if cmd == "dirs":
         if '-c' in arg_list:
@@ -707,13 +722,12 @@ def path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', arg
     if cmd == "popd":
         if position and sign:
             if position > len(AlienSessionInfo['pathq']) - 1: return
-            if sign == "+": remove = AlienSessionInfo['pathq'].popleft(position)
-            if sign == "-": remove = AlienSessionInfo['pathq'].pop(position)
+            removed = deque_pop_pos(AlienSessionInfo['pathq'], pos)
             print(" ".join(AlienSessionInfo['pathq']))
             return
 
         if not arg_list:
-            remove = AlienSessionInfo['pathq'].popleft()
+            removed = AlienSessionInfo['pathq'].popleft()
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
         print(" ".join(AlienSessionInfo['pathq']))
         return  # end of popd
