@@ -93,7 +93,10 @@ DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'user': '', 'stdout': '', 'error': '', 'q_out': deque([]), 'q_err': deque([]), 'exitcode': int(-1), 'show_date': False, 'show_lpwd': False, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'pathq': deque([])}
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '',
+                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'completer_cache': [], 'alias_cache': {},
+                    'q_out': deque([]), 'q_err': deque([]), 'pathq': deque([]),
+                    'show_date': False, 'show_lpwd': False}
 
 
 class COLORS:
@@ -204,11 +207,11 @@ class AliEn:
         self.wb = InitConnection()
         self.opts = opts
 
-    def run(self, cmd, opts = ''):
+    def run(self, cmd, opts = '') -> Union[RET, str]:
         if not opts: opts = self.opts
         return SendMsg(self.wb, cmd, opts = opts)
 
-    def ProcessMsg(self, cmd):
+    def ProcessMsg(self, cmd) -> int:
         command_list = cmd.split(";")
         exitcode = None
         for cmd in command_list: exitcode = ProcessInput(self.wb, cmd)
@@ -460,7 +463,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
 
 def GetDict(result: Union[str, dict], opts: str = '') -> RET:
     """Convert server reply string to dict, update all relevant globals"""
-    if not result: return RET(1, '', 'PrintDict:: empty argument')
+    if not result: return RET(1, '', 'GetDict:: empty argument')
     out_dict = None
     if type(result) == str:
         try:
@@ -478,23 +481,14 @@ def GetDict(result: Union[str, dict], opts: str = '') -> RET:
     return ret_obj
 
 
-def PrintDict(in_arg: Union[str, dict, list], opts: str = '') -> RET:
-    """Print a dictionary in a nice format and optionaly send the string """
+def PrintDict(in_arg: Union[str, dict, list]):
+    """Print a dictionary in a nice format"""
     if type(in_arg) == str:
-        if 'rawstr' in opts:
-            dict_str = in_arg
-        else:
-            try:
-                in_arg = json.loads(in_arg)
-            except Exception as e:
-                return RET(1, "", 'PrintDict:: Could not load argument as json!')
-    dict_str = json.dumps(in_arg, sort_keys = True, indent = 4)
-    if 'info' in opts: logging.info(dict_str)
-    if 'warn' in opts: logging.warning(dict_str)
-    if 'err' in opts: logging.error(dict_str)
-    if 'debug' in opts: logging.debug(dict_str)
-    if 'stderr' in opts: return RET(1, "", dict_str)
-    return RET(0, dict_str, "")
+        try:
+            in_arg = json.loads(in_arg)
+        except Exception as e:
+            print('PrintDict:: Could not load argument as json!')
+    print(json.dumps(in_arg, sort_keys = True, indent = 4))
 
 
 def Update_meta2session(message: dict = None):
@@ -679,9 +673,10 @@ def read_conf_file(file: str) -> dict:
 
 
 def import_aliases():
+    global AlienSessionInfo
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
     global AlienSessionInfo
-    if os.path.exists(alias_file): return read_conf_file(alias_file)
+    if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
 
 def os_release() -> dict:
@@ -3145,21 +3140,20 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     if shellcmd and ret_obj.exitcode == 0 and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
-
     return ret_obj
 
 
 def JAlien(commands: str = '') -> int:
     """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo, JSON_OUT, JSONRAW_OUT
-    aliases_dict = import_aliases()
+    import_aliases()
     wb = None
 
     # Command mode interaction
     if commands:
         # translate aliases
-        if aliases_dict:
-            for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
+        if AlienSessionInfo['alias_cache']:
+            for alias in AlienSessionInfo['alias_cache']: commands = commands.replace(alias, AlienSessionInfo['alias_cache'][alias])
         cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(commands)]  # split commands on ; and \n
         ret_obj = None
         for cmdline in cmdline_list:
