@@ -203,6 +203,7 @@ class RET(NamedTuple):
 
 
 class AliEn:
+    """Class to be used as advanced API for interaction with central servers"""
     def __init__(self, opts = ''):
         self.wb = InitConnection()
         self.opts = opts
@@ -211,19 +212,17 @@ class AliEn:
         if not opts: opts = self.opts
         return SendMsg(self.wb, cmd, opts = opts)
 
-    def ProcessMsg(self, cmd) -> int:
-        command_list = cmd.split(";")
-        exitcode = None
-        for cmd in command_list: exitcode = ProcessInput(self.wb, cmd)
-        return exitcode
+    def ProcessMsg(self, cmd, opts = '') -> int:
+        if not opts: opts = self.opts
+        return ProcessCommandChain(self.wb, cmd)
 
-    def wb(self):
+    def wb(self) -> websockets.client.WebSocketClientProtocol:
         return self.wb
 
     def help(self):
         print(f'Methods of AliEn session:\n'
-              f'.run(cmd, opts) : alias to SendMsg(cmd, opts)\n'
-              f'.ProcessMsg(cmd_list) : alias to ProcessInput, it will have the same output as in the alien.py interaction\n'
+              f'.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
+              f'.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
               f'.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
 
 
@@ -400,11 +399,10 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         logging.info(f"SendMsg:: websocket not initialized")
         return '' if 'rawstr' in opts else {}
     if not args: args = []
-    if JSON_OUT:  # if jsout output was requested, then make sure we get the full answer
+    if JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '')
         opts = opts.replace('nomsg', '')
     if DEBUG:
-        opts = opts.replace('nokeys', '')
         logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")
         logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
     if '{"command":' in cmdline and '"options":' in cmdline:
@@ -414,8 +412,8 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     if DEBUG: logging.info(f"We send this json: {json}\n")
 
     if not json:
-        logging.info(f"SendMsg:: json message is empty or invalid")
-        return '' if 'rawstr' in opts else {}
+        logging.info("SendMsg:: json message is empty or invalid")
+        return '' if 'rawstr' in opts else RET(1, '', "SendMsg:: json message is empty or invalid")
     if DEBUG:
         logging.debug(f"SEND COMMAND: {json}")
         init_begin = datetime.datetime.now().timestamp()
@@ -725,10 +723,10 @@ def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
         if sys_cur_dir != AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'])
 
 
-def exitcode(): return RET(0, f"{AlienSessionInfo['exitcode']}", '')
+def exitcode(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['exitcode']}", '')
 
 
-def error(): return RET(0, f"{AlienSessionInfo['error']}", '')
+def error(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['error']}", '')
 
 
 def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
@@ -801,16 +799,16 @@ def deque_pop_pos(dq: deque, pos: int = 1):
     return val
 
 
-def DO_dirs(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = None) -> RET: return DO_path_stack(wb, 'dirs', args)
+def DO_dirs(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'dirs', args)
 
 
-def DO_popd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = None) -> RET: return DO_path_stack(wb, 'popd', args)
+def DO_popd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'popd', args)
 
 
-def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = None) -> RET: return DO_path_stack(wb, 'pushd', args)
+def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'pushd', args)
 
 
-def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list] = None) -> RET:
+def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
     if not cmd: return RET()
     if args is None: return RET()
@@ -908,7 +906,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
         return RET(0, msg)  # end of +N|-N
 
 
-def DO_version() -> RET:
+def DO_version(args: Union[list, None] = None) -> RET:
     stdout = (f'alien.py version: {ALIENPY_VERSION_STR}\n'
               f'alien.py version date: {ALIENPY_VERSION_DATE}\n'
               f'alien.py location: {os.path.realpath(__file__)}\n'
@@ -916,21 +914,21 @@ def DO_version() -> RET:
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
               f'Python version: {sys.version}')
     if has_xrootd:
-        stdout = stdout + f'XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
+        stdout = stdout + f'\nXRootD version: {client.__version__}\nXRootD path: {client.__file__}'
     else:
-        stdout = stdout + f'XRootD version: Not Found!'
+        stdout = stdout + f'\nXRootD version: Not Found!'
     return RET(0, stdout, "")
 
 
-def DO_certinfo(args: list = None) -> RET:
-    if not args: args = []
+def DO_certinfo(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
     cert_files = get_files_cert()
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print user certificate information", "")
     return CertInfo(cert_files[0])
 
 
-def DO_tokeninfo(args: list = None) -> RET:
+def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if not args: args = []
     token_files = get_files_token()
@@ -951,9 +949,9 @@ def DO_tokeninfo(args: list = None) -> RET:
         return RET(1, "", f"Token >{tokencert}< not found/created")
 
 
-def DO_tokendestroy(args: list = None) -> RET:
+def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
-    if not args: args = []
+    if args is None: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         msg = "Delete the token{cert,key}.pem files"
         return RET(0, msg, "")
@@ -1214,12 +1212,13 @@ def name2regex(pattern_regex: str = '') -> str:
 def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not has_xrootd: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
-
+    if xrd_copy_command is None: xrd_copy_command = []
     global AlienSessionInfo
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
-    if (not xrd_copy_command) or len(xrd_copy_command) < 2 or xrd_copy_command == '-h':
+
+    if not xrd_copy_command or len(xrd_copy_command) < 2 or '-h' in xrd_copy_command or '-help' in xrd_copy_command:
         help_msg = xrdcp_help()
-        return RET(64, '', help_msg)  # EX_USAGE /* command line usage error */
+        return RET(0, help_msg)  # EX_USAGE /* command line usage error */
 
     tmpdir = os.getenv('TMPDIR', '/tmp')
 
@@ -1877,13 +1876,13 @@ def is_pfn_readable(pfn: str) -> bool:
     return False
 
 
-def DO_pfnstatus(args: list = None) -> RET:
+def DO_pfnstatus(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
-    if not args: args = []
-    if '-h' in args or '-help' in args:
-        print('Command format: pfn_status <pfn>'
-              'It will return all flags reported by the xrootd server', flush = True)
-        return int(0)
+    if args is None: args = []
+    if not args or '-h' in args or '-help' in args:
+        msg = ('Command format: pfn_status <pfn>'
+               'It will return all flags reported by the xrootd server - this is direct access to server')
+        return RET(0, msg)
     pfn = args.pop(0)
     answer = xrd_stat(pfn)
     response_stat = answer[0]
@@ -2076,11 +2075,11 @@ def queryML(args: list = None) -> str:
     return ansraw
 
 
-def DO_queryML(args: list = None) -> RET:
+def DO_queryML(args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     global AlienSessionInfo
     if args is None: args = []
-    if args and args[0] == '-h':
+    if not args or '-h' in args or '-help' in args:
         return RET(0, 'usage: queryML <ML node>')
     types = ('text', 'xml', 'json')
     if any(type in types for arg in args): args.remove(type)
@@ -2529,9 +2528,9 @@ def check_port(address: str, port: Union[str, int]) -> bool:
         return True
 
 
-def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> int:
+def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
     """Return the help option even for client-side commands"""
-    if not cmd: return int(1)
+    if not cmd: return RET(1, '', 'No command specified for help')
     return ProcessInput(wb, cmd + ' -h')
 
 
@@ -2558,7 +2557,7 @@ def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
             msg = msg + '\n' + ''.join(ln)
         return RET(0, msg)
     else:
-        get_help(wb, args.pop(0))
+        return get_help(wb, args.pop(0))
 
 
 def DO_prompt(args: Union[list, None] = None) -> RET:
@@ -3143,6 +3142,51 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
     return ret_obj
 
 
+def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, None] = None, cmd_chain: str = '') -> int:
+    global AlienSessionInfo, JSON_OUT, JSONRAW_OUT
+    if not cmd_chain: return int(1)
+    # translate aliases in place in the whole string
+    if AlienSessionInfo['alias_cache']:
+        for alias in AlienSessionInfo['alias_cache']: cmd_chain = cmd_chain.replace(alias, AlienSessionInfo['alias_cache'][alias])
+    cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n
+
+    ret_obj = None
+    for cmdline in cmdline_list:
+        if cmdline.startswith('!'):  # if shell command, just run it and return
+            capture_out = True
+            if '-noout' in cmdline:
+                cmdline = cmdline.replace(' -noout', '')
+                capture_out = False
+            retf_print(runShellCMD(cmdline, capture_out))
+            continue
+
+        # process the input and take care of pipe to shell
+        input_alien, sep, pipe_to_shell_cmd = cmdline.partition('|')
+        if not input_alien:
+            print("AliEn command before the | token was not found")
+            continue
+
+        args = input_alien.strip().split()
+        cmd = args.pop(0)
+        if any(cmd in ['exit', 'quit', 'logout'] for cmd in cmdline): exit_message()
+
+        print_opts = 'debug json' if JSON_OUT else 'debug'
+        if '-json' in input_alien or JSON_OUT_GLOBAL:
+            input_alien = input_alien.replace(' -json', '')
+            if 'json' not in print_opts: print_opts = print_opts + ' json'
+            if not JSON_OUT_GLOBAL: JSON_OUT = False
+
+        if cmd in AlienSessionInfo['cmd2func_map_nowb']:
+            ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
+            retf_print(ret_obj, print_opts)
+        else:
+            if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+            ret_obj = ProcessInput(wb, cmdline)
+            retf_print(ret_obj, print_opts)
+        if cmd is 'cd': SessionSave()
+    return ret_obj.exitcode
+
+
 def JAlien(commands: str = '') -> int:
     """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo, JSON_OUT, JSONRAW_OUT
@@ -3150,33 +3194,9 @@ def JAlien(commands: str = '') -> int:
     wb = None
 
     # Command mode interaction
-    if commands:
-        # translate aliases
-        if AlienSessionInfo['alias_cache']:
-            for alias in AlienSessionInfo['alias_cache']: commands = commands.replace(alias, AlienSessionInfo['alias_cache'][alias])
-        cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(commands)]  # split commands on ; and \n
-        ret_obj = None
-        for cmdline in cmdline_list:
-            args = cmdline.strip().split()
-            cmd = args.pop(0)
-            args[:] = [x for x in args if x.strip()]
+    if commands: return ProcessCommandChain(wb, commands)
 
-            print_opts = 'debug json' if JSON_OUT else 'debug'
-            if '-json' in args or JSON_OUT_GLOBAL:
-                args.remove('-json')
-                if 'json' not in print_opts: print_opts = print_opts + ' json'
-                if not JSON_OUT_GLOBAL: JSON_OUT = False
-
-            if cmd in AlienSessionInfo['cmd2func_map_nowb']:
-                ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
-                retf_print(ret_obj, 'debug', print_opts)
-            else:
-                wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-                ret_obj = ProcessInput(wb, cmdline)
-                retf_print(ret_obj, print_opts)
-        return ret_obj.exitcode
-    # end of command mode
-
+    # Start interactive mode
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
     if has_readline:
@@ -3207,49 +3227,13 @@ def JAlien(commands: str = '') -> int:
         if AlienSessionInfo['show_date']: prompt = str(datetime.datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
         if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
         prompt = prompt + ' >'
-
         try:
             INPUT = input(prompt)
         except EOFError:
             exit_message()
 
         if not INPUT: continue
-        cmdline_list = cmds_split.split(INPUT)
-        for cmdline in cmdline_list:
-            # translate aliases for each command
-            if aliases_dict:
-                for alias in aliases_dict: cmdline = cmdline.replace(alias, aliases_dict[alias])
-
-            # if shell command, just run it and return
-            if cmdline.startswith('!'):
-                capture_out = True
-                if '-noout':
-                    cmdline = cmdline.replace(' -noout', '')
-                    capture_out = False
-                retf_print(runShellCMD(cmdline, capture_out))
-                continue
-
-            # process the input and take care of pipe to shell
-            input_alien, sep, pipe_to_shell_cmd = cmdline.partition('|')
-            if not input_alien:
-                print("AliEn command before the | token was not found")
-                continue
-
-            # input_alien = input_alien.encode('ascii', 'unicode-escape')  # let's make sure that the sent input is ascii
-            # input_list = input_alien.split()
-            # pipe_to_shell_cmd = pipe_to_shell_cmd.encode('ascii', 'unicode-escape')
-
-            if any(cmd in ['exit', 'quit', 'logout'] for cmd in input_alien): exit_message()
-
-            print_opts = 'debug json' if JSON_OUT else 'debug'
-            if '-json' in input_alien or JSON_OUT_GLOBAL:
-                input_alien = input_alien.replace(' -json', '')
-                if 'json' not in print_opts: print_opts = print_opts + ' json'
-                if not JSON_OUT_GLOBAL: JSON_OUT = False
-
-            ret_obj = ProcessInput(wb, input_alien, pipe_to_shell_cmd)
-            retf_print(ret_obj, print_opts)
-            if input_alien.startswith('cd ') or input_alien is 'cd': SessionSave()
+        ProcessCommandChain(wb, INPUT)
 
 
 def setup_logging():
