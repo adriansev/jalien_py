@@ -1004,7 +1004,7 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 
 def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
-    if not wb: return
+    if not wb: return {}
     if not lfn2file: return {}
     lfn = lfn2file.lfn
     file = lfn2file.file
@@ -1621,7 +1621,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
                     ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
                     retf_print(ret_obj, 'print')
             tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
-            token_query = GetDict(tokens['answer'])
+            token_query = tokens['answer']
             if AlienSessionInfo['exitcode'] != 0:
                 lfn = tokens['lfn']
                 error = AlienSessionInfo['error']
