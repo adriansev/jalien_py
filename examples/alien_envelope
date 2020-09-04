@@ -15,7 +15,7 @@ LFN="${1}"
 shift
 SPECS="${@}"
 
-OUTPUT="$(alien.py -jsonraw "access ${TYPE} ${LFN} ${SPECS}")"
+OUTPUT="$(alien.py -json "access ${TYPE} ${LFN} ${SPECS}")"
 echo "${OUTPUT}" | python3 -c '
 import sys,os,json;
 INPUT = sys.stdin.read();
