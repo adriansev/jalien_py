@@ -83,6 +83,7 @@ if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
 
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
+specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
 
 # environment debug variable
 JSON_OUT = True if os.getenv('ALIENPY_JSON') else False
@@ -1474,8 +1475,13 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     if isSrcLocal is None:
         return RET(22, '', arg_err_msg)  # EINVAL /* Invalid argument */
 
-    if not isDownload: use_regex = True
+    # check for valid (single) specifications delimiter
+    count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
+    if count_tokens[','] + count_tokens['@'] > 1:
+        msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
+        return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
+    if not isDownload: use_regex = True
     if use_regex:
         try:
             regex = re.compile(pattern_regex)
@@ -1496,7 +1502,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             isSrcDir = bool(True)
             if not arg_glob and not slashend_src: parent = parent + 1
     else:
-        src_specs_remotes = arg_source.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         src = expand_path_grid(src)
         src_type = pathtype_grid(wb, src)
@@ -1524,7 +1530,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             dst_type = 'd'  # we just created it
         if dst_type == 'd': isDstDir = bool(True)
     else:
-        dst_specs_remotes = arg_target.split("@", maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
         dst = expand_path_grid(dst)
         dst_type = pathtype_grid(wb, dst)
