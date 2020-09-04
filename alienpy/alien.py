@@ -3160,9 +3160,10 @@ def JAlien(commands: str = '') -> int:
         # translate aliases
         if aliases_dict:
             for alias in aliases_dict: commands = commands.replace(alias, aliases_dict[alias])
-        cmdline_list = cmds_split.split(commands)  # split commands on ; and \n
+        cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(commands)]  # split commands on ; and \n
+        ret_obj = None
         for cmdline in cmdline_list:
-            args = cmdline.split(" ")
+            args = cmdline.strip().split()
             cmd = args.pop(0)
             args[:] = [x for x in args if x.strip()]
 
@@ -3174,11 +3175,12 @@ def JAlien(commands: str = '') -> int:
 
             if cmd in AlienSessionInfo['cmd2func_map_nowb']:
                 ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
-                return retf_print(ret_obj, 'debug', print_opts)
-
-            wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-            ret_obj = ProcessInput(wb, cmdline)
-            return retf_print(ret_obj, print_opts)
+                retf_print(ret_obj, 'debug', print_opts)
+            else:
+                wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+                ret_obj = ProcessInput(wb, cmdline)
+                retf_print(ret_obj, print_opts)
+        return ret_obj.exitcode
     # end of command mode
 
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
@@ -3292,7 +3294,14 @@ def main():
 
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
     if verb: sys.argv.insert(0, verb)
-    cmd_string = ' '.join(sys.argv)
+
+    cmd_string = ''
+    if len(sys.argv) > 0 and os.path.isfile(sys.argv[0]):
+        with open(sys.argv[0]) as input_file:
+            cmd_string = input_file.read()
+    else:
+        cmd_string = ' '.join(sys.argv)
+
     try:
         JAlien(cmd_string)
     except KeyboardInterrupt:
