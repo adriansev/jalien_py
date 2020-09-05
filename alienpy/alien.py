@@ -2627,13 +2627,14 @@ def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
 def DO_ping(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
     """Command implementation for ping functionality"""
     if args is None: args = []
-    count = int(1)
     if '-h' in args: return RET(0, "ping <count>\nwhere count is integer")
 
     if len(args) > 0 and args[0].isdigit():
         count = int(args[0])
+    elif not args:
+        count = int(3)
     else:
-        return RET(1, '', 'Unrecognized argument')
+        return RET(1, '', 'Unrecognized argument, it should be int type')
 
     results = []
     for i in range(count):
@@ -2969,7 +2970,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
     del AlienSessionInfo['cmd2func_map_srv']['token']
 
-    # client side function (new commands) with signature : (wb, args, opts)
+    # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['commandlist'].append('quota')
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
 
