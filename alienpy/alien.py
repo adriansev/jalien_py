@@ -931,9 +931,7 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if not args: args = []
-    token_files = get_files_token()
-    tokencert = token_files[0]
-    tokenkey = token_files[1]
+    tokencert, tokenkey = get_files_token()
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print token certificate information", "")
 
@@ -955,13 +953,11 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         msg = "Delete the token{cert,key}.pem files"
         return RET(0, msg, "")
-    token_files = get_files_token()
-    tokencert = token_files[0]
-    tokenkey = token_files[1]
+    tokencert, tokenkey = get_files_token()
     if os.path.exists(tokencert): os.remove(tokencert)
     if os.path.exists(tokenkey): os.remove(tokenkey)
     msg = "Token was destroyed! Re-connect for token re-creation."
-    return RET(0, msg, "")
+    return RET(0, msg)
 
 
 def xrdcp_help() -> str:
@@ -2181,10 +2177,9 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
     if ret_obj.exitcode != 0: return retf_print(ret_obj)
-    json_dict = ret_obj.ansdict
-
-    tokencert_content = json_dict.get('results')[0].get('tokencert', '')
-    tokenkey_content = json_dict.get('results')[0].get('tokenkey', '')
+    tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
+    tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
+    if not tokencert_content or not tokenkey_content: return int(1)
 
     if os.path.isfile(tokencert):
         os.chmod(tokencert, 0o600)  # make it writeable
@@ -2197,7 +2192,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
         os.remove(tokenkey)
     with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
     os.chmod(tokenkey, 0o400)  # make it readonly
-    return int(AlienSessionInfo['exitcode'])
+    return ret_obj.exitcode
 
 
 def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
@@ -2235,8 +2230,8 @@ def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[lis
         return DO_token(wb, ['-h'])
     else:
         wb = token_regen(wb, args)
-        token_files = get_files_token()
-        return CertInfo(token_files[0])
+        tokencert, tokenkey = get_files_token()
+        return CertInfo(tokencert)
 
 
 def DO_edit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None, editor: str = '') -> RET:
@@ -2705,9 +2700,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     # SSL SETTINGS
     cert_files = get_files_cert()
-    token_files = get_files_token()
-    tokencert = token_files[0]
-    tokenkey = token_files[1]
+    tokencert, tokenkey = get_files_token()
 
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
@@ -3030,7 +3023,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
 
     AlienSessionInfo['commandlist'].append('token-destroy')
-    AlienSessionInfo['cmd2func_map_nowb']['token-destory'] = DO_tokendestroy
+    AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
 
     AlienSessionInfo['commandlist'].append('cert-info')
     AlienSessionInfo['cmd2func_map_nowb']['cert-info'] = DO_certinfo
