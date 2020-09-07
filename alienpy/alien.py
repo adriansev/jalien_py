@@ -42,6 +42,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
 
+has_readline = False
 try:
     import readline as rl
     has_readline = True
@@ -70,13 +71,12 @@ if has_readline:
         rl.set_history_length(1000)
         rl.append_history_file(new_h_len - prev_h_len, histfile)
 
-
+has_xrootd = False
 try:  # let's fail fast if the xrootd python bindings are not present
     from XRootD import client
     has_xrootd = True
 except ImportError:
     has_xrootd = False
-
 
 hasColor = False
 if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
