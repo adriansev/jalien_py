@@ -1922,15 +1922,13 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
     if not wb: return []
     if not args: args = []
     if '-h' in args or '-help' in args:
-        msg = 'Command format: getSE <-id | -name | -srv> identifier_string\nReturn the specified propriety for the SE speficied label'
+        msg = 'Command format: getSE <-id | -name | -srv> identifier_string\nReturn the specified propriety for the SE specified label'
         return RET(0, msg)
 
     ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
     if ret_obj.exitcode != 0: return ret_obj
 
     arg_select = None
-    rez_list = None
-
     if '-id' in args:
         args.remove('-id')
         arg_select = 'id'
@@ -1941,28 +1939,43 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
         args.remove('-srv')
         arg_select = 'srv'
 
-    se_name = args[0]
-    if se_name.isdecimal():
-        name_url_list = [(se["seName"].strip(), urlparse(se["endpointUrl"]).netloc.strip()) if se_name in se['seNumber'] else '' for se in ret_obj.ansdict["results"]]
-        if arg_select == 'name':
-            rez_list = [se[0] for se in name_url_list]
-        elif arg_select == 'srv':
-            rez_list = [se[1] for se in name_url_list]
+    if not args:
+        se_list = [f"{se['seNumber']}\t{se['seName']}\t{se['endpointUrl'].replace('root://','')}" for se in ret_obj.ansdict["results"]]
+        return RET(0, '\n'.join(se_list))
+
+    def match_name(se: dict = {}, name: str = '') -> bool:
+        if name.isdecimal():
+            return True if name in se['seNumber'] else False
+        return True if (name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold()) else False
+
+    se_name = args[-1].casefold()
+    se_list = []
+    rez_list = []
+    for se in ret_obj.ansdict["results"]:
+        if match_name(se, se_name): se_list.append(se)
+    if not se_list: return RET(1, '', f">{args[-1]}< label(s) not found in SE list")
+
+    for se_info in se_list:
+        srv_name = urlparse(se_info["endpointUrl"]).netloc.strip()
+        if se_name.isdecimal():
+            if arg_select == 'name':
+                rez_list.append(se_info['seName'])
+            elif arg_select == 'srv':
+                rez_list.append(srv_name)
+            else:
+                rez_list.append(f"{se_info['seName']}    {srv_name}")
         else:
-            rez_list = [f"{se[0]}    {se[1]}" for se in name_url_list]
+            if arg_select == 'name':
+                rez_list.append(se_info['seName'])
+            elif arg_select == 'srv':
+                rez_list.append(srv_name)
+            elif arg_select == 'id':
+                rez_list.append(se_info['seNumber'])
+            else:
+                rez_list.append(f"{se_info['seNumber']}\t{se_info['seName']}\t\t{srv_name}")
 
-    if not rez_list and arg_select == 'name':
-        rez_list = [se["seName"].strip() if re.search(se_name, str(se.values())) else '' for se in ret_obj.ansdict["results"]]
-
-    if not rez_list and arg_select == 'srv':
-        rez_list = [urlparse(se["endpointUrl"]).netloc.strip() if re.search(se_name, str(se.values())) else '' for se in ret_obj.ansdict["results"]]
-
-    if not rez_list:
-        name_url_id_list = [(se["seName"].strip(), urlparse(se["endpointUrl"]).netloc.strip(), se["seName"].strip()) if re.search(se_name, str(se.values())) else '' for se in ret_obj.ansdict["results"]]
-        rez_list = [f"{se[0]}    {se[1]}    {se[2]}" for se in name_url_id_list]
-
-    msg = ("\n".join(rez_list).strip())
-    return RET(0, msg)
+    if not rez_list: return RET(1, '', f"Empty result when searching for: {args[-1]}")
+    return RET(0, '\n'.join(rez_list))
 
 
 def get_lfn_meta(meta_fn: str) -> str:
