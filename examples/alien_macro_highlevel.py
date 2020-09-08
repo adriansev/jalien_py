@@ -6,7 +6,7 @@ j = alien.AliEn()
 
 # in the case of AliEn class the run method will process the command exactly as it is process within shell or command
 # all aliases and client side implementation are available (like cp)
-j.ProcessMsg('whoami')
+j.ProcessMsg('whoami -v')
 print()
 j.ProcessMsg('pwd')
 print()

@@ -5,7 +5,7 @@ import os
 def get_version_from_file():
     try:
         f = open('./VERSION')
-        version = f.read().split('/n')[0]
+        version = f.read().strip()
         f.close()
         return version
     except:
