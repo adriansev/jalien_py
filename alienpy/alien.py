@@ -30,7 +30,7 @@ import threading
 import asyncio
 import async_stagger
 import websockets
-from websockets.extensions import permessage_deflate
+import websockets.extensions
 
 deque = collections.deque
 
@@ -2849,7 +2849,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
                 if DEBUG: init_begin = datetime.datetime.now().timestamp()
-                deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
+                deflateFact = websockets.extensions.permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
                 if DEBUG:
