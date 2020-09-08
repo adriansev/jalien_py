@@ -2232,7 +2232,7 @@ def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
 
 def DO_token(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments"
+    msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments\n"
     ret_obj = SendMsg(wb, 'token', args, opts = 'nokeys')
     return ret_obj._replace(out = msg + ret_obj.out)
 
@@ -2240,7 +2240,8 @@ def DO_token(wb: websockets.client.WebSocketClientProtocol, args: Union[list, No
 def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
-        return DO_token(wb, ['-h'])
+        ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
+        return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'usage: token-init'))
     else:
         wb = token_regen(wb, args)
         tokencert, tokenkey = get_files_token()
