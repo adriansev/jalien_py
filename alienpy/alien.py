@@ -2089,7 +2089,12 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args or '-h' in args or '-help' in args:
-        return RET(0, 'usage: queryML <ML node>')
+        msg_help = ('usage: queryML <ML node>\n'
+                    'time range can be specified for a parameter:\n'
+                    '/[starting time spec]/[ending time spec]/parameter\n'
+                    'where the two time specs can be given in absolute epoch timestamp (in milliseconds), as positive values,\n'
+                    'or relative timestamp to `now`, when they are negative.\nFor example `-60000` would be "1 minute ago" and effectively `-1` means "now".')
+        return RET(0, msg_help)
     types = ('text', 'xml', 'json')
     if any(type in types for arg in args): args.remove(type)
     args.append('json')
