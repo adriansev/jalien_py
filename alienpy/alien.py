@@ -1922,7 +1922,7 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
     if not wb: return []
     if not args: args = []
     if '-h' in args or '-help' in args:
-        msg = 'Command format: getSE <-id | -name | -srv> identifier_string\nReturn the specified propriety for the SE specified label'
+        msg = 'Command format: getSE <-id | -name | -srv> identifier_string\nReturn the specified property for the SE specified label'
         return RET(0, msg)
 
     ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
