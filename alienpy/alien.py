@@ -2020,7 +2020,7 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwr
 
     if not os.path.isfile(tmpfile):
         if tmpfile in AlienSessionInfo['templist']: AlienSessionInfo['templist'].remove(tmpfile)
-        copycmd = "-f {lfn} file:{tmpfile}"
+        copycmd = f"-f {lfn} file:{tmpfile}"
         ret_obj = DO_XrootdCp(wb, copycmd.split(), printout = 'silent')  # print only errors for temporary downloads
         if ret_obj.exitcode == 0 and os.path.isfile(tmpfile):
             AlienSessionInfo['templist'].append(tmpfile)
@@ -2035,7 +2035,6 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     lfn_backup = lfn + "." + now_str() if dated_backup else lfn + "~"
     if not dated_backup:
         ret_obj = SendMsg(wb, 'rm', ['-f', lfn_backup])  # remove already present old backup; useless to pre-check
-        retf_print(ret_obj, 'debug')
     ret_obj = SendMsg(wb, 'mv', [lfn, lfn_backup])  # let's create a backup of old lfn
     retf_print(ret_obj, 'debug')
     if retf_print(ret_obj) != 0: return ''
@@ -2257,19 +2256,33 @@ def DO_edit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if not args or args is None: args = ['-h']
     if '-h' in args:
-        msg = 'Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs'
+        msg = 'Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs\n-datebck : the backup filename will be date based'
         return RET(0, msg)
-    if not editor: editor = os.getenv('EDITOR', 'mcedit')
-    if editor == 'mcedit': editor = 'mc -c -e'
-    lfn, sep, specs = lfn.partition('@')
+    if not editor: editor = os.getenv('EDITOR', 'mcedit -u')
+    versioned_backup = False
+    if '-datebck' in args:
+        args.remove('-datebck')
+        versioned_backup = True
+    lfn = expand_path_grid(args[-1])  # assume that the last argument is the lfn
+    # check for valid (single) specifications delimiter
+    count_tokens = collections.Counter(lfn)
+    if count_tokens[','] + count_tokens['@'] > 1:
+        msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
+        return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+
+    specs = specs_split.split(lfn, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+    lfn = specs.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
     tmp = download_tmp(wb, lfn)
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
-        ret_obj = runShellCMD(editor + ' ' + tmp, False)
+        ret_obj = runShellCMD(editor + ' ' + tmp, captureout = False)
+        if ret_obj.exitcode != 0: return retf_print(ret_obj)
         md5_end = md5(tmp)
-        if md5_begin != md5_end: uploaded_file = upload_tmp(wb, tmp, specs)
-        os.remove(tmp)  # clean up the temporary file not matter if the upload was succesful or not
-        return RET(0, f'Uploaded {uploaded_file}') if uploaded_file else RET(1, '', f'Error uploading {uploaded_file}')
+        if md5_begin != md5_end:
+            uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
+            os.remove(tmp)  # clean up the temporary file not matter if the upload was succesful or not
+            return RET(0, f'Uploaded {uploaded_file}') if uploaded_file else RET(1, '', f'Error uploading {uploaded_file}')
+        return RET(0)
     else:
         msg = f'Error downloading {lfn}, editing could not be done.'
         return RET(1, '', msg)
@@ -2467,13 +2480,18 @@ def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET()
     sh_cmd = re.sub(r'^!', '', INPUT)
-    if captureout:
-        args = sh_cmd
-        shcmd_out = subprocess.run(args, env = os.environ, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
-    else:
-        args = shlex.split(sh_cmd)
-        shcmd_out = subprocess.run(args, env = os.environ)
-    return RET(int(shcmd_out.returncode), shcmd_out.stdout.decode().strip(), shcmd_out.stderr.decode().strip())
+    try:
+        if captureout:
+            args = sh_cmd
+            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell=True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+        else:
+            args = shlex.split(sh_cmd)
+            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace')
+    except Exception as e:
+        msg = traceback.format_exc()
+        logging.error(msg)
+        return RET(1, '', msg)
+    return RET(shcmd.returncode, '' if shcmd.stdout is None else shcmd.stdout.strip(), '' if shcmd.stderr is None else shcmd.stderr.strip())
 
 
 def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[None, list] = None):
