@@ -651,9 +651,9 @@ def retf_print(ret_info: RET, opts: str = '') -> int:
         if 'err' in opts: logging.error(ret_info.err)
         if 'debug' in opts: logging.debug(ret_info.err)
         if 'noerr' not in opts:
-            print(ret_info.err, file=sys.stderr, flush = True)
+            print(ret_info.err.strip(), file=sys.stderr, flush = True)
     else:
-        print(ret_info.out, flush = True)
+        print(ret_info.out.strip(), flush = True)
     return ret_info.exitcode
 
 
@@ -3189,7 +3189,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
             retf_print(ret_obj, print_opts)
         else:
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-            ret_obj = ProcessInput(wb, cmdline)
+            ret_obj = ProcessInput(wb, cmdline, pipe_to_shell_cmd)
             retf_print(ret_obj, print_opts)
         if cmd is 'cd': SessionSave()
     return ret_obj.exitcode
