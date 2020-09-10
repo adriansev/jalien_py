@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from typing import Union
 import sys
 import os
 import atexit
@@ -13,10 +12,9 @@ import logging
 import ssl
 import uuid
 import statistics
-import math
 import collections
+from typing import Union
 from typing import NamedTuple
-import OpenSSL
 import shlex
 import tempfile
 import time
@@ -27,6 +25,7 @@ import urllib.request as urlreq
 import socket
 import threading
 import asyncio
+import OpenSSL
 import async_stagger
 import websockets
 import websockets.extensions
@@ -85,8 +84,8 @@ cmds_split = re.compile(';|\n')  # regex for spliting chained commands
 specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
 
 # environment debug variable
-JSON_OUT = True if os.getenv('ALIENPY_JSON') else False
-JSON_OUT_GLOBAL = True if JSON_OUT else False
+JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
+JSON_OUT_GLOBAL = JSON_OUT
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
@@ -98,7 +97,7 @@ AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandli
                     'show_date': False, 'show_lpwd': False}
 
 
-class COLORS:
+class COLORS(NamedTuple):
     ColorReset = '\033[00m'     # Text Reset
     Black = '\033[0;30m'        # Black
     Red = '\033[0;31m'          # Red
@@ -204,32 +203,31 @@ class RET(NamedTuple):
 class AliEn:
     """Class to be used as advanced API for interaction with central servers"""
     def __init__(self, opts = ''):
-        self.wb = InitConnection()
+        self.internal_wb = InitConnection()
         self.opts = opts
 
     def run(self, cmd, opts = '') -> Union[RET, str]:
         if not opts: opts = self.opts
-        return SendMsg(self.wb, cmd, opts = opts)
+        return SendMsg(self.internal_wb, cmd, opts = opts)
 
     def ProcessMsg(self, cmd, opts = '') -> int:
         if not opts: opts = self.opts
-        return ProcessCommandChain(self.wb, cmd)
+        return ProcessCommandChain(self.internal_wb, cmd)
 
     def wb(self) -> websockets.client.WebSocketClientProtocol:
-        return self.wb
+        return self.internal_wb
 
     def help(self):
-        print(f'Methods of AliEn session:\n'
-              f'.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
-              f'.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
-              f'.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
+        print('Methods of AliEn session:\n'
+              '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
+              '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
+              '.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
 
 
 def signal_handler(sig, frame):
     """Generig signal handler: just print the signal and exit"""
     print(f'\nCought signal {signal.Signals(sig).name}, let\'s exit')
     exit_message(int(AlienSessionInfo['exitcode']))
-    # signal.signal(sig, signal.SIG_DFL)  # default signal handler usage (for sigint it does nothing)
 
 
 def exit_message(exitcode: int = 0):
@@ -237,7 +235,7 @@ def exit_message(exitcode: int = 0):
     sys.exit(exitcode)
 
 
-def is_guid(guid: str) -> bool: return True if guid_regex.fullmatch(guid) else False  # identify if argument in an AliEn GUID
+def is_guid(guid: str) -> bool: return bool(guid_regex.fullmatch(guid))  # identify if argument in an AliEn GUID
 
 
 def run_function(function_name: str, *args, **kwargs): return globals()[function_name](*args, *kwargs)  # run arbitrary function
@@ -529,22 +527,16 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     return json.dumps(jsoncmd)
 
 
-def GetMeta(result: dict, meta: str = '') -> Union[str, list]:
-    if not result: return None
+def GetMeta(result: dict, meta: str = '') -> list:
+    if not result: return []
     if type(result) == dict and 'metadata' in result:  # these works only for AliEn responses
-        meta_opts_list = None
         output = []
-        if meta: meta_opts_list = meta.split()
-        if 'cwd' in meta_opts_list: output.append(result["metadata"]["currentdir"])
-        if 'user' in meta_opts_list: output.append(result["metadata"]["user"])
-        if 'error' in meta_opts_list: output.append(result["metadata"]["error"])
-        if 'exitcode' in meta_opts_list: output.append(result["metadata"]["exitcode"])
-        if len(output) == 1:
-            return output[0]
-        else:
-            return output
-    else:
-        return ''
+        meta_opts_list = meta.split() if meta else []
+        if 'cwd' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["currentdir"])
+        if 'user' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["user"])
+        if 'error' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["error"])
+        if 'exitcode' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["exitcode"])
+        return output
 
 
 def PrintColor(color: str) -> str:
@@ -686,17 +678,15 @@ def pid_uid(pid: int) -> int:
         with open(f'/proc/{pid}/status') as proc_status:
             for line in proc_status:
                 # Uid, Gid: Real, effective, saved set, and filesystem UIDs(GIDs)
-                if line.startswith('Uid:'): return int((line.split()[1]))
+                return int((line.split()[1])) if line.startswith('Uid:') else int(65537)
     except Exception as e:
         return int(65537)
 
 
-def is_my_pid(pid: int) -> bool:
-    return True if pid_uid(int(pid)) == os.getuid() else False
+def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
 
 
-def GetSessionFilename() -> str:
-    return os.path.join(os.path.expanduser("~"), ".alienpy_session")
+def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")
 
 
 def SessionSave():
@@ -786,7 +776,7 @@ def push2stack(path: str):
 
 
 def deque_pop_pos(dq: deque, pos: int = 1):
-    if abs(pos) > len(dq) - 1: return
+    if abs(pos) > len(dq) - 1: return None
     pos = - pos
     dq.rotate(pos)
     if pos > 0:
@@ -809,8 +799,8 @@ def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, lis
 
 def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
-    if not cmd: return RET()
-    if args is None: return RET()
+    if not cmd: return RET(1)
+    if args is None: return RET(1)
     global AlienSessionInfo
     arg_list = args.split() if type(args) == str else args
 
@@ -851,7 +841,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
             msg = ' '.join(AlienSessionInfo['pathq'])
 
         if position and sign:
-            if position > len(AlienSessionInfo['pathq']) - 1: return
+            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
             if sign == "+":
                 msg = AlienSessionInfo['pathq'][position]  # Nth position from top (last/top element have the index 0)
             if sign == "-":
@@ -873,7 +863,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
 
     if cmd == "pushd":
         if position and sign:
-            if position > len(AlienSessionInfo['pathq']) - 1: return
+            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
             if sign == "+":
                 AlienSessionInfo['pathq'].rotate(-position)
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
@@ -884,7 +874,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
             return RET(0, msg)  # end of +N|-N
 
         if not arg_list:
-            if len(AlienSessionInfo['pathq']) < 2: return
+            if len(AlienSessionInfo['pathq']) < 2: return RET(0)
             old_cwd = AlienSessionInfo['pathq'].popleft()
             new_cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(old_cwd)
@@ -1021,7 +1011,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, lfn2file: lfn
 
 def getEnvelope(wb: websockets.client.WebSocketClientProtocol, lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
-    if not wb: return
+    if not wb: return []
     access_list = []
     if not lfn_list: return access_list
     if specs is None: specs = []
@@ -1049,10 +1039,9 @@ def expand_path_local(path: str) -> str:
     if exp_path.startswith('file:'): exp_path = exp_path.replace("file:", "", 1)
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
     if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
-    tail_slash = True if exp_path.endswith("/") else False
     exp_path = os.path.normpath(exp_path)
     exp_path = os.path.realpath(exp_path)
-    if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if exp_path.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
@@ -1063,9 +1052,8 @@ def expand_path_grid(path: str) -> str:
     if exp_path.startswith('alien:'): exp_path = exp_path.replace("alien:", "", 1)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
-    tail_slash = True if exp_path.endswith("/") else False
     exp_path = os.path.normpath(exp_path)
-    if tail_slash or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if exp_path.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
@@ -1399,8 +1387,8 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
     arg_source = xrd_copy_command[-2]
     arg_target = xrd_copy_command[-1]
-    slashend_src = True if arg_source.endswith('/') else False
-    slashend_dst = True if arg_target.endswith('/') else False
+    slashend_src = arg_source.endswith('/')
+    slashend_dst = arg_target.endswith('/')
 
     isSrcLocal = None
     isDstLocal = None
@@ -1866,9 +1854,8 @@ def get_pfn_flags(pfn: str):
 
 def is_pfn_readable(pfn: str) -> bool:
     flags = get_pfn_flags(pfn)
-    if flags:
-        return True if flags & client.flags.StatInfoFlags.IS_READABLE else False
-    return False
+    if flags is None: return False
+    return bool(flags & client.flags.StatInfoFlags.IS_READABLE)
 
 
 def DO_pfnstatus(args: Union[list, None] = None) -> RET:
@@ -1943,9 +1930,8 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
         return RET(0, '\n'.join(se_list))
 
     def match_name(se: dict = {}, name: str = '') -> bool:
-        if name.isdecimal():
-            return True if name in se['seNumber'] else False
-        return True if (name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold()) else False
+        if name.isdecimal(): return name in se['seNumber']
+        return (name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold())
 
     se_name = args[-1].casefold()
     se_list = []
@@ -1995,7 +1981,7 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
     if not ext: ext = '_' + str(os.getuid()) + '.alienpy_tmp'
-    return os.getenv('TMPDIR', '/tmp') + '/' + lfn2tmp_fn(lfn, uuid5) + ext
+    return str(os.getenv('TMPDIR', '/tmp')) + '/' + lfn2tmp_fn(lfn, uuid5) + ext
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
@@ -2154,11 +2140,11 @@ def DO_cat(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     """cat lfn :: download lfn as a temporary file and cat"""
     if not args or args is None: args = ['-h']
     if '-h' in args: return get_help_srv(wb, 'cat')
-    tmp = download_tmp(wb, args[0])
+    tmp = download_tmp(wb, args[-1])
     if tmp and os.path.isfile(tmp):
         return runShellCMD('cat ' + tmp)
     else:
-        return RET(1, '', f'Could not download {lfn_path}')
+        return RET(1, '', f'Could not download {args[-1]}')
 
 
 def DO_less(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
@@ -2548,15 +2534,14 @@ Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
 def check_port(address: str, port: Union[str, int]) -> bool:
     """Check TCP connection to address:port"""
     s = socket.socket()  # Create a TCP socket
+    is_open = False
     try:
         s.connect((address, int(port)))
+        is_open = True
     except Exception as e:
-        # print(e)
-        s.close()
-        return False
-    if s:
-        s.close()
-        return True
+        pass
+    s.close()
+    return is_open
 
 
 def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
@@ -2605,9 +2590,9 @@ def DO_prompt(args: Union[list, None] = None) -> RET:
 
 
 def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
+    """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
     global AlienSessionInfo
     cache = AlienSessionInfo['completer_cache']
-    """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
     key = 'path' if fullpath else 'name'
 
     def cleanup_item(lfn):
@@ -2649,10 +2634,11 @@ def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_delta = float(-999.0)
     init_begin = datetime.datetime.now().timestamp()
-    status = IsWbConnected(wb)
-    init_end = datetime.datetime.now().timestamp()
-    init_delta = float((init_end - init_begin) * 1000)
-    return init_delta
+    if IsWbConnected(wb):
+        init_end = datetime.datetime.now().timestamp()
+        init_delta = float((init_end - init_begin) * 1000)
+        return init_delta
+    return float(-1)
 
 
 def DO_ping(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
@@ -3267,16 +3253,16 @@ def JAlien(commands: str = '') -> int:
 
 
 def setup_logging():
-    MSG_LVL = logging.INFO
-    if DEBUG: MSG_LVL = logging.DEBUG
+    MSG_LVL = logging.DEBUG if DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
-    log = logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
+    logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
 
 def main():
     signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
     global JSON_OUT, JSONRAW_OUT, ALIENPY_EXECUTABLE
     setup_logging()
     # at exit delete all temporary files
@@ -3288,15 +3274,14 @@ def main():
     if '-json' in sys.argv:
         sys.argv.remove('-json')
         JSON_OUT = True
-        JSON_OUT_GLOBAL = True
 
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
         jalien = AliEn()
         term = code.InteractiveConsole(locals = globals())
         term.push('jalien = AliEn()')
-        banner = f'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
-        exitmsg = f'Exiting..'
+        banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
+        exitmsg = 'Exiting..'
         term.interact(banner, exitmsg)
         os._exit(int(AlienSessionInfo['exitcode']))
 
