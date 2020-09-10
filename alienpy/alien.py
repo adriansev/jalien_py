@@ -14,7 +14,6 @@ import ssl
 import uuid
 import statistics
 import math
-# from collections import deque
 import collections
 from typing import NamedTuple
 import OpenSSL
@@ -774,7 +773,7 @@ def cd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = N
     if not args:
         path = AlienSessionInfo['alienHome']
     else:
-        path = AlienSessionInfo['prevdir'] if args[0] is '-' else args[0]
+        path = AlienSessionInfo['prevdir'] if args[0] == '-' else args[0]
     return SendMsg(wb, 'cd', [path], opts) if AlienSessionInfo['currentdir'] != path else RET(0)
 
 
@@ -3214,7 +3213,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
             ret_obj = ProcessInput(wb, cmdline, pipe_to_shell_cmd)
             retf_print(ret_obj, print_opts)
-        if cmd is 'cd': SessionSave()
+        if cmd == 'cd': SessionSave()
     return ret_obj.exitcode
 
 
