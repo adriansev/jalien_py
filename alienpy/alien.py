@@ -54,20 +54,12 @@ except ImportError:
 if has_readline:
     def setupHistory():
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-        try:
-            rl.read_history_file(histfile)
-            h_len = rl.get_current_history_length()
-        except FileNotFoundError:
-            open(histfile, 'wb').close()
-            h_len = 0
-        rl.set_auto_history(True)
-        atexit.register(rl.write_history_file, histfile)
+        if not os.path.exists(histfile): open(histfile, 'wb').close()
+        rl.set_history_length(-1)  # unlimited history
 
-    def saveHistory(prev_h_len, histfile):
-        new_h_len = rl.get_current_history_length()
-        prev_h_len = rl.get_history_length()
-        rl.set_history_length(1000)
-        rl.append_history_file(new_h_len - prev_h_len, histfile)
+        def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
+        rl.set_startup_hook(startup_hook)
+
 
 has_xrootd = False
 try:  # let's fail fast if the xrootd python bindings are not present
