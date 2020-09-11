@@ -56,6 +56,7 @@ if has_readline:
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
         if not os.path.exists(histfile): open(histfile, 'wb').close()
         rl.set_history_length(-1)  # unlimited history
+        rl.read_history_file(histfile)
 
         def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
         rl.set_startup_hook(startup_hook)
