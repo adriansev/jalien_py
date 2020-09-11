@@ -82,6 +82,7 @@ JSON_OUT_GLOBAL = JSON_OUT
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
+TMPDIR = os.getenv('TMPDIR', '/tmp')
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '',
@@ -389,9 +390,8 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         logging.info("SendMsg:: websocket not initialized")
         return '' if 'rawstr' in opts else {}
     if not args: args = []
-    if JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
-        opts = opts.replace('nokeys', '')
-        opts = opts.replace('nomsg', '')
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
+        opts = opts.replace('nokeys', '').replace('nomsg', '')
     if DEBUG:
         logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")
         logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
@@ -1948,14 +1948,12 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
     if not ext: ext = '_' + str(os.getuid()) + '.alienpy_tmp'
-    return str(os.getenv('TMPDIR', '/tmp')) + '/' + lfn2tmp_fn(lfn, uuid5) + ext
+    return TMPDIR + '/' + lfn2tmp_fn(lfn, uuid5) + ext
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
-    lfn = lfn.replace(os.getenv('TMPDIR', '/tmp') + '/', '')
-    lfn = lfn.replace("%%", "/")
-    return lfn
+    return lfn.replace(TMPDIR + '/', '').replace("%%", "/")
 
 
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
@@ -2663,7 +2661,7 @@ def get_files_cert() -> list:
 
 
 def get_files_token() -> tuple:
-    return os.getenv('JALIEN_TOKEN_CERT', os.getenv('TMPDIR', '/tmp') + '/tokencert_' + str(os.getuid()) + '.pem'), os.getenv('JALIEN_TOKEN_KEY', os.getenv('TMPDIR', '/tmp') + '/tokenkey_' + str(os.getuid()) + '.pem')
+    return os.getenv('JALIEN_TOKEN_CERT', TMPDIR + '/tokencert_' + str(os.getuid()) + '.pem'), os.getenv('JALIEN_TOKEN_KEY', TMPDIR + '/tokenkey_' + str(os.getuid()) + '.pem')
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -2766,7 +2764,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
-        socket_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.sock'
+        socket_filename = TMPDIR + '/jboxpy_' + str(os.getuid()) + '.sock'
         try:
             wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
         except Exception as e:
@@ -2849,7 +2847,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         if TIME_CONNECT: print(msg, flush = True)
 
     if wb and localConnect:
-        pid_filename = os.getenv('TMPDIR', '/tmp') + '/jboxpy_' + str(os.getuid()) + '.pid'
+        pid_filename = TMPDIR + '/jboxpy_' + str(os.getuid()) + '.pid'
         writePidFile(pid_filename)
     return wb
 
@@ -2859,7 +2857,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-    jclient_env = os.getenv('TMPDIR', '/tmp') + '/jclient_token_' + str(os.getuid())
+    jclient_env = TMPDIR + '/jclient_token_' + str(os.getuid())
 
     # let's try to get a websocket
     wb = None
@@ -3224,6 +3222,7 @@ def main():
     if '-json' in sys.argv:
         sys.argv.remove('-json')
         JSON_OUT = True
+        JSON_OUT_GLOBAL = True
 
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
