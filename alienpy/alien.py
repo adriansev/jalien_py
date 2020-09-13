@@ -2035,7 +2035,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     global AlienSessionInfo
     if args is None: args = []
-    if not args or '-h' in args or '-help' in args:
+    if '-h' in args:
         msg_help = ('usage: queryML <ML node>\n'
                     'time range can be specified for a parameter:\n'
                     '/[starting time spec]/[ending time spec]/parameter\n'
