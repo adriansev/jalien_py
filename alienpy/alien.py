@@ -813,9 +813,9 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
         arg_list.remove('-n')
 
     msg = ''
-    help_msg = ('The folloswinf syntax is required'
-                'dirs [-clpv] [+N | -N]'
-                'popd [-n] [+N | -N]'
+    help_msg = ('The folloswinf syntax is required\n'
+                'dirs [-clpv] [+N | -N]\n'
+                'popd [-n] [+N | -N]\n'
                 'pushd [-n] [+N | -N | dir]')
 
     if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or ('-h' in arg_list):
