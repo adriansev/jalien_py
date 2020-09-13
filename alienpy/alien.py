@@ -1829,7 +1829,7 @@ def DO_pfnstatus(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args or '-h' in args or '-help' in args:
-        msg = ('Command format: pfn_status <pfn>'
+        msg = ('Command format: pfn_status <pfn>\n'
                'It will return all flags reported by the xrootd server - this is direct access to server')
         return RET(0, msg)
     pfn = args.pop(0)
@@ -2123,10 +2123,13 @@ def DO_more(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
 
 def DO_pfn(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
     if args is None: args = []
+    if '-h' in args:
+        msg = 'Command format : pfn [lfn]\nIt will print only the list of associtated pfns (simplified form of whereis)'
+        return RET(0, msg)
     cmd = 'whereis'
     args.insert(0, '-r')
     ret_obj = SendMsg(wb, cmd, args, opts = 'nomsg')
-    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results']).strip()
+    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
     return ret_obj._replace(out = msg)
 
 
@@ -2325,7 +2328,9 @@ def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args
 
 def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> RET:
     if '-h' in args or '-help' in args:
-        print(f'''-select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
+        msg = (f'''Client-side implementation of find; it will use as default the regex option of server's find.
+Command formant: find2 <options> <directory>
+-select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -name <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive e.g.:
 -name begin_myf_contain_run1_ends_bla_ext_root
@@ -2337,7 +2342,7 @@ def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> RET:
 -l <count> : limit the number of returned entries to at most the indicated value
 -o <offset> : skip over the first <offset> results
         ''')
-        return int(0)
+        return RET(0, msg)
 
     find_args = []
     if '-a' in args:
@@ -2430,23 +2435,27 @@ def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
     return RET(shcmd.returncode, '' if shcmd.stdout is None else shcmd.stdout.strip(), '' if shcmd.stderr is None else shcmd.stderr.strip())
 
 
-def DO_quota(wb: websockets.client.WebSocketClientProtocol, quota_args: Union[None, list] = None):
+def DO_quota(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None) -> RET:
     """quota : put togheter both job and file quota"""
-    if not quota_args: quota_args = []
-    if len(quota_args) > 0:
-        if quota_args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
-            user = quota_args[0]
-            jquota_cmd = CreateJsonCommand('jquota -nomsg list ' + user)
-            fquota_cmd = CreateJsonCommand('fquota -nomsg list ' + user)
-        else:
-            print('set functionality not implemented yet')
-    else:
-        user = AlienSessionInfo['user']
-        jquota_cmd = CreateJsonCommand('jquota -nomsg list ' + user)
-        fquota_cmd = CreateJsonCommand('fquota -nomsg list ' + user)
+    if not args: args = []
+    if '-h' in args:
+        msg = ('Client-side implementation that make use of server\'s jquota and fquota (hidden by this implementation)\n'
+               'Command format: quota [user]\n'
+               'if [user] is not provided, it will be assumed the current user')
+        return RET(0, msg)
 
-    jquota_dict = SendMsg(wb, jquota_cmd)
-    fquota_dict = SendMsg(wb, fquota_cmd)
+    user = AlienSessionInfo['user']
+    if len(args) > 0:
+        if args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
+            user = args[0]
+        else:
+            msg = '>set< functionality not implemented yet'
+            return RET(0, msg)
+
+    jquota_out = SendMsg(wb, f'jquota -nomsg list {user}')
+    jquota_dict = jquota_out.ansdict
+    fquota_out = SendMsg(wb, f'fquota -nomsg list {user}')
+    fquota_dict = fquota_out.ansdict
 
     username = jquota_dict['results'][0]["username"]
     running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
@@ -2498,7 +2507,7 @@ def check_port(address: str, port: Union[str, int]) -> bool:
 def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
     """Return the help option even for client-side commands"""
     if not cmd: return RET(1, '', 'No command specified for help')
-    return ProcessInput(wb, cmd + ' -h')
+    return ProcessInput(wb, cmd, ['-h'])
 
 
 def get_help_srv(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
@@ -2986,7 +2995,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vi
 
     AlienSessionInfo['commandlist'].append('vim')
-    AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vim
+    AlienSessionInfo['cmd2func_map_client']['vim'] = DO_vim
 
     # client side functions (new commands) that do not require connection to jcentral
     AlienSessionInfo['commandlist'].append('prompt')
@@ -3044,21 +3053,24 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     return wb
 
 
-def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str, shellcmd: Union[str, None] = None) -> RET:
+def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
     """Process a command line within shell or from command line mode input"""
-    if not cmd_string: return RET(1, '', 'ProcessInput:: Empty input')
+    if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
+    if args is None: args = []
+    ret_obj = None
     global AlienSessionInfo
 
     # early command aliases and default flags
-    if cmd_string.startswith('ls'): cmd_string = cmd_string.replace('ls', 'ls -F')
-    if cmd_string.startswith('ll'): cmd_string = cmd_string.replace('ll', 'ls -F -l')
-    if cmd_string.startswith('la'): cmd_string = cmd_string.replace('la', 'ls -F -a')
-    if cmd_string.startswith('lla'): cmd_string = cmd_string.replace('lla', 'ls -F -l -a')
-
-    args = cmd_string.split()
-    cmd = args.pop(0)
-    args[:] = [x for x in args if x.strip()]
-    ret_obj = None
+    if cmd == 'ls': args[0:0] = ['-F']
+    if cmd == 'll':
+        cmd = 'ls'
+        args[0:0] = ['-F', '-l']
+    if cmd == 'la':
+        cmd = 'ls'
+        args[0:0] = ['-F', '-a']
+    if cmd == 'lla':
+        cmd = 'ls'
+        args[0:0] = ['-F', '-l', '-a']
 
     # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
     message_begin = None
@@ -3066,7 +3078,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
 
     # first to be processed is the time token, it will start the timing and be removed from command
     if cmd == 'time':
-        if not args: return RET(int(64), '', "Command format: time command arguments")  # EX_USAGE /* command line usage error */
+        if not args or '-h' in args: return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
         message_begin = datetime.datetime.now().timestamp()
 
@@ -3106,7 +3118,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd_string: str,
 
 
 def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, None] = None, cmd_chain: str = '') -> int:
-    global AlienSessionInfo, JSON_OUT
+    global AlienSessionInfo, JSON_OUT, JSON_OUT_GLOBAL
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
@@ -3130,24 +3142,25 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
             print("AliEn command before the | token was not found")
             continue
 
-        print_opts = 'debug json' if JSON_OUT else 'debug'
-        if '-json' in input_alien or JSON_OUT_GLOBAL:
-            input_alien = input_alien.replace(' -json', '')
-            if 'json' not in print_opts: print_opts = print_opts + ' json'
-            if not JSON_OUT_GLOBAL: JSON_OUT = False
-
         args = input_alien.strip().split()
         cmd = args.pop(0)
         if any(cmd in ['exit', 'quit', 'logout'] for cmd in cmdline): exit_message()
+
+        print_opts = 'debug json' if JSON_OUT else 'debug'
+        if '-json' in args or JSON_OUT_GLOBAL:
+            args.remove('-json')
+            JSON_OUT = True
+            if 'json' not in print_opts: print_opts = print_opts + ' json'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         else:
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-            ret_obj = ProcessInput(wb, cmdline, pipe_to_shell_cmd)
+            ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
         retf_print(ret_obj, print_opts)
         if cmd == 'cd': SessionSave()
+        if not JSON_OUT_GLOBAL: JSON_OUT = False  # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
     return ret_obj.exitcode
 
 
