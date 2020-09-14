@@ -32,7 +32,7 @@ import websockets.extensions
 
 deque = collections.deque
 
-ALIENPY_VERSION_DATE = '20200908_083939'
+ALIENPY_VERSION_DATE = '20200914_211933'
 ALIENPY_VERSION_STR = '1.2.3'
 ALIENPY_EXECUTABLE = ''
 
