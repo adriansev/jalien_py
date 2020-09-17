@@ -996,6 +996,9 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         get_envelope_arg_list = [access_type, lfn]
     if specs: get_envelope_arg_list.append(str(",".join(specs)))
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
+    if ret_obj.exitcode != 0:
+        retf_print(ret_obj, opts = 'err')
+        return {}
     result = ret_obj.ansdict
     replica_list = []
     for replica in result["results"]:
