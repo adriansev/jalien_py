@@ -2539,6 +2539,14 @@ def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     return get_help(wb, args.pop(0))
 
 
+def DO_user(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+    global AlienSessionInfo
+    if args is None: args = []
+    ret_obj = SendMsg(wb, 'user', args)
+    if ret_obj.exitcode == 0: AlienSessionInfo['alienHome'] = ret_obj.ansdict['results'][0]['homedir']
+    return ret_obj
+
+
 def DO_prompt(args: Union[list, None] = None) -> RET:
     """Add local dir and date information to the alien.py shell prompt"""
     global AlienSessionInfo
@@ -2948,6 +2956,9 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
 
     AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
     del AlienSessionInfo['cmd2func_map_srv']['token']
+
+    AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
+    del AlienSessionInfo['cmd2func_map_srv']['user']
 
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['commandlist'].append('quota')
