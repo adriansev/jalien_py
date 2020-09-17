@@ -1794,8 +1794,6 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         if xrdver_git[0].isdecimal():
             xrdver_date = int(xrdver_git[0][1:])
             if xrdver_date > 20200408: has_cksum = True
-        elif xrdver_git[0].isalpha():  # whatever, if some unknown strig let's just asume the best
-            has_cksum = True
 
     process = client.CopyProcess()
     process.parallel(int(batch))
