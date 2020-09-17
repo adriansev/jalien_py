@@ -765,11 +765,10 @@ def cd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = N
     if args is None: args = []
     if type(args) == str: args = args.split()
     if '-h' in args: return get_help_srv(wb, 'cd')
-    if not args:
-        path = AlienSessionInfo['alienHome']
-    else:
-        path = AlienSessionInfo['prevdir'] if args[0] == '-' else args[0]
-    return SendMsg(wb, 'cd', [path], opts) if AlienSessionInfo['currentdir'] != path else RET(0)
+    if args:
+        if args[0] == '-': args = [AlienSessionInfo['prevdir']]
+        if AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)
+    return SendMsg(wb, 'cd', args, opts)
 
 
 def push2stack(path: str):
@@ -3037,8 +3036,8 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
 
     AlienSessionInfo['commandlist'].sort()
-    # if set, this is a reconnect, so let's get back where we were
-    if AlienSessionInfo['alienHome']: cd(wb, AlienSessionInfo['prevdir'], 'log')
+    # when starting new session prevdir is empty, if set then this is a reconnection
+    if AlienSessionInfo['prevdir']: cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
