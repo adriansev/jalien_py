@@ -901,11 +901,11 @@ def DO_version(args: Union[list, None] = None) -> RET:
               f'alien.py location: {os.path.realpath(__file__)}\n'
               f'script location: {ALIENPY_EXECUTABLE}\n'
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
-              f'Python version: {sys.version}')
+              f'Python version: {sys.version}\n')
     if has_xrootd:
-        stdout = stdout + f'\nXRootD version: {client.__version__}\nXRootD path: {client.__file__}'
+        stdout = stdout + f'XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
     else:
-        stdout = stdout + '\nXRootD version: Not Found!'
+        stdout = stdout + 'XRootD version: Not Found!'
     return RET(0, stdout, "")
 
 
@@ -1779,18 +1779,23 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
     has_cksum = False
     xrd_ver_arr = client.__version__.split(".")
     if len(xrd_ver_arr) > 1:
-        xrdver_major = xrd_ver_arr[0]
-        if xrd_ver_arr[1].isdigit():
+        xrdver_major = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
+        if xrdver_major.isdecimal() and int(xrdver_major) >= 5:
+            has_cksum = True
+        elif xrd_ver_arr[1].isdigit():
             xrdver_minor = int(xrd_ver_arr[1])
             # xrdver_patch = xrd_ver_arr[2]
-            if xrdver_major == 'v4' and xrdver_minor > 12: has_cksum = True
+            if xrdver_major == '4' and xrdver_minor > 12: has_cksum = True
         else:
             xrdver_minor = xrd_ver_arr[1]
             has_cksum = True  # minor version is not proper digit, it is assumed a version with this feature
-    else:
+    else:  # version is not of x.y.z form
         xrdver_git = xrd_ver_arr[0].split("-")
-        xrdver_date = int(xrdver_git[0][1:])
-        if xrdver_date > 20200408: has_cksum = True
+        if xrdver_git[0].isdecimal():
+            xrdver_date = int(xrdver_git[0][1:])
+            if xrdver_date > 20200408: has_cksum = True
+        elif xrdver_git[0].isalpha():  # whatever, if some unknown strig let's just asume the best
+            has_cksum = True
 
     process = client.CopyProcess()
     process.parallel(int(batch))
