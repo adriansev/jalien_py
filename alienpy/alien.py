@@ -635,11 +635,13 @@ def retf_print(ret_info: RET, opts: str = '') -> int:
         if 'err' in opts: logging.error(ret_info.err)
         if 'debug' in opts: logging.debug(ret_info.err)
         if not ('noerr' in opts or 'noprint' in opts):
-            print(ret_info.err.strip(), file=sys.stderr, flush = True)
+            stderr = ret_info.err.strip()
+            if stderr: print(stderr, file=sys.stderr, flush = True)
         return ret_info.exitcode
 
     if not ('noout' in opts or 'noprint' in opts):
-        print(ret_info.out.strip(), flush = True)
+        stdout = ret_info.out.strip()
+        if stdout: print(stdout, flush = True)
     return ret_info.exitcode
 
 
@@ -2090,7 +2092,7 @@ def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, N
 
 def DO_ps(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
     """ps : show and process ps output"""
-    if not args or args is None: args = ['-h']
+    if args is None: args = []
     ret_obj = SendMsg(wb, 'ps', args)
     if '-trace' in args:
         nice_lines = [convert_time(str(msgline)) for item in ret_obj.ansdict['results'] for msgline in item['message'].split('\n')]
@@ -2246,7 +2248,8 @@ def DO_nano(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
 
 def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None, external: bool = False) -> RET:
     """run shell_command lfn|alien: tagged lfns :: download lfn(s) as a temporary file and run shell command on the lfn(s)"""
-    if not args or args is None: return RET(1, '', 'No shell command specified')
+    if args is None: args = []
+    if not args: return RET(1, '', 'No shell command specified')
     if '-h' in args or len(args) == 1:
         msg_last = ('Command format: shell_command arguments lfn\n'
                     'N.B.!! the lfn must be the last element of the command!!\n'
@@ -2292,7 +2295,8 @@ def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
 
 def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: Union[list, None] = None) -> RET:
     """exec lfn :: download lfn as a temporary file and executed in the shell"""
-    if '-h' in args or '-help' in args:
+    if args is None: args = []
+    if not args or '-h' in args or '-help' in args:
         msg = ('Command format: exec lfn list_of_arguments\n'
                'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                'for working within application use <edit>')
@@ -2327,6 +2331,7 @@ def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args
 
 
 def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> RET:
+    if args is None: args = []
     if '-h' in args or '-help' in args:
         msg = (f'''Client-side implementation of find; it will use as default the regex option of server's find.
 Command formant: find2 <options> <directory>
@@ -2419,7 +2424,7 @@ Command formant: find2 <options> <directory>
 
 def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
     """Run shell command in subprocess; if exists, print stdout and stderr"""
-    if not INPUT: return RET()
+    if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
     try:
         if captureout:
@@ -3099,13 +3104,12 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts = 'nokeys')  # we do not use keys when doing user interaction
         retf_session_update(ret_obj)
-    elif cmd not in AlienSessionInfo['commandlist']:  # fallback to running the command within shell
-        ret_obj = DO_syscmd(wb, cmd, args)
+    # elif cmd not in AlienSessionInfo['commandlist']:  # fallback to running the command within shell
+        # ret_obj = DO_syscmd(wb, cmd, args)
 
     if ret_obj is None:
-        msg = f"NO RET OBJ!! We should have a return when doing: {cmd} {args}"
-        print(msg, file=sys.stderr, flush = True)
-        return RET(1)
+        msg = f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}"
+        return RET(1, '', msg)
 
     if message_begin:
         message_delta = (datetime.datetime.now().timestamp() - message_begin) * 1000
