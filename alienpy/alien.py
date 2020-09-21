@@ -909,6 +909,25 @@ def DO_version(args: Union[list, None] = None) -> RET:
     return RET(0, stdout, "")
 
 
+def DO_exit(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if len(args) > 0 and args[0] == '-h':
+        msg = 'Command format: exit [code] [stderr|err] [message]'
+        return RET(0, msg)
+    code = AlienSessionInfo['exitcode']
+    msg = ''
+    if len(args) > 0:
+        if args[0].isdecimal(): code = args.pop(0)
+        if args[0] == 'stderr' or args[0] == 'err':
+            args.pop(0)
+            print2stdout = sys.stderr
+        msg = ' '.join(args).strip()
+        if msg:
+            if code != 0: print(msg, file = sys.stderr, flush = True)
+            else: print(msg, flush = True)
+    sys.exit(int(code))
+
+
 def DO_certinfo(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     cert_files = get_files_cert()
@@ -3052,6 +3071,15 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('queryML')
     AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
 
+    AlienSessionInfo['commandlist'].append('exit')
+    AlienSessionInfo['cmd2func_map_nowb']['exit'] = DO_exit
+
+    AlienSessionInfo['commandlist'].append('quit')
+    AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
+
+    AlienSessionInfo['commandlist'].append('logout')
+    AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
+
     AlienSessionInfo['commandlist'].sort()
     # when starting new session prevdir is empty, if set then this is a reconnection
     if AlienSessionInfo['prevdir']: cd(wb, AlienSessionInfo['prevdir'], 'log')
@@ -3164,7 +3192,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
 
         args = input_alien.strip().split()
         cmd = args.pop(0)
-        if any(cmd in ['exit', 'quit', 'logout'] for cmd in cmdline): exit_message()
+        # if any(cmd in ['exit', 'quit', 'logout'] for cmd in cmdline): exit_message()
 
         print_opts = 'debug json' if JSON_OUT else 'debug'
         if '-json' in args or JSON_OUT_GLOBAL:
