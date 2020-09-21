@@ -715,7 +715,7 @@ def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
         sys_cur_dir = AlienSessionInfo['currentdir']
         AlienSessionInfo['currentdir'] = session['CWD']
         AlienSessionInfo['prevdir'] = session['CWDPREV']
-        if sys_cur_dir != AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'])
+        if sys_cur_dir != AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
 
 
 def exitcode(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['exitcode']}", '')
@@ -767,7 +767,7 @@ def cd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = N
     if '-h' in args: return get_help_srv(wb, 'cd')
     if args:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
-        if AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)
+        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)
     return SendMsg(wb, 'cd', args, opts)
 
 
