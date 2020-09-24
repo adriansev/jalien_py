@@ -3163,6 +3163,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
     if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
+    if ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']: ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
     return ret_obj
 
 
