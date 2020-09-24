@@ -3123,7 +3123,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
 
     # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
     message_begin = None
-    message_delta = None
+    msg_timing = None
 
     # first to be processed is the time token, it will start the timing and be removed from command
     if cmd == 'time':
@@ -3155,13 +3155,14 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         msg = f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}"
         return RET(1, '', msg)
 
-    if message_begin:
-        message_delta = (datetime.datetime.now().timestamp() - message_begin) * 1000
-        print(f">>>   Roundtrip for send/receive: {message_delta:.3f} ms", flush = True)
+    if message_begin: msg_timing = f">>>Roundtrip for send/receive: {(datetime.datetime.now().timestamp() - message_begin) * 1000:.3f} ms"
 
     if shellcmd and ret_obj.exitcode == 0 and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
+        if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
+
+    if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
     return ret_obj
 
 
