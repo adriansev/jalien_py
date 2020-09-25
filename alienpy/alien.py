@@ -446,7 +446,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                     logging.error(msg)
                     print(msg, file=sys.stderr, flush = True)
                     break
-        time.sleep(0.2)
+        if result is None: time.sleep(0.1)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     if not result: return RET(1, '', 'SendMsg:: Empty result received from server')
@@ -3129,14 +3129,14 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         args[0:0] = ['-F', '-l', '-a']
 
     # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
-    message_begin = None
+    time_begin = None
     msg_timing = None
 
     # first to be processed is the time token, it will start the timing and be removed from command
     if cmd == 'time':
         if not args or '-h' in args: return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
-        message_begin = datetime.datetime.now().timestamp()
+        time_begin = datetime.datetime.now().timestamp()
 
     # these commands do NOT need wb connection
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:
@@ -3144,25 +3144,16 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         retf_session_update(ret_obj)
         return ret_obj  # let's return here, this output will not be passed to shell command'
 
-    # make sure we have with whom to talk to; if not, lets redo the connection
-    # we can consider any message/reply pair as atomic, we cannot forsee and treat the connection lost in the middle of reply
-    # (if the end of message frame is not received then all message will be lost as it invalidated)
-    if not IsWbConnected(wb): wb = InitConnection()
-
+    # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
     if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in clien-side implementations list
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
         retf_session_update(ret_obj)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts = 'nokeys')  # we do not use keys when doing user interaction
         retf_session_update(ret_obj)
-    # elif cmd not in AlienSessionInfo['commandlist']:  # fallback to running the command within shell
-        # ret_obj = DO_syscmd(wb, cmd, args)
 
-    if ret_obj is None:
-        msg = f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}"
-        return RET(1, '', msg)
-
-    if message_begin: msg_timing = f">>>ProcessInput time: {(datetime.datetime.now().timestamp() - message_begin) * 1000:.3f} ms"
+    if ret_obj is None: return RET(1, '', f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}")
+    if time_begin: msg_timing = f">>>ProcessInput time: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms"
 
     if shellcmd and ret_obj.exitcode == 0 and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
