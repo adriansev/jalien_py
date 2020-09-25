@@ -83,6 +83,7 @@ DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 TMPDIR = os.getenv('TMPDIR', '/tmp')
+DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '',
@@ -353,6 +354,8 @@ def syncify(fn):
 @syncify
 async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
+    time_begin = None
+    if DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     try:
         pong_waiter = await wb.ping()
         await pong_waiter
@@ -360,6 +363,7 @@ async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
         logging.debug('WB ping/pong failed!!!')
         logging.exception(e)
         return False
+    if time_begin: logging.error(f">>>IsWbConnected time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     return True
 
 
@@ -379,8 +383,12 @@ async def msg_proxy(websocket, use_usercert = False):
 
 @syncify
 async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, jsonmsg: str) -> str:
+    """The low level async function for send/receive"""
+    time_begin = None
+    if DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     await wb.send(jsonmsg)
     result = await wb.recv()
+    if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     return result
 
 
@@ -390,6 +398,8 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         logging.info("SendMsg:: websocket not initialized")
         return '' if 'rawstr' in opts else {}
     if not args: args = []
+    time_begin = None
+    if DEBUG or DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
     if DEBUG:
@@ -404,9 +414,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty or invalid")
         return '' if 'rawstr' in opts else RET(1, '', "SendMsg:: json message is empty or invalid")
-    if DEBUG:
-        logging.debug(f"SEND COMMAND: {jsonmsg}")
-        init_begin = datetime.datetime.now().timestamp()
+    if DEBUG: logging.debug(f"SEND COMMAND: {jsonmsg}")
     nr_tries = int(0)
     result = None
     while result is None:
@@ -440,13 +448,12 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                     break
         time.sleep(0.2)
 
-    if DEBUG:
-        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        logging.debug(f"COMMAND SEND/RECV ROUNDTRIP: {init_delta:.3f} ms")
-
+    if time_begin: logging.debug(f"SendMsg::Result received: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     if not result: return RET(1, '', 'SendMsg:: Empty result received from server')
     if 'rawstr' in opts: return result
-    return GetDict(result)
+    ret_obj = GetDict(result)
+    if time_begin: logging.debug(f"SendMsg::Result decoded: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    return ret_obj
 
 
 def GetDict(result: Union[str, dict]) -> RET:
@@ -3155,7 +3162,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         msg = f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}"
         return RET(1, '', msg)
 
-    if message_begin: msg_timing = f">>>Roundtrip for send/receive: {(datetime.datetime.now().timestamp() - message_begin) * 1000:.3f} ms"
+    if message_begin: msg_timing = f">>>ProcessInput time: {(datetime.datetime.now().timestamp() - message_begin) * 1000:.3f} ms"
 
     if shellcmd and ret_obj.exitcode == 0 and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
