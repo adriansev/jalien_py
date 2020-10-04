@@ -2575,7 +2575,7 @@ def DO_user(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     global AlienSessionInfo
     if args is None: args = []
     ret_obj = SendMsg(wb, 'user', args)
-    if ret_obj.exitcode == 0: AlienSessionInfo['alienHome'] = ret_obj.ansdict['results'][0]['homedir']
+    if ret_obj.exitcode == 0 and 'homedir' in ret_obj.ansdict['results'][0]: AlienSessionInfo['alienHome'] = ret_obj.ansdict['results'][0]['homedir']
     return ret_obj
 
 
