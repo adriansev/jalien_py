@@ -409,7 +409,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         jsonmsg = cmdline
     else:
         jsonmsg = CreateJsonCommand(cmdline, args, opts)  # nomsg/nokeys will be passed to CreateJsonCommand
-    if DEBUG: logging.info(f"We send this json: {jsonmsg}\n")
+    if DEBUG: logging.info(f"We send this json: {jsonmsg}")
 
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty or invalid")
@@ -3264,7 +3264,8 @@ def JAlien(commands: str = '') -> int:
 def setup_logging():
     MSG_LVL = logging.DEBUG if DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
-    logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = 'w', level = MSG_LVL)
+    file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
+    logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
