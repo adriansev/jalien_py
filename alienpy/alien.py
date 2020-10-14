@@ -1211,7 +1211,7 @@ def name2regex(pattern_regex: str = '') -> str:
 
         if DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
         return translated_pattern_regex
-    return ''  # catch-all return just in case pattern_regex is rubbish
+    return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
 
 def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
@@ -2426,29 +2426,21 @@ Command formant: find2 <options> <directory>
         filtering_enabled = True
 
     if '-name' in args:
-        if filtering_enabled:
-            print("Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")
-            return int(22)  # EINVAL /* Invalid argument */
+        if filtering_enabled: return RET(22, '', "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")  # EINVAL /* Invalid argument */
         name_idx = args.index('-name')
         pattern_regex = args.pop(name_idx + 1)
         args.pop(name_idx)
         filtering_enabled = True
 
         pattern_regex = name2regex(pattern_regex)
-        if not pattern_regex:
-            print("No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")
-            return int(22)  # EINVAL /* Invalid argument */
+        if not pattern_regex: return RET(22, '', "No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")  # EINVAL /* Invalid argument */
 
     try:
         re.compile(pattern_regex)
     except re.error:
-        print("regex argument of -select or -name option is invalid!!", file=sys.stderr, flush = True)
-        return int(64)  # EX_USAGE /* command line usage error */
+        return RET(64, '', "regex argument of -select or -name option is invalid!!")  # EX_USAGE /* command line usage error */
 
-    if len(args) > 1:
-        print('Too many elements remained in arg list, it should be just the directory')
-        print(args)
-        return int(1)
+    if len(args) > 1: return RET(1, '', f'Too many elements remained in arg list, it should be just the directory\nArg list: {args}')
     find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern_regex])
     return SendMsg(wb, 'find', find_args, opts = 'nokeys')
 
