@@ -395,8 +395,9 @@ async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, jsonmsg: str)
 def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
-        logging.info("SendMsg:: websocket not initialized")
-        return '' if 'rawstr' in opts else {}
+        msg = "SendMsg:: websocket not initialized"
+        logging.info(msg)
+        return '' if 'rawstr' in opts else RET(1, '', msg)
     if not args: args = []
     time_begin = None
     if DEBUG or DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
