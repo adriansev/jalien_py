@@ -1454,9 +1454,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             msg = "regex argument of -select or -name option is invalid!!"
             return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
-    src = None
-    src_type = None
-    src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    src = src_type = src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if isSrcLocal:
         src = expand_path_local(arg_source)
         if not os.path.exists(src):
@@ -1476,9 +1474,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             return RET(2, '', msg)  # ENOENT /* No such file or directory */
         if src_type == 'd': isSrcDir = bool(True)
 
-    dst = None
-    dst_type = None
-    dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    dst = dst_type = dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
     if isDstLocal:
         dst = expand_path_local(arg_target)
         dst_type = pathtype_local(dst)
@@ -1603,7 +1599,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
     for cpfile in copy_list:
-        if isDownload:
+        if cpfile.isUpload:
             lfn = cpfile.src
             if not cpfile.token_request["results"]: continue
             dst = cpfile.dst
