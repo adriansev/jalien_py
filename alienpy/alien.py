@@ -1407,39 +1407,14 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     slashend_src = arg_source.endswith('/')
     # slashend_dst = arg_target.endswith('/')  # not used
 
-    isSrcLocal = None
-    isDstLocal = None
-    isDownload = None
+    isSrcLocal = isDstLocal = isDownload = None
+    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
+        return RET(22, '', 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
 
-    arg_err_msg = 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments'
-
-    if arg_source.startswith('file:'):
-        if arg_target.startswith('file:'):
-            return RET(22, '', arg_err_msg)  # EINVAL /* Invalid argument */
-        isSrcLocal = True
-        isDstLocal = not isSrcLocal
-        if arg_source.startswith('file://'):  arg_source = arg_source.replace("file://", "", 1)
-        if arg_source.startswith('file:'):    arg_source = arg_source.replace("file:", "", 1)
-
-    if arg_source.startswith('alien:'):
-        if arg_target.startswith('alien:'):
-            return RET(22, '', arg_err_msg)  # EINVAL /* Invalid argument */
-        isSrcLocal = False
-        isDstLocal = not isSrcLocal
-        if arg_source.startswith('alien://'): arg_source = arg_source.replace("alien://", "", 1)
-        if arg_source.startswith('alien:'):   arg_source = arg_source.replace("alien:", "", 1)
-
-    if isSrcLocal is None and arg_target.startswith('file:'):
-        isSrcLocal = False
-        isDstLocal = not isSrcLocal
-        if arg_target.startswith('file://'):  arg_target = arg_target.replace("file://", "", 1)
-        if arg_target.startswith('file:'):    arg_target = arg_target.replace("file:", "", 1)
-    if isSrcLocal is None and arg_target.startswith('alien:'):
-        isSrcLocal = True
-        isDstLocal = not isSrcLocal
-        if arg_target.startswith('alien://'): arg_target = arg_target.replace("alien://", "", 1)
-        if arg_target.startswith('alien:'):   arg_target = arg_target.replace("alien:", "", 1)
-
+    isSrcLocal = (arg_source.startswith('file:') or arg_target.startswith('alien:')) and not (arg_source.startswith('alien:') or arg_target.startswith('file:'))
+    isDownload = isDstLocal = not isSrcLocal
+    arg_source = re.sub('(alien|file)+(:|/{2})*', '', arg_source)  # remove prefixes
+    arg_target = re.sub('(alien|file)+(:|/{2})*', '', arg_target)
     arg_glob = False
     if '*' in arg_source:
         arg_glob = True
@@ -1464,10 +1439,6 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
             use_regex = False
             filtering_enabled = True
-
-    isDownload = isDstLocal
-    if isSrcLocal is None:
-        return RET(22, '', arg_err_msg)  # EINVAL /* Invalid argument */
 
     # check for valid (single) specifications delimiter
     count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
