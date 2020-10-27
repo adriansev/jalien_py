@@ -76,6 +76,8 @@ guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
 specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
 lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
+ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
+emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 
 # environment debug variable
 JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
@@ -1058,28 +1060,26 @@ def setDst(file: str = '', parent: int = 0) -> str:
     return p.as_posix().replace(basedir, '', 1)
 
 
-def expand_path_local(path: str) -> str:
+def expand_path_local(path_input: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = path
-    if exp_path.startswith('file://'): exp_path = exp_path.replace("file://", "", 1)
-    if exp_path.startswith('file:'): exp_path = exp_path.replace("file:", "", 1)
+    exp_path = path_input
+    exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
     if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
     exp_path = os.path.normpath(exp_path)
     exp_path = os.path.realpath(exp_path)
-    if exp_path.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
-def expand_path_grid(path: str) -> str:
+def expand_path_grid(path_input: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = path
-    if exp_path.startswith('alien://'): exp_path = exp_path.replace("alien://", "", 1)
-    if exp_path.startswith('alien:'): exp_path = exp_path.replace("alien:", "", 1)
+    exp_path = path_input
+    exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
-    if exp_path.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
     return exp_path
 
 
@@ -1628,11 +1628,25 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             msg = "No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
-    arg_source = xrd_copy_command[-2]
-    arg_target = xrd_copy_command[-1]
+    copy_lfnlist = []  # list of lfn copy tasks
+    input_file = ''  # input file with <source, destination> pairs
 
-    copy_lfnlist = []  # create a list of copy tasks
-    makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+    if '-input' in xrd_copy_command:
+        input_idx = xrd_copy_command.index('-input')
+        input_file = xrd_copy_command.pop(input_idx + 1)
+        xrd_copy_command.pop(input_idx)
+        if not os.path.isfile(input_file): return RET(1, '', f'Input file {input_file} not found')
+
+        with open(input_file) as arglist_file:
+            for line in arglist_file:
+                if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
+                arglist = line.strip().split()
+                if len(arglist) > 2:
+                    print(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
+                    continue
+                makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+    else:
+        makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
 
     if not copy_lfnlist:
         msg = "No copy operations in list! enable the DEBUG mode for more info"
