@@ -1526,8 +1526,8 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        print("Warning! multiple source usage is known to break the files stored in zip files, so it will be ignored in those cases", flush = True)
-        sources = int(xrd_copy_command.pop(y_idx + 1))
+        print("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored", flush = True)
+        # sources = int(xrd_copy_command.pop(y_idx + 1))
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
