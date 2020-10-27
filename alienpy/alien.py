@@ -75,6 +75,7 @@ if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
 specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
+lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
 
 # environment debug variable
 JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
@@ -1215,6 +1216,234 @@ def name2regex(pattern_regex: str = '') -> str:
     return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
 
+def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list):
+    """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
+    isSrcDir = bool(False)
+    # isDstDir = bool(False)
+    slashend_src = arg_source.endswith('/')
+    # slashend_dst = arg_target.endswith('/')  # not used
+
+    isSrcLocal = isDstLocal = isDownload = None
+    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
+        return RET(22, '', 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
+
+    isSrcLocal = (arg_source.startswith('file:') or arg_target.startswith('alien:')) and not (arg_source.startswith('alien:') or arg_target.startswith('file:'))
+    isDownload = isDstLocal = not isSrcLocal
+    arg_source = lfn_prefix_re.sub('', arg_source)
+    arg_target = lfn_prefix_re.sub('', arg_target)
+
+    arg_glob = False
+    if '*' in arg_source:
+        arg_glob = True
+        src_arr = arg_source.split("/")
+        base_path_arr = []
+        for el in src_arr:
+            if '*' not in el:
+                base_path_arr.append(el)
+            else:
+                break
+
+        for el in base_path_arr: src_arr.remove(el)  # remove the base path
+        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
+        if arg_source: arg_source = arg_source + '/'
+
+        if isSrcLocal:
+            pattern_regex = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+            pattern_regex = pattern_regex.replace('*', '.*')
+            use_regex = True
+            filtering_enabled = True
+        else:
+            pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+            use_regex = False
+            filtering_enabled = True
+
+    # check for valid (single) specifications delimiter
+    count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
+    if count_tokens[','] + count_tokens['@'] > 1:
+        msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
+        return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+
+    if not isDownload: use_regex = True
+    if use_regex:
+        try:
+            regex = re.compile(pattern_regex)
+        except re.error:
+            msg = "regex argument of -select or -name option is invalid!!"
+            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+
+    src = src_type = src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    if isSrcLocal:
+        src = expand_path_local(arg_source)
+        if not os.path.exists(src):
+            msg = "source does not exist (or is not accessible)"
+            return RET(2, '', msg)  # ENOENT /* No such file or directory */
+        src_type = pathtype_local(src)
+        if src_type == 'd':
+            isSrcDir = bool(True)
+            if not arg_glob and not slashend_src: parent = parent + 1
+    else:
+        src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        src = expand_path_grid(src)
+        src_type = pathtype_grid(wb, src)
+        if not src_type:
+            msg = f"Could not check source argument type: {AlienSessionInfo['error']}"
+            return RET(2, '', msg)  # ENOENT /* No such file or directory */
+        if src_type == 'd': isSrcDir = bool(True)
+
+    dst = dst_type = dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    if isDstLocal:
+        dst = expand_path_local(arg_target)
+        dst_type = pathtype_local(dst)
+        if not dst_type:
+            try:
+                mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent
+                mk_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                logging.error(traceback.format_exc())
+                path_str = mk_path.as_posix()
+                msg = f"Could not create local destination directory: {path_str}\ncheck log file {DEBUG_FILE}"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+            dst_type = 'd'  # we just created it
+        # if dst_type == 'd': isDstDir = bool(True)
+    else:
+        dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+        dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+        dst = expand_path_grid(dst)
+        dst_type = pathtype_grid(wb, dst)
+        if not dst_type:
+            mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
+            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')
+            retf_print(ret_obj, opts = 'noprint err')
+            if ret_obj.exitcode != 0:
+                msg = f"check log file {DEBUG_FILE}"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+            dst_type = 'd'  # we just created it
+        # if dst_type == 'd': isDstDir = bool(True)
+
+    error_msg = ''  # container which accumulates the error messages
+    # if src is directory, then create list of files coresponding with options
+    isWrite = bool(False)
+    if isDownload:  # src is GRID, we are DOWNLOADING from GRID directory
+        specs = src_specs_remotes
+        if isSrcDir:  # recursive download
+            find_defaults = ['-a', '-s', src]
+            if use_regex:
+                find_defaults.insert(0, '-r')
+                find_defaults.append(pattern_regex)
+            else:
+                find_defaults.append(pattern)
+            find_args.extend(find_defaults)
+            send_opts = 'nomsg' if not DEBUG else ''
+            ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
+            src_list_files_dict = ret_obj.ansdict
+            if ret_obj.exitcode != 0:
+                msg = f"check log file {DEBUG_FILE}"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+            for item in src_list_files_dict['results']:
+                dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
+                if os.path.isfile(dst_filename) and not overwrite:
+                    print(f'{dst_filename} exists, skipping..', flush = True)
+                    continue
+                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
+                token_query = tokens['answer']
+                if AlienSessionInfo['exitcode'] != 0:
+                    error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
+                    continue
+                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, token_query, ''))
+        else:
+            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            if os.path.isfile(dst) and not overwrite:
+                msg = f'{dst} exists, skipping..'
+                return RET(0, msg)  # Destination present we will not overwrite it
+            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
+            token_query = tokens['answer']
+            if AlienSessionInfo['exitcode'] != 0:
+                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
+            else:
+                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
+    else:  # src is LOCAL, we are UPLOADING from LOCAL directory
+        isWrite = True
+        specs = dst_specs_remotes
+        if isSrcDir:  # recursive upload
+            for root, dirs, files in os.walk(src):
+                for file in files:
+                    filepath = os.path.join(root, file)
+                    if regex.search(filepath):
+                        lfn = format_dst_fn(src, filepath, dst, parent)
+                        lfn_exists = pathtype_grid(wb, lfn)
+                        if lfn_exists:
+                            if not overwrite:  # if the lfn is already present and not overwrite lets's skip the upload
+                                print(f'{lfn} exists, skipping..', flush = True)
+                                continue
+                            # clear up the destination lfn
+                            print(f'{lfn} exists, deleting..', flush = True)
+                            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+                        tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
+                        token_query = tokens['answer']
+                        if AlienSessionInfo['exitcode'] != 0:
+                            error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
+                            continue
+                        copy_list.append(CopyFile(filepath, lfn, isWrite, token_query, ''))
+        else:
+            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            lfn_exists = pathtype_grid(wb, dst)
+            if lfn_exists:
+                if not overwrite: return RET(0, f'{dst} exists, skipping..')  # if the lfn is already present and not overwrite lets's skip the upload
+                print(f'{dst} exists, deleting..', flush = True)  # clear up the destination lfn
+                ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
+                retf_print(ret_obj, 'print')
+            tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
+            token_query = tokens['answer']
+            if AlienSessionInfo['exitcode'] != 0:
+                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
+            else:
+                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
+    if error_msg:
+        print(error_msg, file=sys.stderr, flush = True)
+
+
+def makelist_xrdjobs(wb: websockets.client.WebSocketClientProtocol, copylist_lfns: list, copylist_xrd: list):
+    """Process a list of lfns to XRootD copy jobs and add them to the list"""
+    for cpfile in copylist_lfns:
+        if not cpfile.isUpload:
+            lfn = cpfile.src
+            if not cpfile.token_request["results"]: continue
+            dst = cpfile.dst
+            size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
+            md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+            if retf_print(fileIsValid(dst, size_4meta, md5_4meta), 'noprint') == 0: continue  # destination exists and is valid
+
+            # multiple replicas are downloaded to a single file
+            is_zip = False
+            file_in_zip = ''
+            url_list_4meta = []
+            for replica in cpfile.token_request['results']:
+                url_components = replica['url'].rsplit('#', maxsplit = 1)
+                if len(url_components) > 1:
+                    is_zip = True
+                    file_in_zip = url_components[1]
+                # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
+                url_list_4meta.append(url_components[0] + '?authz=' + replica['envelope'])
+
+            if not url_list_4meta:
+                print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
+                continue
+
+            # Create the metafile based link
+            meta_fn = make_tmp_fn(lfn, '.meta4', True)  # create a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
+            create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
+            download_link = meta_fn
+            if is_zip: download_link = f'{download_link}?xrdcl.unzip={file_in_zip}'
+            copylist_xrd.append(CopyFile(download_link, dst, cpfile.isUpload, {}, lfn))  # we do not need the tokens in job list when downloading
+        else:  # is upload
+            src = cpfile.src
+            lfn = cpfile.dst
+            if not cpfile.token_request['results']: continue
+            for request in cpfile.token_request['results']:
+                copylist_xrd.append(CopyFile(src, f"{request['url']}?authz={request['envelope']}", cpfile.isUpload, request, lfn))
+
+
 def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not has_xrootd: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
@@ -1399,245 +1628,24 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             msg = "No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
-    isSrcDir = bool(False)
-    # isDstDir = bool(False)
-
     arg_source = xrd_copy_command[-2]
     arg_target = xrd_copy_command[-1]
-    slashend_src = arg_source.endswith('/')
-    # slashend_dst = arg_target.endswith('/')  # not used
 
-    isSrcLocal = isDstLocal = isDownload = None
-    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
-        return RET(22, '', 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
+    copy_lfnlist = []  # create a list of copy tasks
+    makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
 
-    isSrcLocal = (arg_source.startswith('file:') or arg_target.startswith('alien:')) and not (arg_source.startswith('alien:') or arg_target.startswith('file:'))
-    isDownload = isDstLocal = not isSrcLocal
-    arg_source = re.sub('(alien|file)+(:|/{2})*', '', arg_source)  # remove prefixes
-    arg_target = re.sub('(alien|file)+(:|/{2})*', '', arg_target)
-    arg_glob = False
-    if '*' in arg_source:
-        arg_glob = True
-        src_arr = arg_source.split("/")
-        base_path_arr = []
-        for el in src_arr:
-            if '*' not in el:
-                base_path_arr.append(el)
-            else:
-                break
-
-        for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
-        if arg_source: arg_source = arg_source + '/'
-
-        if isSrcLocal:
-            pattern_regex = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
-            pattern_regex = pattern_regex.replace('*', '.*')
-            use_regex = True
-            filtering_enabled = True
-        else:
-            pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
-            use_regex = False
-            filtering_enabled = True
-
-    # check for valid (single) specifications delimiter
-    count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
-    if count_tokens[','] + count_tokens['@'] > 1:
-        msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
-        return RET(64, '', msg)  # EX_USAGE /* command line usage error */
-
-    if not isDownload: use_regex = True
-    if use_regex:
-        try:
-            regex = re.compile(pattern_regex)
-        except re.error:
-            msg = "regex argument of -select or -name option is invalid!!"
-            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
-
-    src = src_type = src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if isSrcLocal:
-        src = expand_path_local(arg_source)
-        if not os.path.exists(src):
-            msg = "source does not exist (or is not accessible)"
-            return RET(2, '', msg)  # ENOENT /* No such file or directory */
-        src_type = pathtype_local(src)
-        if src_type == 'd':
-            isSrcDir = bool(True)
-            if not arg_glob and not slashend_src: parent = parent + 1
-    else:
-        src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
-        src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        src = expand_path_grid(src)
-        src_type = pathtype_grid(wb, src)
-        if not src_type:
-            msg = f"Could not check source argument type: {AlienSessionInfo['error']}"
-            return RET(2, '', msg)  # ENOENT /* No such file or directory */
-        if src_type == 'd': isSrcDir = bool(True)
-
-    dst = dst_type = dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
-    if isDstLocal:
-        dst = expand_path_local(arg_target)
-        dst_type = pathtype_local(dst)
-        if not dst_type:
-            try:
-                mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent
-                mk_path.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                logging.error(traceback.format_exc())
-                path_str = mk_path.as_posix()
-                msg = f"Could not create local destination directory: {path_str}\ncheck log file {DEBUG_FILE}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            dst_type = 'd'  # we just created it
-        # if dst_type == 'd': isDstDir = bool(True)
-    else:
-        dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
-        dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        dst = expand_path_grid(dst)
-        dst_type = pathtype_grid(wb, dst)
-        if not dst_type:
-            mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
-            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')
-            retf_print(ret_obj, opts = 'noprint err')
-            if ret_obj.exitcode != 0:
-                msg = f"check log file {DEBUG_FILE}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            dst_type = 'd'  # we just created it
-        # if dst_type == 'd': isDstDir = bool(True)
-
-    copy_list = []  # create a list of copy tasks
-    error_msg = ''  # container which accumulates the error messages
-    # if src is directory, then create list of files coresponding with options
-    isWrite = bool(False)
-    if isDownload:  # src is GRID, we are DOWNLOADING from GRID directory
-        specs = src_specs_remotes
-        if isSrcDir:  # recursive download
-            find_defaults = ['-a', '-s', src]
-            if use_regex:
-                find_defaults.insert(0, '-r')
-                find_defaults.append(pattern_regex)
-            else:
-                find_defaults.append(pattern)
-            find_args.extend(find_defaults)
-            send_opts = 'nomsg' if not DEBUG else ''
-            ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
-            src_list_files_dict = ret_obj.ansdict
-            if ret_obj.exitcode != 0:
-                msg = f"check log file {DEBUG_FILE}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            for item in src_list_files_dict['results']:
-                dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
-                if os.path.isfile(dst_filename) and not overwrite:
-                    print(f'{dst_filename} exists, skipping..', flush = True)
-                    continue
-                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
-                token_query = tokens['answer']
-                if AlienSessionInfo['exitcode'] != 0:
-                    error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-                    continue
-                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, token_query, ''))
-        else:
-            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
-            if os.path.isfile(dst) and not overwrite:
-                msg = f'{dst} exists, skipping..'
-                return RET(0, msg)  # Destination present we will not overwrite it
-            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
-            token_query = tokens['answer']
-            if AlienSessionInfo['exitcode'] != 0:
-                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-            else:
-                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
-    else:  # src is LOCAL, we are UPLOADING from LOCAL directory
-        isWrite = True
-        specs = dst_specs_remotes
-        if isSrcDir:  # recursive upload
-            for root, dirs, files in os.walk(src):
-                for file in files:
-                    filepath = os.path.join(root, file)
-                    if regex.search(filepath):
-                        lfn = format_dst_fn(src, filepath, dst, parent)
-                        lfn_exists = pathtype_grid(wb, lfn)
-                        if lfn_exists:
-                            if not overwrite:  # if the lfn is already present and not overwrite lets's skip the upload
-                                print(f'{lfn} exists, skipping..', flush = True)
-                                continue
-                            # clear up the destination lfn
-                            print(f'{lfn} exists, deleting..', flush = True)
-                            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
-                        tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
-                        token_query = tokens['answer']
-                        if AlienSessionInfo['exitcode'] != 0:
-                            error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-                            continue
-                        copy_list.append(CopyFile(filepath, lfn, isWrite, token_query, ''))
-        else:
-            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
-            lfn_exists = pathtype_grid(wb, dst)
-            if lfn_exists:
-                if not overwrite: return RET(0, f'{dst} exists, skipping..')  # if the lfn is already present and not overwrite lets's skip the upload
-                print(f'{dst} exists, deleting..', flush = True)  # clear up the destination lfn
-                ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
-                retf_print(ret_obj, 'print')
-            tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
-            token_query = tokens['answer']
-            if AlienSessionInfo['exitcode'] != 0:
-                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-            else:
-                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
-
-    if error_msg:
-        print(error_msg, file=sys.stderr, flush = True)
-
-    if not copy_list:
+    if not copy_lfnlist:
         msg = "No copy operations in list! enable the DEBUG mode for more info"
         logging.info(msg)
         return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
     if DEBUG:
         logging.debug("We are going to copy these files:")
-        for file in copy_list: logging.debug(file)
+        for file in copy_lfnlist: logging.debug(file)
 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
-    for cpfile in copy_list:
-        if cpfile.isUpload:
-            lfn = cpfile.src
-            if not cpfile.token_request["results"]: continue
-            dst = cpfile.dst
-            size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
-            md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-            if retf_print(fileIsValid(dst, size_4meta, md5_4meta), 'noprint') == 0: continue  # destination exists and is valid
-
-            # multiple replicas are downloaded to a single file
-            is_zip = False
-            file_in_zip = ''
-            url_list_4meta = []
-            for replica in cpfile.token_request['results']:
-                url_components = replica['url'].rsplit('#', maxsplit = 1)
-                if len(url_components) > 1:
-                    is_zip = True
-                    file_in_zip = url_components[1]
-                # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                url_list_4meta.append(url_components[0] + '?authz=' + replica['envelope'])
-
-            if not url_list_4meta:
-                print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
-                continue
-
-            # Create the metafile based link
-            meta_fn = make_tmp_fn(lfn, '.meta4', True)  # create a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
-            create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
-            download_link = meta_fn
-            if is_zip:
-                sources = 1
-                download_link = download_link + '?xrdcl.unzip=' + file_in_zip
-            xrdcopy_job_list.append(CopyFile(download_link, dst, cpfile.isUpload, {}, lfn))  # we do not need the tokens in job list when downloading
-        else:  # is upload
-            src = cpfile.src
-            lfn = cpfile.dst
-            if not cpfile.token_request['results']: continue
-            for request in cpfile.token_request['results']:
-                complete_url = request['url'] + "?" + "authz=" + request['envelope']
-                xrdcopy_job_list.append(CopyFile(src, complete_url, cpfile.isUpload, request, lfn))
+    makelist_xrdjobs(wb, copy_lfnlist, xrdcopy_job_list)
 
     if not xrdcopy_job_list:
         msg = "No XRootD operations in list! enable the DEBUG mode for more info"
@@ -1650,7 +1658,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams, cksum)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, isDownload, my_cp_args, printout)
+    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -1665,7 +1673,6 @@ if has_xrootd:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         def __init__(self):
             self.wb = None
-            self.isDownload = bool(True)
             self.copy_failed_list = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
             self.jobs = int(0)
             self.job_list = []
@@ -1686,29 +1693,17 @@ if has_xrootd:
             results_status = results['status'].status
             results_errno = results['status'].errno
             results_code = results['status'].code
-            status = ''
+            status = PrintColor(COLORS.BIRed) + 'UNKNOWN' + PrintColor(COLORS.ColorReset)
             if results['status'].ok: status = PrintColor(COLORS.Green) + 'OK' + PrintColor(COLORS.ColorReset)
             if results['status'].error: status = PrintColor(COLORS.BRed) + 'ERROR' + PrintColor(COLORS.ColorReset)
             if results['status'].fatal: status = PrintColor(COLORS.BIRed) + 'FATAL' + PrintColor(COLORS.ColorReset)
-
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
-            if self.isDownload and not os.getenv('ALIENPY_KEEP_META'): os.remove(xrdjob.src)  # remove the created metalink
-
-            if not results['status'].ok:
-                if self.isDownload:  # we have an failed replica upload
-                    self.copy_failed_list.append(xrdjob.lfn)
-                    print(f"Failed download: {xrdjob.lfn}", flush = True)
-                else:
-                    self.copy_failed_list.append(xrdjob.token_request)
-                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} total replicas", flush = True)
-                return
-
-            speed_str = '0 B/s'
+            if not xrdjob.isUpload and os.getenv('ALIENPY_KEEP_META'): os.remove(xrdjob.src)  # remove the created metalink
             if results['status'].ok:
                 deltaT = datetime.datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
                 speed_str = str(GetHumanReadable(speed)) + '/s'
-                if not self.isDownload:  # isUpload
+                if xrdjob.isUpload:  # isUpload
                     xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
                     link = urlparse(xrd_dst_url)
                     urltoken = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
@@ -1719,8 +1714,15 @@ if has_xrootd:
                     ret_obj = commit(self.wb, urltoken, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
                     if DEBUG: retf_print(ret_obj, 'debug')
 
-            if not ('quiet' in self.printout or 'silent' in self.printout):
-                print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
+                if not ('quiet' in self.printout or 'silent' in self.printout):
+                    print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
+            else:
+                if xrdjob.isUpload:
+                    self.copy_failed_list.append(xrdjob.token_request)
+                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas", flush = True)
+                else:
+                    self.copy_failed_list.append(xrdjob.lfn)
+                    print(f"Failed download: {xrdjob.lfn}", flush = True)
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
@@ -1730,7 +1732,7 @@ if has_xrootd:
             return False
 
 
-def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDownload: bool, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
+def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not has_xrootd:
         print("XRootD not found", file=sys.stderr, flush = True)
@@ -1764,7 +1766,6 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, isDow
         delete_invalid_chk = True
 
     handler = MyCopyProgressHandler()
-    handler.isDownload = isDownload
     handler.wb = wb
     handler.xrdjob_list = job_list
     handler.printout = printout
