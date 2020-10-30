@@ -2220,7 +2220,11 @@ def DO_edit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     if '-h' in args:
         msg = 'Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs\n-datebck : the backup filename will be date based'
         return RET(0, msg)
-    if not editor: editor = os.getenv('EDITOR', 'mcedit -u')
+    if not editor:
+        editor = os.getenv('EDITOR')
+        if not editor:
+            print('EDITOR env variable not set, we will fallback to mcedit (no check if exists)')
+            editor = 'mcedit -u'
     versioned_backup = False
     if '-datebck' in args:
         args.remove('-datebck')
