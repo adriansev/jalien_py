@@ -2218,7 +2218,9 @@ def DO_edit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if not args or args is None: args = ['-h']
     if '-h' in args:
-        msg = 'Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs\n-datebck : the backup filename will be date based'
+        msg = """Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs
+-datebck : the backup filename will be date based
+N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exists)"""
         return RET(0, msg)
     if not editor:
         editor = os.getenv('EDITOR')
