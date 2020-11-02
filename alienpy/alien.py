@@ -978,17 +978,21 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
 
 
 def xrdcp_help() -> str:
-    helpstr = f'''at least 2 arguments are needed : src dst
-the command is of the form of (with the strict order of arguments): cp <args> src dst
+    helpstr = f'''Command format is of the form of (with the strict order of arguments):
+        cp <options> src dst
+        or
+        cp <options> -input input_file
 where src|dst are local files if prefixed with file:// or file: or grid files otherwise
+and -input argument is a file with >src dst< pairs
 after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
 where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
-args are the following :
+options are the following :
 -h : print help
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
--cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified; for uploads (for new enough xrootds) a hash type will be negociated with remote and transfer will be validated
--y <nr_sources> : use up to the number of sources specified in parallel
+-cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified;
+         for uploads (for xrootd client > 4.12.0) a hash type will be negociated with remote and transfer will be validated
+-y <nr_sources> : use up to the number of sources specified in parallel (N.B. Ignored as it breaks download of files stored in archives)
 -S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
