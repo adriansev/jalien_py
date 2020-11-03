@@ -996,7 +996,7 @@ options are the following :
 -S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
--T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
+-T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
 
 for the recursive copy of directories the following options (of the find command) can be used:
 -glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
