@@ -1342,7 +1342,10 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
             src_list_files_dict = ret_obj.ansdict
             if ret_obj.exitcode != 0:
-                msg = f"check log file {DEBUG_FILE}"
+                msg = f"Find returned error when using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {DEBUG_FILE} for detailed logging"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+            if len(src_list_files_dict['results']) < 1:
+                msg = f"No files found using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             for item in src_list_files_dict['results']:
                 dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
@@ -1350,22 +1353,20 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                     print(f'{dst_filename} exists, skipping..', flush = True)
                     continue
                 tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
-                token_query = tokens['answer']
-                if AlienSessionInfo['exitcode'] != 0:
+                if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                     error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
                     continue
-                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, token_query, ''))
+                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, tokens['answer'], ''))
         else:
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
             if os.path.isfile(dst) and not overwrite:
                 msg = f'{dst} exists, skipping..'
                 return RET(0, msg)  # Destination present we will not overwrite it
             tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
-            token_query = tokens['answer']
-            if AlienSessionInfo['exitcode'] != 0:
+            if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
             else:
-                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
+                copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
         specs = dst_specs_remotes
@@ -1384,11 +1385,10 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                             print(f'{lfn} exists, deleting..', flush = True)
                             ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
                         tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
-                        token_query = tokens['answer']
-                        if AlienSessionInfo['exitcode'] != 0:
+                        if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                             error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
                             continue
-                        copy_list.append(CopyFile(filepath, lfn, isWrite, token_query, ''))
+                        copy_list.append(CopyFile(filepath, lfn, isWrite, tokens['answer'], ''))
         else:
             if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
             lfn_exists = pathtype_grid(wb, dst)
@@ -1398,11 +1398,10 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
                 retf_print(ret_obj, 'print')
             tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
-            token_query = tokens['answer']
-            if AlienSessionInfo['exitcode'] != 0:
+            if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
             else:
-                copy_list.append(CopyFile(src, dst, isWrite, token_query, ''))
+                copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
     if error_msg:
         print(error_msg, file=sys.stderr, flush = True)
 
