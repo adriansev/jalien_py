@@ -89,7 +89,7 @@ TMPDIR = os.getenv('TMPDIR', '/tmp')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '',
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '', 'session_started': False,
                     'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'alias_cache': {},
                     'q_out': deque([]), 'q_err': deque([]), 'pathq': deque([]),
                     'show_date': False, 'show_lpwd': False}
@@ -941,21 +941,20 @@ def DO_exit(args: Union[list, None] = None) -> RET:
 
 def DO_certinfo(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    cert_files = get_files_cert()
+    cert, key = get_files_cert()
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print user certificate information", "")
-    return CertInfo(cert_files[0])
+    return CertInfo(cert)
 
 
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if not args: args = []
-    tokencert, tokenkey = get_files_token()
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print token certificate information", "")
-
-    if not os.path.isfile(tokencert):  # and is not a file
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
+    tokencert, tokenkey = get_files_token()
+    if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # it is not a file and contains a certificate
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem')
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name
@@ -2929,6 +2928,70 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     return wb
 
 
+def make_func_map_nowb():
+    '''client side functions (new commands) that do not require connection to jcentral'''
+    global AlienSessionInfo
+    AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
+    AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
+    AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
+    AlienSessionInfo['cmd2func_map_nowb']['cert-info'] = DO_certinfo
+    AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
+    AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
+    AlienSessionInfo['cmd2func_map_nowb']['error'] = error
+    AlienSessionInfo['cmd2func_map_nowb']['$?err'] = error
+    AlienSessionInfo['cmd2func_map_nowb']['version'] = DO_version
+    AlienSessionInfo['cmd2func_map_nowb']['pfn-status'] = DO_pfnstatus
+    AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
+    AlienSessionInfo['cmd2func_map_nowb']['exit'] = DO_exit
+    AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
+    AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
+
+
+def make_func_map_client():
+    '''client side functions (new commands) that do not require connection to jcentral'''
+    global AlienSessionInfo
+    # client side function (overrides) with signature : (wb, args, opts)
+    AlienSessionInfo['cmd2func_map_client']['cd'] = cd
+    del AlienSessionInfo['cmd2func_map_srv']['cd']
+
+    AlienSessionInfo['cmd2func_map_client']['cp'] = DO_XrootdCp
+    del AlienSessionInfo['cmd2func_map_srv']['cp']
+
+    AlienSessionInfo['cmd2func_map_client']['ping'] = DO_ping
+    del AlienSessionInfo['cmd2func_map_srv']['ping']
+
+    AlienSessionInfo['cmd2func_map_client']['ps'] = DO_ps
+    del AlienSessionInfo['cmd2func_map_srv']['ps']
+
+    AlienSessionInfo['cmd2func_map_client']['submit'] = DO_submit
+    del AlienSessionInfo['cmd2func_map_srv']['submit']
+
+    AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
+    del AlienSessionInfo['cmd2func_map_srv']['token']
+
+    AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
+    del AlienSessionInfo['cmd2func_map_srv']['user']
+
+    # client side function (new commands) with signature : (wb, args)
+    AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
+    AlienSessionInfo['cmd2func_map_client']['token-init'] = DO_token_init
+    AlienSessionInfo['cmd2func_map_client']['pfn'] = DO_pfn
+    AlienSessionInfo['cmd2func_map_client']['run'] = DO_run
+    AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
+    AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
+    AlienSessionInfo['cmd2func_map_client']['find2'] = DO_find2
+    AlienSessionInfo['cmd2func_map_client']['dirs'] = DO_dirs
+    AlienSessionInfo['cmd2func_map_client']['popd'] = DO_popd
+    AlienSessionInfo['cmd2func_map_client']['pushd'] = DO_pushd
+    AlienSessionInfo['cmd2func_map_client']['help'] = DO_help
+    AlienSessionInfo['cmd2func_map_client']['?'] = DO_help
+    AlienSessionInfo['cmd2func_map_client']['edit'] = DO_edit
+    AlienSessionInfo['cmd2func_map_client']['mcedit'] = DO_mcedit
+    AlienSessionInfo['cmd2func_map_client']['nano'] = DO_nano
+    AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vi
+    AlienSessionInfo['cmd2func_map_client']['vim'] = DO_vim
+
+
 def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
     if not wb: return
@@ -2955,136 +3018,26 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     AlienSessionInfo['commandlist'].append('quit')
     AlienSessionInfo['commandlist'].append('exit')
 
-    # client side function (overrides) with signature : (wb, args, opts)
-    AlienSessionInfo['cmd2func_map_client']['cd'] = cd
-    del AlienSessionInfo['cmd2func_map_srv']['cd']
+    make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
 
-    AlienSessionInfo['cmd2func_map_client']['cp'] = DO_XrootdCp
-    del AlienSessionInfo['cmd2func_map_srv']['cp']
-
-    AlienSessionInfo['cmd2func_map_client']['ping'] = DO_ping
-    del AlienSessionInfo['cmd2func_map_srv']['ping']
-
-    AlienSessionInfo['cmd2func_map_client']['ps'] = DO_ps
-    del AlienSessionInfo['cmd2func_map_srv']['ps']
-
-    AlienSessionInfo['cmd2func_map_client']['submit'] = DO_submit
-    del AlienSessionInfo['cmd2func_map_srv']['submit']
-
-    AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
-    del AlienSessionInfo['cmd2func_map_srv']['token']
-
-    AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
-    del AlienSessionInfo['cmd2func_map_srv']['user']
-
-    # client side function (new commands) with signature : (wb, args)
-    AlienSessionInfo['commandlist'].append('quota')
-    AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
-
-    AlienSessionInfo['commandlist'].append('token-init')
-    AlienSessionInfo['cmd2func_map_client']['token-init'] = DO_token_init
-
-    AlienSessionInfo['commandlist'].append('pfn')
-    AlienSessionInfo['cmd2func_map_client']['pfn'] = DO_pfn
-
-    AlienSessionInfo['commandlist'].append('run')
-    AlienSessionInfo['cmd2func_map_client']['run'] = DO_run
-
-    AlienSessionInfo['commandlist'].append('exec')
-    AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
-
-    AlienSessionInfo['commandlist'].append('getSE')
-    AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
-
-    AlienSessionInfo['commandlist'].append('find2')
-    AlienSessionInfo['cmd2func_map_client']['find2'] = DO_find2
-
-    AlienSessionInfo['commandlist'].append('dirs')
-    AlienSessionInfo['cmd2func_map_client']['dirs'] = DO_dirs
-
-    AlienSessionInfo['commandlist'].append('popd')
-    AlienSessionInfo['cmd2func_map_client']['popd'] = DO_popd
-
-    AlienSessionInfo['commandlist'].append('pushd')
-    AlienSessionInfo['cmd2func_map_client']['pushd'] = DO_pushd
-
-    AlienSessionInfo['commandlist'].append('help')
-    AlienSessionInfo['cmd2func_map_client']['help'] = DO_help
-
-    AlienSessionInfo['commandlist'].append('?')
-    AlienSessionInfo['cmd2func_map_client']['?'] = DO_help
-
-    AlienSessionInfo['commandlist'].append('edit')
-    AlienSessionInfo['cmd2func_map_client']['edit'] = DO_edit
-
-    AlienSessionInfo['commandlist'].append('mcedit')
-    AlienSessionInfo['cmd2func_map_client']['mcedit'] = DO_mcedit
-
-    AlienSessionInfo['commandlist'].append('nano')
-    AlienSessionInfo['cmd2func_map_client']['nano'] = DO_nano
-
-    AlienSessionInfo['commandlist'].append('vi')
-    AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vi
-
-    AlienSessionInfo['commandlist'].append('vim')
-    AlienSessionInfo['cmd2func_map_client']['vim'] = DO_vim
-
-    # client side functions (new commands) that do not require connection to jcentral
-    AlienSessionInfo['commandlist'].append('prompt')
-    AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
-
-    AlienSessionInfo['commandlist'].append('token-info')
-    AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
-
-    AlienSessionInfo['commandlist'].append('token-destroy')
-    AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
-
-    AlienSessionInfo['commandlist'].append('cert-info')
-    AlienSessionInfo['cmd2func_map_nowb']['cert-info'] = DO_certinfo
-
-    AlienSessionInfo['commandlist'].append('exitcode')
-    AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
-
-    AlienSessionInfo['commandlist'].append('$?')
-    AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
-
-    AlienSessionInfo['commandlist'].append('error')
-    AlienSessionInfo['cmd2func_map_nowb']['error'] = error
-
-    AlienSessionInfo['commandlist'].append('$?err')
-    AlienSessionInfo['cmd2func_map_nowb']['$?err'] = error
-
-    AlienSessionInfo['commandlist'].append('version')
-    AlienSessionInfo['cmd2func_map_nowb']['version'] = DO_version
-
-    AlienSessionInfo['commandlist'].append('pfn-status')
-    AlienSessionInfo['cmd2func_map_nowb']['pfn-status'] = DO_pfnstatus
-
-    AlienSessionInfo['commandlist'].append('queryML')
-    AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
-
-    AlienSessionInfo['commandlist'].append('exit')
-    AlienSessionInfo['cmd2func_map_nowb']['exit'] = DO_exit
-
-    AlienSessionInfo['commandlist'].append('quit')
-    AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
-
-    AlienSessionInfo['commandlist'].append('logout')
-    AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
-
+    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])
+    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_srv']])
     AlienSessionInfo['commandlist'].sort()
+
     # when starting new session prevdir is empty, if set then this is a reconnection
     if AlienSessionInfo['prevdir']: cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a session to AliEn services, including session globals"""
+    global AlienSessionInfo
     init_begin = None
     init_delta = None
     wb = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
     wb = AlienConnect(token_args, use_usercert, localConnect)
 
+    if wb is not None: AlienSessionInfo['session_started'] = True
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     getSessionVars(wb)
     if init_begin:
@@ -3202,6 +3155,7 @@ def JAlien(commands: str = '') -> int:
     global AlienSessionInfo, JSON_OUT
     import_aliases()
     wb = None
+    make_func_map_nowb()  # add to cmd2func_map_nowb the functions that do not need wb session
 
     # Command mode interaction
     if commands: return ProcessCommandChain(wb, commands)
