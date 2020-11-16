@@ -2705,12 +2705,13 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
     global AlienSessionInfo
     # SSL SETTINGS
-    cert_files = get_files_cert()
+    cert = key = None  # vars for discovered credentials
+    usercert, userkey = get_files_cert()
     tokencert, tokenkey = get_files_token()
 
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_macos = '/Users/Shared' + alice_cvmfs_ca_path_lx
+    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
 
     x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
     x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
@@ -2726,7 +2727,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         if os.path.isdir(system_ca_path): capath_default = system_ca_path
 
     if not capath_default and not x509file:
-        msg = "Not CA location or files specified!!! Connection will not be possible!!"
+        msg = "No CA location or files specified!!! Connection will not be possible!!"
         print(msg, file=sys.stderr, flush = True)
         logging.info(msg)
         sys.exit(2)
@@ -2737,29 +2738,27 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             logging.debug(f"CApath = {capath_default}")
 
     if not use_usercert:  # if there is no explicit request for usercert
-        if not os.path.isfile(tokencert):  # and is not a file
-            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = '_' + str(os.getuid()) + '.pem')
+        if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # and is not a file
+            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem')
             temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
             temp_cert.seek(0)
             tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        if not os.path.isfile(tokenkey):  # and is not a file
-            temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = '_' + str(os.getuid()) + '.pem')
+        if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokencert:  # and is not a file
+            temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}.pem')
             temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
             temp_key.seek(0)
             tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
 
-    if IsValidCert(tokencert) and not use_usercert:
-        cert = tokencert
-        key  = tokenkey
+    if not use_usercert and IsValidCert(tokencert) and os.path.isfile(tokenkey):
+        cert, key = tokencert, tokenkey
         AlienSessionInfo['use_usercert'] = False
     else:
-        if not (os.path.exists(cert_files[0]) and os.path.exists(cert_files[1])):
+        if not (os.path.exists(usercert) and os.path.exists(userkey)):
             msg = "User certificate files NOT FOUND!!! Connection will not be possible!!"
             print(msg, file=sys.stderr, flush = True)
             logging.info(msg)
             sys.exit(126)
-        cert = cert_files[0]
-        key  = cert_files[1]
+        cert, key = usercert, userkey
         if not IsValidCert(cert):
             msg = f'Invalid user certificate!! Check the content of {cert}'
             print(msg, file=sys.stderr, flush = True)
