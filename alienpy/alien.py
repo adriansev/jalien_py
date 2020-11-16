@@ -2931,6 +2931,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
 def make_func_map_nowb():
     '''client side functions (new commands) that do not require connection to jcentral'''
     global AlienSessionInfo
+    if AlienSessionInfo['cmd2func_map_nowb']: return
     AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
     AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
     AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
@@ -2950,6 +2951,8 @@ def make_func_map_nowb():
 def make_func_map_client():
     '''client side functions (new commands) that do not require connection to jcentral'''
     global AlienSessionInfo
+    if AlienSessionInfo['cmd2func_map_client']: return
+
     # client side function (overrides) with signature : (wb, args, opts)
     AlienSessionInfo['cmd2func_map_client']['cd'] = cd
     del AlienSessionInfo['cmd2func_map_srv']['cd']
@@ -2999,9 +3002,8 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     # get the command list
     AlienSessionInfo['commandlist'].clear()
     ret_obj = SendMsg(wb, 'commandlist', [])
-    json_dict = ret_obj.ansdict
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-    cmd_list = json_dict["results"][0]['message'].split()
+    cmd_list = ret_obj.ansdict["results"][0]['message'].split()
     regex = re.compile(r'.*_csd$')
     AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
     AlienSessionInfo['commandlist'].remove('jquota')
@@ -3009,19 +3011,14 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
 
     # server commands, signature is : (wb, command, args, opts)
     for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
+    make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
 
     # these are aliases, or directly interpreted
     AlienSessionInfo['commandlist'].append('ll')
     AlienSessionInfo['commandlist'].append('la')
     AlienSessionInfo['commandlist'].append('lla')
-    AlienSessionInfo['commandlist'].append('logout')
-    AlienSessionInfo['commandlist'].append('quit')
-    AlienSessionInfo['commandlist'].append('exit')
-
-    make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
-
-    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])
-    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_srv']])
+    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])  # add clien-side cmds to list
+    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_nowb']])  # add nowb cmds to list
     AlienSessionInfo['commandlist'].sort()
 
     # when starting new session prevdir is empty, if set then this is a reconnection
