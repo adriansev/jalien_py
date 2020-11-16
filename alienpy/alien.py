@@ -726,7 +726,7 @@ def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
         sys_cur_dir = AlienSessionInfo['currentdir']
         AlienSessionInfo['currentdir'] = session['CWD']
         AlienSessionInfo['prevdir'] = session['CWDPREV']
-        if sys_cur_dir != AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
+        if AlienSessionInfo['currentdir'] and (sys_cur_dir != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
 
 
 def exitcode(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['exitcode']}", '')
@@ -2858,8 +2858,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
     wb = None
     nr_tries = 0
-    init_begin = None
-    init_delta = None
+    init_begin = init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
@@ -2888,12 +2887,12 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     return wb
 
 
-def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
+def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
+    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
-    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-    jclient_env = TMPDIR + '/jclient_token_' + str(os.getuid())
+    jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
     # let's try to get a websocket
     wb = None
@@ -2905,20 +2904,17 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             jalien_info = read_conf_file(jclient_env)
             if jalien_info:
                 if is_my_pid(jalien_info['JALIEN_PID']) and check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
-                    jalien_server = jalien_info['JALIEN_HOST']
-                    jalien_websocket_port = jalien_info['JALIEN_WSPORT']
+                    jalien_server, jalien_websocket_port = jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']
 
         wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
         # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
-        if not wb and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
-            jalien_websocket_port = 8097
-            jalien_server = 'alice-jcentral.cern.ch'
-            wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path)
+        if wb is None and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
+            jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
+            wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
-    if not wb:
-        print(f"Check the logfile: {DEBUG_FILE}", file=sys.stderr, flush = True)
-        msg = "Could not get a websocket connection, exiting.."
+    if wb is None:
+        msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
         print(msg, file=sys.stderr, flush = True)
         sys.exit(1)
@@ -2998,40 +2994,41 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
     if not wb: return
     global AlienSessionInfo
-    # get the command list
-    AlienSessionInfo['commandlist'].clear()
-    ret_obj = SendMsg(wb, 'commandlist', [])
-    # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-    cmd_list = ret_obj.ansdict["results"][0]['message'].split()
-    regex = re.compile(r'.*_csd$')
-    AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
-    AlienSessionInfo['commandlist'].remove('jquota')
-    AlienSessionInfo['commandlist'].remove('fquota')
+    if not AlienSessionInfo['commandlist']:  # get the command list jsut once per session connection (a reconnection will skip this)
+        ret_obj = SendMsg(wb, 'commandlist', [])
+        # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+        cmd_list = ret_obj.ansdict["results"][0]['message'].split()
+        regex = re.compile(r'.*_csd$')
+        AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
+        AlienSessionInfo['commandlist'].remove('jquota')
+        AlienSessionInfo['commandlist'].remove('fquota')
 
-    # server commands, signature is : (wb, command, args, opts)
-    for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
-    make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
+        # server commands, signature is : (wb, command, args, opts)
+        for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
+        make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
 
-    # these are aliases, or directly interpreted
-    AlienSessionInfo['commandlist'].append('ll')
-    AlienSessionInfo['commandlist'].append('la')
-    AlienSessionInfo['commandlist'].append('lla')
-    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])  # add clien-side cmds to list
-    AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_nowb']])  # add nowb cmds to list
-    AlienSessionInfo['commandlist'].sort()
+        # these are aliases, or directly interpreted
+        AlienSessionInfo['commandlist'].append('ll')
+        AlienSessionInfo['commandlist'].append('la')
+        AlienSessionInfo['commandlist'].append('lla')
+        AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])  # add clien-side cmds to list
+        AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_nowb']])  # add nowb cmds to list
+        AlienSessionInfo['commandlist'].sort()
 
     # when starting new session prevdir is empty, if set then this is a reconnection
-    if AlienSessionInfo['prevdir']: cd(wb, AlienSessionInfo['prevdir'], 'log')
+    if AlienSessionInfo['prevdir'] and (AlienSessionInfo['prevdir'] != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
     """Create a session to AliEn services, including session globals"""
     global AlienSessionInfo
-    init_begin = None
-    init_delta = None
-    wb = None
+    init_begin = init_delta = None
     if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
     wb = AlienConnect(token_args, use_usercert, localConnect)
+    if init_begin:
+        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
+        if DEBUG: logging.debug(f">>>   Time for websocket connection: {init_delta:.3f} ms")
+        if TIME_CONNECT: print(f">>>   Time for websocket connection: {init_delta:.3f} ms", flush = True)
 
     if wb is not None: AlienSessionInfo['session_started'] = True
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
