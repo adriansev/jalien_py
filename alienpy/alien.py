@@ -3257,6 +3257,9 @@ def _cmd(what):
     main()
 
 
+def cmd_cert_info(): _cmd('cert-info')
+
+
 def cmd_token_info(): _cmd('token-info')
 
 

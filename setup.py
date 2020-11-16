@@ -71,6 +71,7 @@ setuptools.setup(
             'alien_stat = alienpy.alien:main',
             'alien_submit = alienpy.alien:main',
             'alien_whereis = alienpy.alien:main',
+            'alien-cert-info = alienpy.alien:cmd_cert_info',
             'alien-token-info = alienpy.alien:cmd_token_info',
             'alien-token-init = alienpy.alien:cmd_token_init',
             'alien-token-destroy = alienpy.alien:cmd_token_destroy',
