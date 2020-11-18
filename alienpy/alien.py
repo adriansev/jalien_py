@@ -951,7 +951,6 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 
 
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
-    global AlienSessionInfo
     if not args: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print token certificate information", "")
@@ -961,22 +960,17 @@ def DO_tokeninfo(args: Union[list, None] = None) -> RET:
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name
-
-    if os.path.exists(tokencert): return CertInfo(tokencert)
-    return RET(1, "", f"Token >{tokencert}< not found/created")
+    return CertInfo(tokencert)
 
 
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
-    global AlienSessionInfo
     if args is None: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        msg = "Delete the token{cert,key}.pem files"
-        return RET(0, msg, "")
+        return RET(0, "Delete the token{cert,key}.pem files")
     tokencert, tokenkey = get_files_token()
     if os.path.exists(tokencert): os.remove(tokencert)
     if os.path.exists(tokenkey): os.remove(tokenkey)
-    msg = "Token was destroyed! Re-connect for token re-creation."
-    return RET(0, msg)
+    return RET(0, "Token was destroyed! Re-connect for token re-creation.")
 
 
 def xrdcp_help() -> str:
