@@ -516,6 +516,8 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     if args is None: args = []
     if type(cmdline) == dict:
         out_dict = cmdline.copy()
+        if 'showmsg' in opts: opts = opts.replace('nomsg', '')
+        if 'showkeys' in opts: opts = opts.replace('nokeys', '')
         if 'nomsg' in opts: out_dict["options"].insert(0, '-nomsg')
         if 'nokeys' in opts: out_dict["options"].insert(0, '-nokeys')
         return json.dumps(out_dict)
@@ -594,7 +596,7 @@ def now_str() -> str: return str(datetime.datetime.now().strftime("%Y%m%d_%H%M%S
 
 def retf_session_update(ret_info: RET):
     global AlienSessionInfo
-    AlienSessionInfo['exitcode'] = ret_info.exitcode
+    AlienSessionInfo['exitcode'] = int(ret_info.exitcode)
     AlienSessionInfo['stdout'] = ret_info.out
     AlienSessionInfo['error'] = ret_info.err
 
@@ -629,31 +631,32 @@ def retf_result2ret(result: Union[dict, str]) -> Union[None, RET]:
     return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
 
-def retf_print(ret_info: RET, opts: str = '') -> int:
+def retf_print(ret_obj: RET, opts: str = '') -> int:
     """Process the return struture of function"""
+    if ret_obj.exitcode == -1:
+        print('Default RET object used, invalid return', file=sys.stderr, flush = True)
+        return ret_obj.exitcode
+
     if 'json' in opts:
-        if ret_info.ansdict:
-            json_out = json.dumps(ret_info.ansdict, sort_keys = True, indent = 4)
+        if ret_obj.ansdict:
+            json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 4)
             print(json_out, flush = True)
             if DEBUG: logging.debug(json_out)
         else:
             print('This command did not return a json dictionary', file=sys.stderr, flush = True)
-        return ret_info.exitcode
+        return ret_obj.exitcode
 
-    if ret_info.exitcode != 0:
-        if 'info' in opts: logging.info(ret_info.err)
-        if 'warn' in opts: logging.warning(ret_info.err)
-        if 'err' in opts: logging.error(ret_info.err)
-        if 'debug' in opts: logging.debug(ret_info.err)
-        if not ('noerr' in opts or 'noprint' in opts):
-            stderr = ret_info.err.strip()
-            if stderr: print(stderr, file=sys.stderr, flush = True)
-        return ret_info.exitcode
-
-    if not ('noout' in opts or 'noprint' in opts):
-        stdout = ret_info.out.strip()
-        if stdout: print(stdout, flush = True)
-    return ret_info.exitcode
+    if ret_obj.exitcode != 0:
+        if 'info' in opts: logging.info(ret_obj.err)
+        if 'warn' in opts: logging.warning(ret_obj.err)
+        if 'err' in opts: logging.error(ret_obj.err)
+        if 'debug' in opts: logging.debug(ret_obj.err)
+        if ret_obj.err and not ('noerr' in opts or 'noprint' in opts):
+            print(f'{ret_obj.err.strip()}', file=sys.stderr, flush = True)
+    else:
+        if ret_obj.out and not ('noout' in opts or 'noprint' in opts):
+            print(f'{ret_obj.out.strip()}', flush = True)
+    return ret_obj.exitcode
 
 
 def read_conf_file(file: str) -> dict:
@@ -3042,10 +3045,10 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
 
 def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
     """Process a command line within shell or from command line mode input"""
+    global AlienSessionInfo
     if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
     if args is None: args = []
     ret_obj = None
-    global AlienSessionInfo
 
     # early command aliases and default flags
     if cmd == 'ls': args[0:0] = ['-F']
@@ -3060,33 +3063,44 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         args[0:0] = ['-F', '-l', '-a']
 
     # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
-    time_begin = None
-    msg_timing = None
+    time_begin = msg_timing = None
 
-    # first to be processed is the time token, it will start the timing and be removed from command
-    if cmd == 'time':
+    if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
         if not args or '-h' in args: return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
         time_begin = datetime.datetime.now().timestamp()
 
-    # these commands do NOT need wb connection
-    if cmd in AlienSessionInfo['cmd2func_map_nowb']:
+    if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
         ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         retf_session_update(ret_obj)
-        return ret_obj  # let's return here, this output will not be passed to shell command'
+        return ret_obj
+
+    opts = ''  # let's proccess special server args
+    if '-nokeys' in args:
+        args.remove('-nokeys')
+        opts = f'{opts} nokeys'
+    if '-nomsg' in args:
+        args.remove('-nomsg')
+        opts = f'{opts} nomsg'
+    if '-showkeys' in args:
+        args.remove('-showkeys')
+        opts = f'{opts} showkeys'
+    if '-showmsg' in args:
+        args.remove('-showmsg')
+        opts = f'{opts} showmsg'
 
     # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
     if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in clien-side implementations list
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
-        retf_session_update(ret_obj)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
-        ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts = 'nokeys')  # we do not use keys when doing user interaction
-        retf_session_update(ret_obj)
-
-    if ret_obj is None: return RET(1, '', f"NO RET OBJ!! The command was not found: {cmd} {' '.join(args)}")
+        ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
+    if ret_obj is None: return RET(1, '', f"NO RET OBJ!! The command was not found: {cmd} {chr(32).join(args)}")
     if time_begin: msg_timing = f">>>ProcessInput time: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms"
 
-    if shellcmd and ret_obj.exitcode == 0 and ret_obj.out:
+    if shellcmd:
+        if ret_obj.exitcode != 0: return ret_obj
+        if not ret_obj.out:
+            return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
         shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
@@ -3112,6 +3126,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
                 cmdline = cmdline.replace(' -noout', '')
                 capture_out = False
             ret_obj = runShellCMD(cmdline, capture_out)
+            retf_session_update(ret_obj)  # Update the globals exitcode, out, err
             retf_print(ret_obj, 'debug')
             continue
 
@@ -3123,13 +3138,12 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
 
         args = input_alien.strip().split()
         cmd = args.pop(0)
-        # if any(cmd in ['exit', 'quit', 'logout'] for cmd in cmdline): exit_message()
 
         print_opts = 'debug json' if JSON_OUT else 'debug'
         if '-json' in args or JSON_OUT_GLOBAL:
             args.remove('-json')
             JSON_OUT = True
-            if 'json' not in print_opts: print_opts = print_opts + ' json'
+            if 'json' not in print_opts: print_opts = f'print_opts {json}'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -3137,6 +3151,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
+        retf_session_update(ret_obj)  # Update the globals exitcode, out, err
         retf_print(ret_obj, print_opts)
         if cmd == 'cd': SessionSave()
         if not JSON_OUT_GLOBAL: JSON_OUT = False  # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
