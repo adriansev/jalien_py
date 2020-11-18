@@ -3143,6 +3143,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         else:
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+            args.insert(0, '-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
         retf_session_update(ret_obj)  # Update the globals exitcode, out, err
