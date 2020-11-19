@@ -2740,7 +2740,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
             temp_cert.seek(0)
             tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokencert:  # and is not a file
+        if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokenkey:  # and is not a file
             temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}.pem')
             temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
             temp_key.seek(0)
