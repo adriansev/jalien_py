@@ -32,8 +32,8 @@ import websockets.extensions
 
 deque = collections.deque
 
-ALIENPY_VERSION_DATE = '20201116_123319'
-ALIENPY_VERSION_STR = '1.2.7'
+ALIENPY_VERSION_DATE = '20201120_091344'
+ALIENPY_VERSION_STR = '1.2.8'
 ALIENPY_EXECUTABLE = ''
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
