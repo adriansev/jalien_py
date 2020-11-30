@@ -1032,8 +1032,8 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         md5sum = md5(file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576:  # we have a special lfn
-            index_disk = [idx for idx, s in enumerate(specs) if 'disk:' in s or 'disk=' in s]
-            if not index_disk: specs.insert(0, 'disk:4')
+            if not specs: specs.insert(0, 'disk:4')  # if no specs defined then default to disk:4
+            # index_disk = [idx for idx, s in enumerate(specs) if 'disk:' in s or 'disk=' in s]
             #   if int(re.split(':|=', specs[index_disk[0]])[-1]) < 4:  # check if the already specified disk is large enough
             #       specs[index_disk[0]] = 'disk:4'  # there should be only one disk entry in the specs
         get_envelope_arg_list = ['-s', size, '-m', md5sum, access_type, lfn]
