@@ -83,7 +83,7 @@ emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
 JSON_OUT_GLOBAL = JSON_OUT
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', Path.home().as_posix() + '/alien_py.log')
+DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 TMPDIR = os.getenv('TMPDIR', '/tmp')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
@@ -200,6 +200,8 @@ class RET(NamedTuple):
 
 class AliEn:
     """Class to be used as advanced API for interaction with central servers"""
+    __slots__ = ('internal_wb', 'opts')
+
     def __init__(self, opts = ''):
         self.internal_wb = InitConnection()
         self.opts = opts
@@ -546,42 +548,29 @@ def GetMeta(result: dict, meta: str = '') -> list:
     return []
 
 
-def PrintColor(color: str) -> str:
-    """Print colored string if terminal has color, print nothing otherwise"""
-    if hasColor: return color
-    return ''
+def PrintColor(color: str) -> str: return color if hasColor else ''
 
 
-def cursor_up(lines: int = 1):
-    """Move the cursor up N lines"""
-    if lines < 1: lines = 1
-    for k in range(lines):
-        sys.stdout.write('\x1b[1A')
-        sys.stdout.flush()
+def cursor_vertical(lines: int = 0):
+    """Move the cursor up/down N lines"""
+    if lines == 0: return
+    out_char = '\x1b[1A'  # UP
+    if lines < 0:
+        out_char = '\x1b[1B'  # DOWN
+        lines = abs(lines)
+    sys.stdout.write(out_char * lines)
+    sys.stdout.flush()
 
 
-def cursor_down(lines: int = 1):
-    """Move the cursor down N lines"""
-    if lines < 1: lines = 1
-    for k in range(lines):
-        sys.stdout.write('\x1b[1B')
-        sys.stdout.flush()
-
-
-def cursor_right(pos: int = 1):
-    """Move the cursor right N positions"""
-    if pos < 1: pos = 1
-    for k in range(pos):
-        sys.stdout.write('\x1b[1C')
-        sys.stdout.flush()
-
-
-def cursor_left(pos: int = 1):
-    """Move the cursor left N positions"""
-    if pos < 1: pos = 1
-    for k in range(pos):
-        sys.stdout.write('\x1b[1D')
-        sys.stdout.flush()
+def cursor_horizontal(lines: int = 0):
+    """Move the cursor left/right N lines"""
+    if lines == 0: return
+    out_char = '\x1b[1C'  # RIGHT
+    if lines < 0:
+        out_char = '\x1b[1D'  # LEFT
+        lines = abs(lines)
+    sys.stdout.write(out_char * lines)
+    sys.stdout.flush()
 
 
 def cleanup_temp():
@@ -757,12 +746,10 @@ def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
     utc_time = datetime.datetime.fromtimestamp(int(unixtime), datetime.timezone.utc)
     local_time = utc_time.astimezone()
     if decimals and millis:
-        local_time = local_time + millis
-        return str(local_time.strftime("%Y-%m-%d %H:%M:%S")) + "." + time_decimals + str(local_time.strftime("%z"))
+        return f'{(local_time + millis).strftime("%Y-%m-%d %H:%M:%S")}.{time_decimals}{local_time.strftime("%z")}'
     if decimals and micros:
-        local_time = local_time + micros
-        return str(local_time.strftime("%Y-%m-%d %H:%M:%S.%f%z"))  # (%Z)"))
-    return str(local_time.strftime("%Y-%m-%d %H:%M:%S%z"))  # (%Z)"))
+        return (local_time + micros).strftime("%Y-%m-%d %H:%M:%S.%f%z")  # (%Z)"))
+    return local_time.strftime("%Y-%m-%d %H:%M:%S%z")  # (%Z)"))
 
 
 def convert_time(str_line: str) -> str:
@@ -917,9 +904,9 @@ def DO_version(args: Union[list, None] = None) -> RET:
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
               f'Python version: {sys.version}\n')
     if has_xrootd:
-        stdout = stdout + f'XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
+        stdout = f'{stdout}XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
     else:
-        stdout = stdout + 'XRootD version: Not Found!'
+        stdout = f'{stdout}XRootD version: Not Found!'
     return RET(0, stdout, "")
 
 
@@ -1064,11 +1051,11 @@ def expand_path_local(path_input: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
-    exp_path = re.sub(r"^\~\/*", Path.home().as_posix() + "/", exp_path)
-    if not exp_path.startswith('/'): exp_path = Path.cwd().as_posix() + "/" + exp_path
+    exp_path = re.sub(r"^\~\/*", f'{Path.home().as_posix()}/', exp_path)
+    if not exp_path.startswith('/'): exp_path = f'{Path.cwd().as_posix()}/{exp_path}'
     exp_path = os.path.normpath(exp_path)
     exp_path = os.path.realpath(exp_path)
-    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -1077,9 +1064,9 @@ def expand_path_grid(path_input: str) -> str:
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
-    if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = AlienSessionInfo['currentdir'] + "/" + exp_path  # if not full path add current directory to the referenced path
+    if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
-    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = exp_path + "/"
+    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -1157,7 +1144,7 @@ def format_dst_fn(src_dir, src_file, dst, parent):
         file_relative_name = src_file.replace(src_root, '', 1)
     else:
         file_relative_name = src_file
-    dst_file = dst + "/" + file_relative_name
+    dst_file = f'{dst}/{file_relative_name}'
     dst_file = re.sub(r"\/{2,}", "/", dst_file)
     return dst_file
 
@@ -1174,7 +1161,7 @@ def GetHumanReadable(size, precision = 2):
     while size > 1024 and suffixIndex < 4:
         suffixIndex += 1  # increment the index of the suffix
         size = size/1024.0  # apply the division
-    return "%.*f %s" % (precision, size, suffixes[suffixIndex])
+    return '%.*f %s' % (precision, size, suffixes[suffixIndex])
 
 
 def name2regex(pattern_regex: str = '') -> str:
@@ -1198,18 +1185,18 @@ def name2regex(pattern_regex: str = '') -> str:
             if tokenstr == 'ends': list_ends.append(KV(tokenstr, pattern_list[idx + 1]))
             if tokenstr == 'ext': list_ext.append(KV(tokenstr, pattern_list[idx + 1]))
 
-        if list_begin: translated_pattern_regex = re_all + list_begin[0].val  # first string after the last slash (last match explude /)
-        for patt in list_contain: translated_pattern_regex = translated_pattern_regex + re_all + patt.val
+        if list_begin: translated_pattern_regex = f'{re_all}{list_begin[0].val}'  # first string after the last slash (last match explude /)
+        for patt in list_contain: translated_pattern_regex = f'{translated_pattern_regex}{re_all}{patt.val}'
         for patt in list_ends:
-            translated_pattern_regex = translated_pattern_regex + re_all + patt.val
+            translated_pattern_regex = f'{translated_pattern_regex}{re_all}{patt.val}'
             if list_ext:
-                translated_pattern_regex = translated_pattern_regex + '\\.' + list_ext[0].val
+                translated_pattern_regex = f'{translated_pattern_regex}\\.{list_ext[0].val}'
             else:
-                translated_pattern_regex = translated_pattern_regex + re_all
+                translated_pattern_regex = f'{translated_pattern_regex}{re_all}'
 
         for path in list_ext:
             if not list_ends:  # we already added the ext in list_ends
-                translated_pattern_regex = translated_pattern_regex + list_ext[0].val
+                translated_pattern_regex = f'{translated_pattern_regex}{list_ext[0].val}'
 
         if DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
         return translated_pattern_regex
@@ -1245,7 +1232,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
 
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
         arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
-        if arg_source: arg_source = arg_source + '/'
+        if arg_source: arg_source = f'{arg_source}/'
 
         if isSrcLocal:
             pattern_regex = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
@@ -1354,10 +1341,9 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                     continue
                 copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, tokens['answer'], ''))
         else:
-            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
             if os.path.isfile(dst) and not overwrite:
-                msg = f'{dst} exists, skipping..'
-                return RET(0, msg)  # Destination present we will not overwrite it
+                return RET(0, f'{dst} exists, skipping..')  # Destination present we will not overwrite it
             tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
             if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
@@ -1386,7 +1372,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                             continue
                         copy_list.append(CopyFile(filepath, lfn, isWrite, tokens['answer'], ''))
         else:
-            if dst.endswith("/"): dst = dst[:-1] + setDst(src, parent)
+            if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
             lfn_exists = pathtype_grid(wb, dst)
             if lfn_exists:
                 if not overwrite: return RET(0, f'{dst} exists, skipping..')  # if the lfn is already present and not overwrite lets's skip the upload
@@ -1423,7 +1409,7 @@ def makelist_xrdjobs(wb: websockets.client.WebSocketClientProtocol, copylist_lfn
                     is_zip = True
                     file_in_zip = url_components[1]
                 # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                url_list_4meta.append(url_components[0] + '?authz=' + replica['envelope'])
+                url_list_4meta.append(f'{url_components[0]}?authz={replica["envelope"]}')
 
             if not url_list_4meta:
                 print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
@@ -1706,17 +1692,21 @@ if has_xrootd:
             results_status = results['status'].status
             results_errno = results['status'].errno
             results_code = results['status'].code
-            status = PrintColor(COLORS.BIRed) + 'UNKNOWN' + PrintColor(COLORS.ColorReset)
-            if results['status'].ok: status = PrintColor(COLORS.Green) + 'OK' + PrintColor(COLORS.ColorReset)
-            if results['status'].error: status = PrintColor(COLORS.BRed) + 'ERROR' + PrintColor(COLORS.ColorReset)
-            if results['status'].fatal: status = PrintColor(COLORS.BIRed) + 'FATAL' + PrintColor(COLORS.ColorReset)
+            if results['status'].ok:
+                status = f'{PrintColor(COLORS.Green)}OK{PrintColor(COLORS.ColorReset)}'
+            elif results['status'].error:
+                status = f'{PrintColor(COLORS.BRed)}ERROR{PrintColor(COLORS.ColorReset)}'
+            elif results['status'].fatal:
+                status = f'{PrintColor(COLORS.BIRed)}FATAL{PrintColor(COLORS.ColorReset)}'
+            else:
+                status = f'{PrintColor(COLORS.BIRed)}UNKNOWN{PrintColor(COLORS.ColorReset)}'
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
             if not xrdjob.isUpload:
                 if not os.getenv('ALIENPY_KEEP_META'): os.remove(xrdjob.src)  # remove the created metalink
             if results['status'].ok:
                 deltaT = datetime.datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
-                speed_str = str(GetHumanReadable(speed)) + '/s'
+                speed_str = f'{GetHumanReadable(speed)}/s'
                 if xrdjob.isUpload:  # isUpload
                     xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
                     link = urlparse(xrd_dst_url)
@@ -1963,13 +1953,13 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
-    if not ext: ext = '_' + str(os.getuid()) + '.alienpy_tmp'
-    return TMPDIR + '/' + lfn2tmp_fn(lfn, uuid5) + ext
+    if not ext: ext = f'_{str(os.getuid())}.alienpy_tmp'
+    return f'{TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
-    lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace('_' + str(os.getuid()) + '.alienpy_tmp', '')
-    return lfn.replace(TMPDIR + '/', '').replace("%%", "/")
+    lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
+    return lfn.replace(f'{TMPDIR}/', '').replace("%%", "/")
 
 
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
@@ -1996,7 +1986,7 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwr
 def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '', dated_backup: bool = False) -> str:
     """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the original lfn"""
     lfn = get_lfn_name(temp_file_name)  # lets recover the lfn from temp file name
-    lfn_backup = lfn + "." + now_str() if dated_backup else lfn + "~"
+    lfn_backup = f'{lfn}.{now_str()}' if dated_backup else f'{lfn}~'
     if not dated_backup:
         ret_obj = SendMsg(wb, 'rm', ['-f', lfn_backup])  # remove already present old backup; useless to pre-check
     ret_obj = SendMsg(wb, 'mv', [lfn, lfn_backup])  # let's create a backup of old lfn
@@ -2005,9 +1995,9 @@ def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: st
     tokens = getEnvelope_lfn(wb, lfn2file(lfn, temp_file_name), [upload_specs], isWrite = True)
     access_request = tokens['answer']
     replicas = access_request["results"][0]["nSEs"]
-    if "disk:" not in upload_specs: upload_specs = "disk:" + replicas
-    if upload_specs: upload_specs = "@" + upload_specs
-    copycmd = "-f " + 'file:' + temp_file_name + " " + lfn + upload_specs
+    if "disk:" not in upload_specs: upload_specs = f'disk:{replicas}'
+    if upload_specs: upload_specs = f'@{upload_specs}'
+    copycmd = f'-f file:{temp_file_name} {lfn}{upload_specs}'
     ret_obj = DO_XrootdCp(wb, copycmd.split())
     if ret_obj.exitcode == 0: return lfn
     ret_obj = SendMsg(wb, 'mv', [lfn_backup, lfn])  # if the upload failed let's move back the backup to original lfn name'
@@ -2082,13 +2072,13 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     max_value_size[:] = [w + 3 for w in max_value_size]
 
     # create width specification list
-    row_format_list = ['{: <' + str(w) + '}' for w in max_value_size]
+    row_format_list = [f'{{: <{str(w)}}}' for w in max_value_size]
     row_format = "".join(row_format_list)
 
     msg = row_format.format(*keys)
     for row in ans_list:
         value_list = [row.get(key) for key in keys]
-        msg = msg + "\n" + row_format.format(*value_list)
+        msg = f'{msg}\n{row_format.format(*value_list)}'
     return RET(AlienSessionInfo['exitcode'], msg, "")
 
 
@@ -2119,7 +2109,7 @@ def DO_cat(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     if not args or args is None: args = ['-h']
     if '-h' in args: return get_help_srv(wb, 'cat')
     tmp = download_tmp(wb, args[-1])
-    if tmp and os.path.isfile(tmp): return runShellCMD('cat ' + tmp)
+    if tmp and os.path.isfile(tmp): return runShellCMD(f'cat {tmp}')
     return RET(1, '', f'Could not download {args[-1]}')
 
 
@@ -2201,7 +2191,7 @@ def DO_token(wb: websockets.client.WebSocketClientProtocol, args: Union[list, No
     if args is None: args = []
     msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments\n"
     ret_obj = SendMsg(wb, 'token', args, opts = 'nokeys')
-    return ret_obj._replace(out = msg + ret_obj.out)
+    return ret_obj._replace(out = f'{msg}{ret_obj.out}')
 
 
 def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
@@ -2243,7 +2233,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     tmp = download_tmp(wb, lfn)
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
-        ret_obj = runShellCMD(editor + ' ' + tmp, captureout = False)
+        ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
         if ret_obj.exitcode != 0: return retf_print(ret_obj)
         md5_end = md5(tmp)
         if md5_begin != md5_end:
@@ -2280,8 +2270,8 @@ def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
                     '-noout : will not capture output, the actual application can be used')
 
         if external:
-            ret_obj = runShellCMD(args[0] + ' -h')
-            return ret_obj._replace(out = ret_obj.out + '\n' + msg_last)
+            ret_obj = runShellCMD(f'{args[0]} -h')
+            return ret_obj._replace(out = f'{ret_obj.out}\n{msg_last}')
         msg = ('Command format: run shell_command arguments lfn\n'
                'the lfn must be the last element of the command\n'
                'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
@@ -2309,7 +2299,7 @@ def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     cmd = " ".join(args)
     files = " ".join(tmp_list)
     if tmp_list and all(os.path.isfile(tmp) for tmp in tmp_list):
-        return runShellCMD(cmd + ' ' + files, capture_out)
+        return runShellCMD(f'{cmd} {files}', capture_out)
     return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(tmp_list)}')
 
 
@@ -2336,7 +2326,7 @@ def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: Union[list, No
     tmp = download_tmp(wb, lfn, overwrite)
     if tmp and os.path.isfile(tmp):
         os.chmod(tmp, 0o700)
-        return runShellCMD(f"{tmp + ' ' + opt_args if opt_args else tmp}", capture_out)
+        return runShellCMD(f'{tmp} {opt_args}' if opt_args else tmp, capture_out)
     return RET(1, '', f'There was an error downloading script: {lfn}')
 
 
@@ -2347,7 +2337,8 @@ def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args
     if type(args) == str: args = args.split()
     if not cmd: return RET(1, '', 'No system command specified!')
     new_arg_list = [download_tmp(wb, arg) if arg.startswith('alien:') else arg for arg in args]
-    return runShellCMD(cmd + ' ' + ' '.join(new_arg_list))
+    new_arg_list.index(0, cmd)
+    return runShellCMD(' '.join(new_arg_list))
 
 
 def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> RET:
@@ -2530,7 +2521,7 @@ def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RE
 def get_help_srv(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
     """Return the help option for server-side known commands"""
     if not cmd: return RET(1, '', 'No command specified for help request')
-    return SendMsg(wb, cmd + ' -h')
+    return SendMsg(wb, f'{cmd} -h')
 
 
 def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
@@ -2542,12 +2533,13 @@ def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
                'https://gitlab.cern.ch/jalien/xjalienfs/blob/master/README.md\n'
                'the following commands are available:')
         nr = len(AlienSessionInfo['commandlist'])
-        columns = 6
+        column_width = 24
+        columns = os.get_terminal_size()[0]//column_width
         for ln in range(0, nr, columns):
             if ln + 1 > nr: ln = nr - 1
             el_ln = AlienSessionInfo['commandlist'][ln:ln + columns]
-            ln = [str(i).ljust(26) for i in el_ln]
-            msg = msg + '\n' + ''.join(ln)
+            ln = [str(i).ljust(column_width) for i in el_ln]
+            msg = f'{msg}\n{"".join(ln)}'
         return RET(0, msg)
     return get_help(wb, args.pop(0))
 
@@ -2575,15 +2567,9 @@ def DO_prompt(args: Union[list, None] = None) -> RET:
 
 def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
     """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
-    global AlienSessionInfo
     key = 'path' if fullpath else 'name'
-
-    def cleanup_item(lfn):
-        ret = re.sub(r"\/{2,}", "/", lfn)
-        return re.sub(r"^\.\/", "", ret)
-
     ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-F', lfn])
-    return list(cleanup_item(item[key]) for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
+    return list(os.path.normpath(item[key]) for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
 
 
 def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
@@ -2592,14 +2578,14 @@ def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
     if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
     list_lfns = []
     lfn_path = Path(lfn)
-    base_dir = lfn_path.parent.as_posix() if lfn_path.parent.as_posix() == '/' else lfn_path.parent.as_posix() + '/'
-    name = lfn_path.name + '/' if lfn.endswith('/') else lfn_path.name
+    base_dir = lfn_path.parent.as_posix() if lfn_path.parent.as_posix() == '/' else f'{lfn_path.parent.as_posix()}/'
+    name = f'{lfn_path.name}/' if lfn.endswith('/') else lfn_path.name
 
     def item_format(base_dir, name, item):
         # print(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
         if name.endswith('/') and name != '/':
-            return name + item if base_dir == './' else base_dir + name + item
-        return item if base_dir == './' else base_dir + item
+            return f'{name}{item}' if base_dir == './' else f'{base_dir}{name}{item}'
+        return item if base_dir == './' else f'{base_dir}{item}'
 
     if lfn.endswith('/'):
         listing = get_list_entries(wb, lfn)
@@ -2691,11 +2677,11 @@ def CertInfo(fname: str) -> RET:
 
 
 def get_files_cert() -> list:
-    return (os.getenv('X509_USER_CERT', Path.home().as_posix() + '/.globus' + '/usercert.pem'), os.getenv('X509_USER_KEY', Path.home().as_posix() + '/.globus' + '/userkey.pem'))
+    return (os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem'))
 
 
 def get_files_token() -> tuple:
-    return os.getenv('JALIEN_TOKEN_CERT', TMPDIR + '/tokencert_' + str(os.getuid()) + '.pem'), os.getenv('JALIEN_TOKEN_KEY', TMPDIR + '/tokenkey_' + str(os.getuid()) + '.pem')
+    return os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -2763,6 +2749,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             sys.exit(129)
         AlienSessionInfo['use_usercert'] = True
 
+    if DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
     try:
         ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
@@ -2771,13 +2758,14 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
+    if DEBUG: logging.debug("SSL context:: Load verify locations")
     if x509file:
         ctx.load_verify_locations(cafile = x509file)
     else:
         ctx.load_verify_locations(capath = capath_default)
+    if DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
     ctx.load_cert_chain(certfile=cert, keyfile=key)
-
-    if DEBUG: logging.debug(f"Cert = {cert} ; Key = {key}")
+    if DEBUG: logging.debug("SSL context done.")
     return ctx
 
 
@@ -2797,7 +2785,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
-        socket_filename = TMPDIR + '/jboxpy_' + str(os.getuid()) + '.sock'
+        socket_filename = f'{TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
         except Exception as e:
@@ -2806,7 +2794,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             print(f'{msg}\nCheck the logfile: {DEBUG_FILE}', file=sys.stderr, flush = True)
             return None
     else:
-        fHostWSUrl = 'wss://' + str(host) + ':' + str(port) + str(path)  # conection url
+        fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
         ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
         logging.info(f"Request connection to : {host}:{port}{path}")
 
@@ -2879,7 +2867,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         if TIME_CONNECT: print(msg, flush = True)
 
     if wb and localConnect:
-        pid_filename = TMPDIR + '/jboxpy_' + str(os.getuid()) + '.pid'
+        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
         writePidFile(pid_filename)
     return wb
 
@@ -3175,9 +3163,9 @@ def JAlien(commands: str = '') -> int:
             tokens = prompt_line.split()
             results = []
             if len(tokens) == 0:
-                results = [x + " " for x in AlienSessionInfo['commandlist']]
+                results = [f'{x} ' for x in AlienSessionInfo['commandlist']]
             elif len(tokens) == 1 and not prompt_line.endswith(' '):
-                results = [x + " " for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
+                results = [f'{x} ' for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
             else:
                 results = lfn_list(wb, text) + [None]
             return results[state]
@@ -3189,11 +3177,11 @@ def JAlien(commands: str = '') -> int:
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
     while True:
-        INPUT = ''
+        INPUT = None
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
-        if AlienSessionInfo['show_date']: prompt = str(datetime.datetime.now().replace(microsecond=0).isoformat()) + " " + prompt
-        if AlienSessionInfo['show_lpwd']: prompt = prompt + " " + "local:" + Path.cwd().as_posix()
-        prompt = prompt + ' >'
+        if AlienSessionInfo['show_date']: prompt = f'{datetime.datetime.now().replace(microsecond=0).isoformat()} {prompt}'
+        if AlienSessionInfo['show_lpwd']: prompt = f'{prompt} local:{Path.cwd().as_posix()}'
+        prompt = f'{prompt} >'
         try:
             INPUT = input(prompt)
         except EOFError:
