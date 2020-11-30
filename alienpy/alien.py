@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Executable/module for interaction with GRID services of ALICE experiment"""
 
 import sys
 import os
@@ -53,6 +54,7 @@ except ImportError:
 
 if has_readline:
     def setupHistory():
+        """Setup up history mechanics for readline module"""
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
         if not os.path.exists(histfile): open(histfile, 'wb').close()
         rl.set_history_length(-1)  # unlimited history
@@ -69,8 +71,7 @@ try:  # let's fail fast if the xrootd python bindings are not present
 except ImportError:
     has_xrootd = False
 
-hasColor = False
-if (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()): hasColor = True
+hasColor = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
@@ -95,7 +96,8 @@ AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandli
                     'show_date': False, 'show_lpwd': False}
 
 
-class COLORS(NamedTuple):
+class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
+    """Collection of colors for terminal printing"""
     ColorReset = '\033[00m'     # Text Reset
     Black = '\033[0;30m'        # Black
     Red = '\033[0;31m'          # Red
@@ -155,7 +157,7 @@ class COLORS(NamedTuple):
     On_IWhite = '\033[0;107m'   # High Intensity backgrounds White
 
 
-class XrdCpArgs(NamedTuple):
+class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep the set of xrootd flags used for xrootd copy process"""
     overwrite: bool
     batch: int
@@ -169,7 +171,7 @@ class XrdCpArgs(NamedTuple):
     cksum: bool
 
 
-class CopyFile(NamedTuple):
+class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep a generic copy task"""
     src: str
     dst: str
@@ -178,19 +180,19 @@ class CopyFile(NamedTuple):
     lfn: str
 
 
-class lfn2file(NamedTuple):
+class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
     """Map a lfn to file (and reverse)"""
     lfn: str
     file: str
 
 
-class KV(NamedTuple):
+class KV(NamedTuple):  # pylint: disable=inherit-non-class
     """Assign a value to a key"""
     key: str
     val: str
 
 
-class RET(NamedTuple):
+class RET(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure for POSIX like function return: exitcode, stdout, stderr, dictionary of server reply"""
     exitcode: int = -1
     out: str = ''
@@ -207,41 +209,51 @@ class AliEn:
         self.opts = opts
 
     def run(self, cmd, opts = '') -> Union[RET, str]:
+        """SendMsg to server a string command, a RET object will be returned"""
         if not opts: opts = self.opts
         return SendMsg(self.internal_wb, cmd, opts = opts)
 
     def ProcessMsg(self, cmd, opts = '') -> int:
+        """ProcessCommandChain - the app main function to process a (chain of) command(s)"""
         if not opts: opts = self.opts
         return ProcessCommandChain(self.internal_wb, cmd)
 
     def wb(self) -> websockets.client.WebSocketClientProtocol:
+        """Get the websocket, to be used in other functions"""
         return self.internal_wb
 
-    def help(self):
+    def help(self):  # pylint: disable=no-self-use
+        """Print help message"""
         print('Methods of AliEn session:\n'
               '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
               '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
               '.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
 
 
-def signal_handler(sig, frame):
+def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
-    print(f'\nCought signal {signal.Signals(sig).name}, let\'s exit')
+    print(f'\nCought signal {sig.name}, let\'s exit')
     exit_message(int(AlienSessionInfo['exitcode']))
 
 
-def exit_message(code: int = 0):
-    print('Exit')
+def exit_message(code: int = 0, msg = ''):
+    """Exit with msg and with specied code"""
+    print(msg if msg else 'Exit')
     sys.exit(code)
 
 
-def is_guid(guid: str) -> bool: return bool(guid_regex.fullmatch(guid))  # identify if argument in an AliEn GUID
+def is_guid(guid: str) -> bool:
+    """Recognize a GUID format"""
+    return bool(guid_regex.fullmatch(guid))  # identify if argument in an AliEn GUID
 
 
-def run_function(function_name: str, *args, **kwargs): return globals()[function_name](*args, *kwargs)  # run arbitrary function
+def run_function(function_name: str, *args, **kwargs):
+    """Python code:: run some arbitrary function name (found in globals) with arbitrary arguments"""
+    return globals()[function_name](*args, *kwargs)  # run arbitrary function
 
 
 def io_q_proc():
+    """IO queue:: print stdout/stderr and clear queue"""
     global AlienSessionInfo
     stderr = "\n". join(AlienSessionInfo['q_err'])
     AlienSessionInfo['q_err'].clear()
@@ -252,6 +264,7 @@ def io_q_proc():
 
 
 def io_q_proc_out():
+    """IO queue:: print stdout and clear queue"""
     global AlienSessionInfo
     stdout = "\n". join(AlienSessionInfo['q_out'])
     AlienSessionInfo['q_out'].clear()
@@ -259,6 +272,7 @@ def io_q_proc_out():
 
 
 def io_q_get_out() -> str:
+    """IO queue:: get stdout and clear queue"""
     global AlienSessionInfo
     stdout = "\n". join(AlienSessionInfo['q_out'])
     AlienSessionInfo['q_out'].clear()
@@ -266,6 +280,7 @@ def io_q_get_out() -> str:
 
 
 def io_q_proc_err():
+    """IO queue:: print stderr and clear queue"""
     global AlienSessionInfo
     stderr = "\n". join(AlienSessionInfo['q_err'])
     AlienSessionInfo['q_err'].clear()
@@ -273,6 +288,7 @@ def io_q_proc_err():
 
 
 def io_q_get_err() -> str:
+    """IO queue:: get stderr and clear queue"""
     global AlienSessionInfo
     stderr = "\n". join(AlienSessionInfo['q_err'])
     AlienSessionInfo['q_err'].clear()
@@ -280,11 +296,13 @@ def io_q_get_err() -> str:
 
 
 def io_q_push_err(msg: str):
+    """IO queue:: push to stderr queue"""
     global AlienSessionInfo
     if msg: AlienSessionInfo['q_err'].append(msg)
 
 
 def io_q_push_out(msg: str):
+    """IO queue:: push to stdout queue"""
     global AlienSessionInfo
     if msg: AlienSessionInfo['q_out'].append(msg)
 
@@ -294,15 +312,15 @@ def start_asyncio():
     loop = None
     ready = threading.Event()
 
-    def run(main, *, debug=False):
-        if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")
-        if not asyncio.coroutines.iscoroutine(main): raise ValueError("a coroutine was expected, got {!r}".format(main))
+    def run(mainasync, *, debug=False):
+        if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")  # pylint: disable=protected-access
+        if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError("a coroutine was expected, got {!r}".format(mainasync))
 
         loop = asyncio.events.new_event_loop()
         try:
             asyncio.events.set_event_loop(loop)
             loop.set_debug(debug)
-            return loop.run_until_complete(main)
+            return loop.run_until_complete(mainasync)
         finally:
             try:
                 _cancel_all_tasks(loop)
@@ -313,9 +331,9 @@ def start_asyncio():
 
     def _cancel_all_tasks(loop):
         if sys.version_info[1] < 8:
-            to_cancel = asyncio.Task.all_tasks(loop)  # asyncio.tasks.
+            to_cancel = asyncio.Task.all_tasks(loop)  # pylint: disable=no-member # asyncio.tasks
         else:
-            to_cancel = asyncio.all_tasks(loop)  # asyncio.tasks.
+            to_cancel = asyncio.all_tasks(loop)  # asyncio.tasks
         if not to_cancel: return
         for task in to_cancel: task.cancel()
         loop.run_until_complete(asyncio.tasks.gather(*to_cancel, loop=loop, return_exceptions=True))
@@ -345,9 +363,8 @@ _loop = start_asyncio()
 # print_io_th.start()
 # print_io_th.join()
 
-
-# DECORATOR FOR SYNCIFY FUNCTIONS
 def syncify(fn):
+    """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
     def syncfn(*args, **kwds):
         # submit the original coroutine to the event loop and wait for the result
         conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _loop)
@@ -374,12 +391,13 @@ async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
 
 @syncify
 async def wb_close(wb, code, reason):
+    """Send close to websocket"""
     await wb.close(code = code, reason = reason)
 
 
 @syncify
 async def msg_proxy(websocket, use_usercert = False):
-    # start client to upstream
+    """Proxy messages from a connection point to another"""
     wb_jalien = AlienConnect(None, use_usercert)
     local_query = await websocket.recv()
     jalien_answer = await SendMsg(wb_jalien, local_query)
@@ -409,7 +427,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
     if DEBUG:
-        logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")
+        logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
         logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
     if '{"command":' in cmdline and '"options":' in cmdline:
         jsonmsg = cmdline
@@ -466,7 +484,7 @@ def GetDict(result: Union[str, dict]) -> RET:
     """Convert server reply string to dict, update all relevant globals"""
     if not result: return RET(1, '', 'GetDict:: empty argument')
     out_dict = None
-    if type(result) == str:
+    if isinstance(result, str):
         try:
             out_dict = json.loads(result)
         except Exception as e:
@@ -484,7 +502,7 @@ def GetDict(result: Union[str, dict]) -> RET:
 
 def PrintDict(in_arg: Union[str, dict, list]):
     """Print a dictionary in a nice format"""
-    if type(in_arg) == str:
+    if isinstance(in_arg, str):
         try:
             in_arg = json.loads(in_arg)
         except Exception as e:
@@ -516,7 +534,7 @@ def Update_meta2session(message: dict = None):
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '') -> str:
     """Return a json with command and argument list"""
     if args is None: args = []
-    if type(cmdline) == dict:
+    if isinstance(cmdline, dict):
         out_dict = cmdline.copy()
         if 'showmsg' in opts: opts = opts.replace('nomsg', '')
         if 'showkeys' in opts: opts = opts.replace('nokeys', '')
@@ -536,19 +554,21 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
 
 
 def GetMeta(result: dict, meta: str = '') -> list:
-    if not result: return []
-    if type(result) == dict and 'metadata' in result:  # these works only for AliEn responses
-        output = []
+    """Extract from input and return a list of 2nd arg selectable of cwd user error exitcode"""
+    output = []
+    if not result: return output
+    if isinstance(result, dict) and 'metadata' in result:  # these works only for AliEn responses
         meta_opts_list = meta.split() if meta else []
         if 'cwd' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["currentdir"])
         if 'user' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["user"])
         if 'error' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["error"])
         if 'exitcode' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["exitcode"])
-        return output
-    return []
+    return output
 
 
-def PrintColor(color: str) -> str: return color if hasColor else ''
+def PrintColor(color: str) -> str:
+    """Disable color if the terminal does not have capability"""
+    return color if hasColor else ''
 
 
 def cursor_vertical(lines: int = 0):
@@ -599,7 +619,7 @@ def retf_result2ret(result: Union[dict, str]) -> Union[None, RET]:
     """Convert AliEn answer dictionary to RET object"""
     if not result: return RET()
     out_dict = None
-    if type(result) == str:
+    if isinstance(result, str):
         try:
             out_dict = json.loads(result)
         except Exception as e:
@@ -721,10 +741,14 @@ def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
         if AlienSessionInfo['currentdir'] and (sys_cur_dir != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
 
 
-def exitcode(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['exitcode']}", '')
+def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
+    """Return the latest global recorded exitcode"""
+    return RET(0, f"{AlienSessionInfo['exitcode']}", '')
 
 
-def error(args: Union[list, None] = None): return RET(0, f"{AlienSessionInfo['error']}", '')
+def error(args: Union[list, None] = None):  # pylint: disable=unused-argument
+    """Return the latest global recorded error"""
+    return RET(0, f"{AlienSessionInfo['error']}", '')
 
 
 def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
@@ -764,7 +788,7 @@ def convert_time(str_line: str) -> str:
 def cd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = None, opts: str = '') -> RET:
     """Override cd to add to home and to prev functions"""
     if args is None: args = []
-    if type(args) == str: args = args.split()
+    if isinstance(args, str): args = args.split()
     if '-h' in args: return get_help_srv(wb, 'cd')
     if args:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
@@ -807,8 +831,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
     if not cmd: return RET(1)
     if args is None: return RET(1)
     global AlienSessionInfo
-    arg_list = args.split() if type(args) == str else args
-
+    arg_list = args.split() if isinstance(args, str) else args
     do_not_cd = False
     if '-n' in arg_list:
         do_not_cd = True
@@ -865,7 +888,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
         if position and sign:
             if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
             if sign == "+":
-                AlienSessionInfo['pathq'].rotate(-position)
+                AlienSessionInfo['pathq'].rotate(-1 * position)
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
             if sign == "-":
                 AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - 1 - position))
@@ -896,7 +919,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
     return RET()  # dummy return just in case cmd is not proper
 
 
-def DO_version(args: Union[list, None] = None) -> RET:
+def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused-argument
     stdout = (f'alien.py version: {ALIENPY_VERSION_STR}\n'
               f'alien.py version date: {ALIENPY_VERSION_DATE}\n'
               f'alien.py location: {os.path.realpath(__file__)}\n'
@@ -1203,7 +1226,7 @@ def name2regex(pattern_regex: str = '') -> str:
     return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
 
-def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list):
+def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = bool(False)
     # isDstDir = bool(False)
@@ -1311,7 +1334,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
     error_msg = ''  # container which accumulates the error messages
     # if src is directory, then create list of files coresponding with options
     isWrite = bool(False)
-    if isDownload:  # src is GRID, we are DOWNLOADING from GRID directory
+    if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
         specs = src_specs_remotes
         if isSrcDir:  # recursive download
             find_defaults = ['-a', '-s', src]
@@ -1386,9 +1409,10 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
     if error_msg:
         print(error_msg, file=sys.stderr, flush = True)
+    return RET(0)
 
 
-def makelist_xrdjobs(wb: websockets.client.WebSocketClientProtocol, copylist_lfns: list, copylist_xrd: list):
+def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
     """Process a list of lfns to XRootD copy jobs and add them to the list"""
     for cpfile in copylist_lfns:
         if not cpfile.isUpload:
@@ -1629,9 +1653,13 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
                 if len(arglist) > 2:
                     print(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
                     continue
-                makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+                if retobj.exitcode != 0:
+                    retf_print(retobj)
+                    break  # stop the parsing if any error is encountered
     else:
-        makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+        if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
 
     if not copy_lfnlist:
         msg = "No copy operations in list! enable the DEBUG mode for more info"
@@ -1644,7 +1672,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
-    makelist_xrdjobs(wb, copy_lfnlist, xrdcopy_job_list)
+    makelist_xrdjobs(copy_lfnlist, xrdcopy_job_list)
 
     if not xrdcopy_job_list:
         msg = "No XRootD operations in list! enable the DEBUG mode for more info"
@@ -1670,6 +1698,9 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
 if has_xrootd:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+        """Custom ProgressHandler for XRootD copy process"""
+        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout')
+
         def __init__(self):
             self.wb = None
             self.copy_failed_list = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
@@ -1688,10 +1719,6 @@ if has_xrootd:
             if DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target))
 
         def end(self, jobId, results):
-            results_message = results['status'].message
-            results_status = results['status'].status
-            results_errno = results['status'].errno
-            results_code = results['status'].code
             if results['status'].ok:
                 status = f'{PrintColor(COLORS.Green)}OK{PrintColor(COLORS.ColorReset)}'
             elif results['status'].error:
@@ -1719,7 +1746,7 @@ if has_xrootd:
                     if DEBUG: retf_print(ret_obj, 'debug')
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
-                    print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results_errno, results_code, results_status, status, speed_str, results_message), flush = True)
+                    print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message), flush = True)
             else:
                 if xrdjob.isUpload:
                     self.copy_failed_list.append(xrdjob.token_request)
@@ -1904,7 +1931,7 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
     def match_name(se: Union[dict, None] = None, name: str = '') -> bool:
         if se is None or not name: return False
         if name.isdecimal(): return name in se['seNumber']
-        return (name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold())
+        return name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold()
 
     se_name = args[-1].casefold()
     se_list = []
@@ -2334,7 +2361,7 @@ def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args
     """run system command with all the arguments but all alien: specifications are downloaded to temporaries"""
     global AlienSessionInfo
     if args is None: args = []
-    if type(args) == str: args = args.split()
+    if isinstance(args, str): args = args.split()
     if not cmd: return RET(1, '', 'No system command specified!')
     new_arg_list = [download_tmp(wb, arg) if arg.startswith('alien:') else arg for arg in args]
     new_arg_list.index(0, cmd)
@@ -2432,10 +2459,10 @@ def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
     try:
         if captureout:
             args = sh_cmd
-            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell=True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell=True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)  # pylint: disable=subprocess-run-check
         else:
             args = shlex.split(sh_cmd)
-            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace')
+            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace')  # pylint: disable=subprocess-run-check
     except Exception as e:
         msg = 'Shell process threw this:\n{0}'.format(e)
         logging.error(msg)
@@ -2996,8 +3023,8 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
         AlienSessionInfo['commandlist'].append('ll')
         AlienSessionInfo['commandlist'].append('la')
         AlienSessionInfo['commandlist'].append('lla')
-        AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_client']])  # add clien-side cmds to list
-        AlienSessionInfo['commandlist'].extend([cmd for cmd in AlienSessionInfo['cmd2func_map_nowb']])  # add nowb cmds to list
+        AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
+        AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])  # add nowb cmds to list
         AlienSessionInfo['commandlist'].sort()
 
     # when starting new session prevdir is empty, if set then this is a reconnection
@@ -3083,7 +3110,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
         if ret_obj.exitcode != 0: return ret_obj
         if not ret_obj.out:
             return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
-        shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # env=os.environ default is already the process env
+        shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
@@ -3203,7 +3230,7 @@ def setup_logging():
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
-    global JSON_OUT, ALIENPY_EXECUTABLE
+    global JSON_OUT, JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE
     setup_logging()
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
@@ -3223,7 +3250,7 @@ def main():
         banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
         exitmsg = 'Exiting..'
         term.interact(banner, exitmsg)
-        os._exit(int(AlienSessionInfo['exitcode']))
+        os._exit(int(AlienSessionInfo['exitcode']))  # pylint: disable=protected-access
 
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
     if verb: sys.argv.insert(0, verb)
