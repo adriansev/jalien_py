@@ -41,18 +41,18 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
 
-has_readline = False
+_HAS_READLINE = False
 try:
     import readline as rl
-    has_readline = True
+    _HAS_READLINE = True
 except ImportError:
     try:
         import gnureadline as rl
-        has_readline = True
+        _HAS_READLINE = True
     except ImportError:
-        has_readline = False
+        _HAS_READLINE = False
 
-if has_readline:
+if _HAS_READLINE:
     def setupHistory():
         """Setup up history mechanics for readline module"""
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
@@ -64,14 +64,14 @@ if has_readline:
         rl.set_startup_hook(startup_hook)
 
 
-has_xrootd = False
+_HAS_XROOTD = False
 try:  # let's fail fast if the xrootd python bindings are not present
     from XRootD import client
-    has_xrootd = True
+    _HAS_XROOTD = True
 except ImportError:
-    has_xrootd = False
+    _HAS_XROOTD = False
 
-hasColor = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+_HAS_COLOR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
@@ -81,13 +81,13 @@ ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a r
 emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 
 # environment debug variable
-JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
-JSON_OUT_GLOBAL = JSON_OUT
-DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
-TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
-TMPDIR = os.getenv('TMPDIR', '/tmp')
-DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
+_JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
+_JSON_OUT_GLOBAL = _JSON_OUT
+_DEBUG = os.getenv('ALIENPY_DEBUG', '')
+_DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
+_TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
+_TMPDIR = os.getenv('TMPDIR', '/tmp')
+_DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '', 'session_started': False,
@@ -377,7 +377,7 @@ def syncify(fn):
 async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
     time_begin = None
-    if DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     try:
         pong_waiter = await wb.ping()
         await pong_waiter
@@ -408,7 +408,7 @@ async def msg_proxy(websocket, use_usercert = False):
 async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
     time_begin = None
-    if DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     await wb.send(jsonmsg)
     result = await wb.recv()
     if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
@@ -423,22 +423,22 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
         return '' if 'rawstr' in opts else RET(1, '', msg)
     if not args: args = []
     time_begin = None
-    if DEBUG or DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
-    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
+    if _DEBUG or _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
-    if DEBUG:
+    if _DEBUG:
         logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
         logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
     if '{"command":' in cmdline and '"options":' in cmdline:
         jsonmsg = cmdline
     else:
         jsonmsg = CreateJsonCommand(cmdline, args, opts)  # nomsg/nokeys will be passed to CreateJsonCommand
-    if DEBUG: logging.info(f"We send this json: {jsonmsg}")
+    if _DEBUG: logging.info(f"We send this json: {jsonmsg}")
 
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty or invalid")
         return '' if 'rawstr' in opts else RET(1, '', "SendMsg:: json message is empty or invalid")
-    if DEBUG: logging.debug(f"SEND COMMAND: {jsonmsg}")
+    if _DEBUG: logging.debug(f"SEND COMMAND: {jsonmsg}")
     nr_tries = int(0)
     result = None
     while result is None:
@@ -456,7 +456,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                 wb = InitConnection()
             except Exception as e:
                 logging.exception(e)
-                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {DEBUG_FILE}'
+                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}'
                 logging.error(msg)
                 print(msg, file=sys.stderr, flush = True)
         except Exception as e:
@@ -466,7 +466,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                     wb = InitConnection()
                 except Exception as e:
                     logging.exception(e)
-                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {DEBUG_FILE}'
+                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {_DEBUG_FILE}'
                     logging.error(msg)
                     print(msg, file=sys.stderr, flush = True)
                     break
@@ -568,7 +568,7 @@ def GetMeta(result: dict, meta: str = '') -> list:
 
 def PrintColor(color: str) -> str:
     """Disable color if the terminal does not have capability"""
-    return color if hasColor else ''
+    return color if _HAS_COLOR else ''
 
 
 def cursor_vertical(lines: int = 0):
@@ -650,7 +650,7 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 4)
             print(json_out, flush = True)
-            if DEBUG: logging.debug(json_out)
+            if _DEBUG: logging.debug(json_out)
         else:
             print('This command did not return a json dictionary', file=sys.stderr, flush = True)
         return ret_obj.exitcode
@@ -926,7 +926,7 @@ def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused
               f'script location: {ALIENPY_EXECUTABLE}\n'
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
               f'Python version: {sys.version}\n')
-    if has_xrootd:
+    if _HAS_XROOTD:
         stdout = f'{stdout}XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
     else:
         stdout = f'{stdout}XRootD version: Not Found!'
@@ -1221,7 +1221,7 @@ def name2regex(pattern_regex: str = '') -> str:
             if not list_ends:  # we already added the ext in list_ends
                 translated_pattern_regex = f'{translated_pattern_regex}{list_ext[0].val}'
 
-        if DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
+        if _DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
         return translated_pattern_regex
     return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
@@ -1312,7 +1312,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             except Exception:
                 logging.error(traceback.format_exc())
                 path_str = mk_path.as_posix()
-                msg = f"Could not create local destination directory: {path_str}\ncheck log file {DEBUG_FILE}"
+                msg = f"Could not create local destination directory: {path_str}\ncheck log file {_DEBUG_FILE}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             dst_type = 'd'  # we just created it
         # if dst_type == 'd': isDstDir = bool(True)
@@ -1326,7 +1326,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')
             retf_print(ret_obj, opts = 'noprint err')
             if ret_obj.exitcode != 0:
-                msg = f"check log file {DEBUG_FILE}"
+                msg = f"check log file {_DEBUG_FILE}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             dst_type = 'd'  # we just created it
         # if dst_type == 'd': isDstDir = bool(True)
@@ -1344,14 +1344,14 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             else:
                 find_defaults.append(pattern)
             find_args.extend(find_defaults)
-            send_opts = 'nomsg' if not DEBUG else ''
+            send_opts = 'nomsg' if not _DEBUG else ''
             ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
             src_list_files_dict = ret_obj.ansdict
             if ret_obj.exitcode != 0:
-                msg = f"Find returned error when using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {DEBUG_FILE} for detailed logging"
+                msg = f"Find returned error when using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             if len(src_list_files_dict['results']) < 1:
-                msg = f"No files found using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {DEBUG_FILE} for detailed logging"
+                msg = f"No files found using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             for item in src_list_files_dict['results']:
                 dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
@@ -1455,7 +1455,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
 
 def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
-    if not has_xrootd: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
+    if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
     if xrd_copy_command is None: xrd_copy_command = []
     global AlienSessionInfo
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
@@ -1666,7 +1666,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         logging.info(msg)
         return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
-    if DEBUG:
+    if _DEBUG:
         logging.debug("We are going to copy these files:")
         for file in copy_lfnlist: logging.debug(file)
 
@@ -1679,7 +1679,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         logging.info(msg)
         return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
-    if DEBUG:
+    if _DEBUG:
         logging.debug("XRootD copy jobs:")
         for file in xrdcopy_job_list: logging.debug(file)
 
@@ -1696,7 +1696,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     return RET(0, msg) if copy_jobs_failed_nr < copy_jobs_nr else RET(1, '', msg)
 
 
-if has_xrootd:
+if _HAS_XROOTD:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         """Custom ProgressHandler for XRootD copy process"""
         __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout')
@@ -1716,7 +1716,7 @@ if has_xrootd:
             self.jobs = int(total)
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
-            if DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target))
+            if _DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target))
 
         def end(self, jobId, results):
             if results['status'].ok:
@@ -1743,7 +1743,7 @@ if has_xrootd:
                     perm = '644'
                     expire = '0'
                     ret_obj = commit(self.wb, urltoken, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
-                    if DEBUG: retf_print(ret_obj, 'debug')
+                    if _DEBUG: retf_print(ret_obj, 'debug')
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
                     print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message), flush = True)
@@ -1765,7 +1765,7 @@ if has_xrootd:
 
 def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
-    if not has_xrootd:
+    if not _HAS_XROOTD:
         print("XRootD not found", file=sys.stderr, flush = True)
         return []
     if not xrd_cp_args:
@@ -1824,7 +1824,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
     process = client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
-        if DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
+        if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         if has_cksum:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
                             checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
@@ -1837,7 +1837,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
 
 
 def xrd_stat(pfn: str):
-    if not has_xrootd:
+    if not _HAS_XROOTD:
         print('python XRootD module cannot be found, the copy process cannot continue')
         return None
     url_components = urlparse(pfn)
@@ -1981,12 +1981,12 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
     if not ext: ext = f'_{str(os.getuid())}.alienpy_tmp'
-    return f'{TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
+    return f'{_TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
-    return lfn.replace(f'{TMPDIR}/', '').replace("%%", "/")
+    return lfn.replace(f'{_TMPDIR}/', '').replace("%%", "/")
 
 
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
@@ -2708,7 +2708,7 @@ def get_files_cert() -> list:
 
 
 def get_files_token() -> tuple:
-    return os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+    return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -2741,7 +2741,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print(msg, file=sys.stderr, flush = True)
         logging.info(msg)
         sys.exit(2)
-    if DEBUG:
+    if _DEBUG:
         if x509file:
             logging.debug(f"CAfile = {x509file}")
         else:
@@ -2776,7 +2776,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             sys.exit(129)
         AlienSessionInfo['use_usercert'] = True
 
-    if DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
+    if _DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
     try:
         ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
@@ -2785,14 +2785,14 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
-    if DEBUG: logging.debug("SSL context:: Load verify locations")
+    if _DEBUG: logging.debug("SSL context:: Load verify locations")
     if x509file:
         ctx.load_verify_locations(cafile = x509file)
     else:
         ctx.load_verify_locations(capath = capath_default)
-    if DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
+    if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
     ctx.load_cert_chain(certfile=cert, keyfile=key)
-    if DEBUG: logging.debug("SSL context done.")
+    if _DEBUG: logging.debug("SSL context done.")
     return ctx
 
 
@@ -2812,13 +2812,13 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
-        socket_filename = f'{TMPDIR}/jboxpy_{str(os.getuid())}.sock'
+        socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
         except Exception as e:
             msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
             logging.error(msg)
-            print(f'{msg}\nCheck the logfile: {DEBUG_FILE}', file=sys.stderr, flush = True)
+            print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
             return None
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
@@ -2829,20 +2829,20 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
         # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
         try:
-            if DEBUG:
+            if _DEBUG:
                 logging.debug(f"TRY ENDPOINT: {host}:{port}")
                 init_begin = datetime.datetime.now().timestamp()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
-            if DEBUG:
+            if _DEBUG:
                 init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                 logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
         except Exception as e:
             msg = 'Could NOT establish connection (TCP socket) to {0}:{1}\n{2}'.format(host, port, e)
             logging.error(msg)
-            print(f'{msg}\nCheck the logfile: {DEBUG_FILE}', file=sys.stderr, flush = True)
+            print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
             return None
 
         if socket_endpoint:
@@ -2850,17 +2850,17 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
-                if DEBUG: init_begin = datetime.datetime.now().timestamp()
+                if _DEBUG: init_begin = datetime.datetime.now().timestamp()
                 deflateFact = websockets.extensions.permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
-                if DEBUG:
+                if _DEBUG:
                     init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
             except Exception as e:
                 msg = 'Could NOT establish connection (WebSocket) to {0}:{1}\n{2}'.format(socket_endpoint_addr, socket_endpoint_port, e)
                 logging.error(msg)
-                print(f'{msg}\nCheck the logfile: {DEBUG_FILE}', file=sys.stderr, flush = True)
+                print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
                 return None
         if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
     return wb
@@ -2871,7 +2871,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     wb = None
     nr_tries = 0
     init_begin = init_delta = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
+    if _TIME_CONNECT or _DEBUG: init_begin = datetime.datetime.now().timestamp()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
 
@@ -2890,11 +2890,11 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     if wb and init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         msg = f'>>>   Endpoint total connecting time: {init_delta:.3f} ms'
-        if DEBUG: logging.debug(msg)
-        if TIME_CONNECT: print(msg, flush = True)
+        if _DEBUG: logging.debug(msg)
+        if _TIME_CONNECT: print(msg, flush = True)
 
     if wb and localConnect:
-        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
+        pid_filename = f'{_TMPDIR}/jboxpy_{os.getuid()}.pid'
         writePidFile(pid_filename)
     return wb
 
@@ -2904,7 +2904,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
-    jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
+    jclient_env = f'{_TMPDIR}/jclient_token_{str(os.getuid())}'
 
     # let's try to get a websocket
     wb = None
@@ -2926,7 +2926,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
     if wb is None:
-        msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
+        msg = f'Check the logfile: {_DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
         print(msg, file=sys.stderr, flush = True)
         sys.exit(1)
@@ -3035,20 +3035,20 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     """Create a session to AliEn services, including session globals"""
     global AlienSessionInfo
     init_begin = init_delta = None
-    if TIME_CONNECT or DEBUG: init_begin = datetime.datetime.now().timestamp()
+    if _TIME_CONNECT or _DEBUG: init_begin = datetime.datetime.now().timestamp()
     wb = AlienConnect(token_args, use_usercert, localConnect)
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Time for websocket connection: {init_delta:.3f} ms")
-        if TIME_CONNECT: print(f">>>   Time for websocket connection: {init_delta:.3f} ms", flush = True)
+        if _DEBUG: logging.debug(f">>>   Time for websocket connection: {init_delta:.3f} ms")
+        if _TIME_CONNECT: print(f">>>   Time for websocket connection: {init_delta:.3f} ms", flush = True)
 
     if wb is not None: AlienSessionInfo['session_started'] = True
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     getSessionVars(wb)
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        if DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
-        if TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
+        if _DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
+        if _TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
     return wb
 
 
@@ -3120,7 +3120,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
 
 
 def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, None] = None, cmd_chain: str = '') -> int:
-    global AlienSessionInfo, JSON_OUT, JSON_OUT_GLOBAL
+    global AlienSessionInfo, _JSON_OUT, _JSON_OUT_GLOBAL
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
@@ -3148,10 +3148,10 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
         args = input_alien.strip().split()
         cmd = args.pop(0)
 
-        print_opts = 'debug json' if JSON_OUT else 'debug'
-        if '-json' in args or JSON_OUT_GLOBAL:
+        print_opts = 'debug json' if _JSON_OUT else 'debug'
+        if '-json' in args or _JSON_OUT_GLOBAL:
             args.remove('-json')
-            JSON_OUT = True
+            _JSON_OUT = True
             if 'json' not in print_opts: print_opts = f'print_opts {json}'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
@@ -3164,13 +3164,13 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
         retf_session_update(ret_obj)  # Update the globals exitcode, out, err
         retf_print(ret_obj, print_opts)
         if cmd == 'cd': SessionSave()
-        if not JSON_OUT_GLOBAL: JSON_OUT = False  # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
+        if not _JSON_OUT_GLOBAL: _JSON_OUT = False  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
     return ret_obj.exitcode
 
 
 def JAlien(commands: str = '') -> int:
     """Main entry-point for interaction with AliEn"""
-    global AlienSessionInfo, JSON_OUT
+    global AlienSessionInfo, _JSON_OUT
     import_aliases()
     wb = None
     make_func_map_nowb()  # add to cmd2func_map_nowb the functions that do not need wb session
@@ -3181,7 +3181,7 @@ def JAlien(commands: str = '') -> int:
     # Start interactive mode
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
-    if has_readline:
+    if _HAS_READLINE:
         rl.parse_and_bind("tab: complete")
         rl.set_completer_delims(" ")
 
@@ -3219,10 +3219,10 @@ def JAlien(commands: str = '') -> int:
 
 
 def setup_logging():
-    MSG_LVL = logging.DEBUG if DEBUG else logging.INFO
+    MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
-    logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     logger_wb = logging.getLogger('websockets')
     logger_wb.setLevel(MSG_LVL)
 
@@ -3230,7 +3230,7 @@ def setup_logging():
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
-    global JSON_OUT, JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE
+    global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE
     setup_logging()
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
@@ -3240,8 +3240,8 @@ def main():
 
     if '-json' in sys.argv:
         sys.argv.remove('-json')
-        JSON_OUT = True
-        JSON_OUT_GLOBAL = True
+        _JSON_OUT = True
+        _JSON_OUT_GLOBAL = True
 
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
@@ -3268,7 +3268,7 @@ def main():
         print("Received keyboard intrerupt, exiting..")
         sys.exit(int(AlienSessionInfo['exitcode']))
     except Exception:
-        print(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
+        print(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {_DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
 If the exception is reproductible including on lxplus, please create a detailed debug report this way:
 ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''', file=sys.stderr, flush = True)
