@@ -817,13 +817,19 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     return val
 
 
-def DO_dirs(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'dirs', args)
+def DO_dirs(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+    """dirs"""
+    return DO_path_stack(wb, 'dirs', args)
 
 
-def DO_popd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'popd', args)
+def DO_popd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+    """popd"""
+    return DO_path_stack(wb, 'popd', args)
 
 
-def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET: return DO_path_stack(wb, 'pushd', args)
+def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+    """pushd"""
+    return DO_path_stack(wb, 'pushd', args)
 
 
 def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
@@ -964,7 +970,7 @@ def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_files_token()
+    tokencert, tokenkey = get_token_names()
     if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # it is not a file and contains a certificate
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem')
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
@@ -977,7 +983,7 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Delete the token{cert,key}.pem files")
-    tokencert, tokenkey = get_files_token()
+    tokencert, tokenkey = get_token_names()
     if os.path.exists(tokencert): os.remove(tokencert)
     if os.path.exists(tokenkey): os.remove(tokenkey)
     return RET(0, "Token was destroyed! Re-connect for token re-creation.")
@@ -2177,7 +2183,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
     if not wb: return 1
     if not args: args = []
     global AlienSessionInfo
-    tokencert, tokenkey = get_files_token()
+    tokencert, tokenkey = get_token_names()
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
     if ret_obj.exitcode != 0: return retf_print(ret_obj)
@@ -2233,7 +2239,7 @@ def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[lis
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
         return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'usage: token-init'))
     wb = token_regen(wb, args)
-    tokencert, tokenkey = get_files_token()
+    tokencert, tokenkey = get_token_names()
     return CertInfo(tokencert)
 
 
@@ -2667,6 +2673,14 @@ def DO_ping(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     return RET(0, msg)
 
 
+def get_files_cert() -> list:
+    return (os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem'))
+
+
+def get_token_names() -> tuple:
+    return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+
+
 def IsValidCert(fname: str):
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
     try:
@@ -2709,12 +2723,56 @@ def CertInfo(fname: str) -> RET:
     return RET(0, info)
 
 
-def get_files_cert() -> list:
-    return (os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem'))
+def get_ca_path() -> str:
+    """Return either the CA path or file; bailout application if not found"""
+    system_ca_path = '/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
+
+    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
+    if x509file:
+        if _DEBUG: logging.debug(f'X509_CERT_FILE = {x509file}')
+        return x509file
+
+    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
+    if x509dir:
+        if _DEBUG: logging.debug(f'X509_CERT_DIR = {x509dir}')
+        return x509dir
+
+    capath_default = None
+    if os.path.exists(alice_cvmfs_ca_path_lx):
+        capath_default = alice_cvmfs_ca_path_lx
+    elif os.path.exists(alice_cvmfs_ca_path_macos):
+        capath_default = alice_cvmfs_ca_path_macos
+    else:
+        if os.path.isdir(system_ca_path): capath_default = system_ca_path
+
+    if not capath_default:
+        msg = "No CA location or files specified or found!!! Connection will not be possible!!"
+        print(msg, file=sys.stderr, flush = True)
+        logging.info(msg)
+        sys.exit(2)
+    if _DEBUG: logging.debug(f'CApath = {capath_default}')
+    return capath_default
 
 
-def get_files_token() -> tuple:
-    return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+def get_token_filenames() -> tuple:
+    """Get the token filenames, including the temporary ones used as env variables"""
+    tokencert, tokenkey = get_token_names()
+    if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # and is not a file
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem', delete = False)
+        temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
+        temp_cert.seek(0)
+        tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
+    if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokenkey:  # and is not a file
+        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}.pem', delete = False)
+        temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
+        temp_key.seek(0)
+        tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
+    if IsValidCert(tokencert) and os.path.isfile(tokenkey):
+        return tokencert, tokenkey
+    else:
+        return None, None
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -2723,49 +2781,9 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     # SSL SETTINGS
     cert = key = None  # vars for discovered credentials
     usercert, userkey = get_files_cert()
-    tokencert, tokenkey = get_files_token()
+    tokencert, tokenkey = get_token_filenames()
 
-    system_ca_path = '/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
-
-    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
-    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
-
-    capath_default = ''
-    if x509dir:
-        capath_default = x509dir
-    elif os.path.exists(alice_cvmfs_ca_path_lx):
-        capath_default = alice_cvmfs_ca_path_lx
-    elif os.path.exists(alice_cvmfs_ca_path_macos):
-        capath_default = alice_cvmfs_ca_path_macos
-    else:
-        if os.path.isdir(system_ca_path): capath_default = system_ca_path
-
-    if not capath_default and not x509file:
-        msg = "No CA location or files specified!!! Connection will not be possible!!"
-        print(msg, file=sys.stderr, flush = True)
-        logging.info(msg)
-        sys.exit(2)
-    if _DEBUG:
-        if x509file:
-            logging.debug(f"CAfile = {x509file}")
-        else:
-            logging.debug(f"CApath = {capath_default}")
-
-    if not use_usercert:  # if there is no explicit request for usercert
-        if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # and is not a file
-            temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem')
-            temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
-            temp_cert.seek(0)
-            tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokenkey:  # and is not a file
-            temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}.pem')
-            temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
-            temp_key.seek(0)
-            tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
-
-    if not use_usercert and IsValidCert(tokencert) and os.path.isfile(tokenkey):
+    if not use_usercert and tokencert and tokenkey:
         cert, key = tokencert, tokenkey
         AlienSessionInfo['use_usercert'] = False
     else:
@@ -2792,10 +2810,11 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
     if _DEBUG: logging.debug("SSL context:: Load verify locations")
-    if x509file:
-        ctx.load_verify_locations(cafile = x509file)
+    ca_verify_location = get_ca_path()
+    if os.path.isfile(ca_verify_location):
+        ctx.load_verify_locations(cafile = ca_verify_location)
     else:
-        ctx.load_verify_locations(capath = capath_default)
+        ctx.load_verify_locations(capath = ca_verify_location)
     if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
     ctx.load_cert_chain(certfile=cert, keyfile=key)
     if _DEBUG: logging.debug("SSL context done.")
