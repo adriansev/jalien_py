@@ -958,48 +958,6 @@ def DO_exit(args: Union[list, None] = None) -> RET:
     sys.exit(int(code))
 
 
-def DO_certinfo(args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    cert, key = get_files_cert()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print user certificate information", "")
-    return CertInfo(cert)
-
-
-def DO_certverify(args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    cert, key = get_files_cert()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print user certificate information", "")
-    return CertVerify(cert)
-
-
-def DO_tokeninfo(args: Union[list, None] = None) -> RET:
-    if not args: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_filenames()
-    return CertInfo(tokencert)
-
-
-def DO_tokenverify(args: Union[list, None] = None) -> RET:
-    if not args: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_filenames()
-    return CertVerify(tokencert)
-
-
-def DO_tokendestroy(args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Delete the token{cert,key}.pem files")
-    tokencert, tokenkey = get_token_names()
-    if os.path.exists(tokencert): os.remove(tokencert)
-    if os.path.exists(tokenkey): os.remove(tokenkey)
-    return RET(0, "Token was destroyed! Re-connect for token re-creation.")
-
-
 def xrdcp_help() -> str:
     helpstr = f'''Command format is of the form of (with the strict order of arguments):
         cp <options> src dst
@@ -2696,6 +2654,16 @@ def get_token_names() -> tuple:
     return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
+def DO_tokendestroy(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Delete the token{cert,key}.pem files")
+    tokencert, tokenkey = get_token_names()
+    if os.path.exists(tokencert): os.remove(tokencert)
+    if os.path.exists(tokenkey): os.remove(tokenkey)
+    return RET(0, "Token was destroyed! Re-connect for token re-creation.")
+
+
 def IsValidCert(fname: str):
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
     try:
@@ -2738,6 +2706,22 @@ def CertInfo(fname: str) -> RET:
     return RET(0, info)
 
 
+def DO_certinfo(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_files_cert()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print user certificate information", "")
+    return CertInfo(cert)
+
+
+def DO_tokeninfo(args: Union[list, None] = None) -> RET:
+    if not args: args = []
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print token certificate information", "")
+    tokencert, tokenkey = get_token_filenames()
+    return CertInfo(tokencert)
+
+
 def CertVerify(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
     try:
@@ -2771,6 +2755,64 @@ def CertVerify(fname: str) -> RET:
     except Exception:
         logging.debug(traceback.format_exc())
         return RET(1, '', f'SSL Verification {PrintColor(COLORS.BIRed)}failed{PrintColor(COLORS.ColorReset)} for {fname}')
+
+
+def DO_certverify(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_files_cert()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
+    return CertVerify(cert)
+
+
+def DO_tokenverify(args: Union[list, None] = None) -> RET:
+    if not args: args = []
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print token certificate information", "")
+    tokencert, tokenkey = get_token_filenames()
+    return CertVerify(tokencert)
+
+
+def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
+    """Check if Certificate and key match"""
+    try:
+        with open(cert_fname) as f: cert_bytes = f.read()
+        x509cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(5, "", f'Could not load certificate >>>{cert_fname}<<<')  # EIO /* I/O error */
+
+    try:
+        with open(key_fname) as g: key_bytes = g.read()
+        x509key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_bytes)
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(5, "", f'Could not load key >>>{key_fname}<<<')  # EIO /* I/O error */
+
+    context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+    context.use_privatekey(x509key)
+    context.use_certificate(x509cert)
+    try:
+        context.check_privatekey()
+        return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}')
+    except OpenSSL.SSL.Error:
+        return RET(0, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}')
+
+
+def DO_certkeymatch(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_files_cert()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print user certificate information", "")
+    return CertKeyMatch(cert, key)
+
+
+def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_token_filenames()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print user certificate information", "")
+    return CertKeyMatch(cert, key)
 
 
 def get_ca_path() -> str:
@@ -3020,6 +3062,8 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
     AlienSessionInfo['cmd2func_map_nowb']['cert-info'] = DO_certinfo
     AlienSessionInfo['cmd2func_map_nowb']['cert-verify'] = DO_certverify
+    AlienSessionInfo['cmd2func_map_nowb']['certkey-match'] = DO_certkeymatch
+    AlienSessionInfo['cmd2func_map_nowb']['tokenkey-match'] = DO_tokenkeymatch
     AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['error'] = error
