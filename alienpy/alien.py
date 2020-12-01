@@ -1007,11 +1007,12 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         md5sum = md5(file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576:  # we have a special lfn
-            if not specs: specs.insert(0, 'disk:4')  # if no specs defined then default to disk:4
+            if not specs: specs.append('disk:4')  # if no specs defined then default to disk:4
             # index_disk = [idx for idx, s in enumerate(specs) if 'disk:' in s or 'disk=' in s]
             #   if int(re.split(':|=', specs[index_disk[0]])[-1]) < 4:  # check if the already specified disk is large enough
             #       specs[index_disk[0]] = 'disk:4'  # there should be only one disk entry in the specs
         get_envelope_arg_list = ['-s', size, '-m', md5sum, access_type, lfn]
+        if not specs: specs.append('disk:2')  # hard default if nothing is specified
     else:
         access_type = 'read'
         get_envelope_arg_list = [access_type, lfn]
@@ -1021,11 +1022,14 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         retf_print(ret_obj, opts = 'err')
         return {}
     result = ret_obj.ansdict
-    replica_list = []
+    qos_tags = [el for el in specs if 'ALICE::' not in el]  # for element in specs, if not ALICE:: then is qos tag
+    SEs_list_specs = [el for el in specs if 'ALICE::' in el]  # explicit requests of SEs
+    SEs_list_total = [replica["se"] for replica in result["results"]]
+    # let's save for each replica the orginal request info
     for replica in result["results"]:
-        replica_list.append(replica["se"])
-    for replica in result["results"]:
-        replica["SElist"] = ",".join(replica_list)
+        replica["qos_specs"] = qos_tags  # qos tags from specs
+        replica["SElist_specs"] = SEs_list_specs  # SE from specs
+        replica["SElist"] = SEs_list_total  # list of SEs that were used
         replica["file"] = file
         replica["lfn"] = lfn
     return {"lfn": lfn, "answer": result}
