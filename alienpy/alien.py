@@ -966,17 +966,28 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
     return CertInfo(cert)
 
 
+def DO_certverify(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_files_cert()
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print user certificate information", "")
+    return CertVerify(cert)
+
+
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
         return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_names()
-    if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # it is not a file and contains a certificate
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem')
-        temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
-        temp_cert.seek(0)
-        tokencert = temp_cert.name
+    tokencert, tokenkey = get_token_filenames()
     return CertInfo(tokencert)
+
+
+def DO_tokenverify(args: Union[list, None] = None) -> RET:
+    if not args: args = []
+    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
+        return RET(0, "Print token certificate information", "")
+    tokencert, tokenkey = get_token_filenames()
+    return CertVerify(tokencert)
 
 
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
@@ -2573,7 +2584,11 @@ def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
                'the following commands are available:')
         nr = len(AlienSessionInfo['commandlist'])
         column_width = 24
-        columns = os.get_terminal_size()[0]//column_width
+        try:
+            columns = os.get_terminal_size()[0]//column_width
+        except Exception:
+            columns = 5
+
         for ln in range(0, nr, columns):
             if ln + 1 > nr: ln = nr - 1
             el_ln = AlienSessionInfo['commandlist'][ln:ln + columns]
@@ -2723,6 +2738,41 @@ def CertInfo(fname: str) -> RET:
     return RET(0, info)
 
 
+def CertVerify(fname: str) -> RET:
+    """Print certificate information (subject, issuer, notbefore, notafter)"""
+    try:
+        with open(fname) as f:
+            cert_bytes = f.read()
+    except Exception:
+        return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
+
+    try:
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
+
+    x509store = OpenSSL.crypto.X509Store()
+    x509store.set_flags(OpenSSL.crypto.X509StoreFlags.ALLOW_PROXY_CERTS)
+    ca_verify_location = get_ca_path()
+    try:
+        if os.path.isfile(ca_verify_location):
+            x509store.load_locations(cafile = ca_verify_location)
+        else:
+            x509store.load_locations(None, capath = ca_verify_location)
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */
+
+    store_ctx = OpenSSL.crypto.X509StoreContext(x509store, x509)
+    try:
+        store_ctx.verify_certificate()
+        return RET(0, f'SSL Verification {PrintColor(COLORS.BIGreen)}succesful{PrintColor(COLORS.ColorReset)} for {fname}')
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(1, '', f'SSL Verification {PrintColor(COLORS.BIRed)}failed{PrintColor(COLORS.ColorReset)} for {fname}')
+
+
 def get_ca_path() -> str:
     """Return either the CA path or file; bailout application if not found"""
     system_ca_path = '/etc/grid-security/certificates'
@@ -2745,7 +2795,7 @@ def get_ca_path() -> str:
     elif os.path.exists(alice_cvmfs_ca_path_macos):
         capath_default = alice_cvmfs_ca_path_macos
     else:
-        if os.path.isdir(system_ca_path): capath_default = system_ca_path
+        if os.path.exists(system_ca_path): capath_default = system_ca_path
 
     if not capath_default:
         msg = "No CA location or files specified or found!!! Connection will not be possible!!"
@@ -2966,8 +3016,10 @@ def make_func_map_nowb():
     if AlienSessionInfo['cmd2func_map_nowb']: return
     AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
     AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
+    AlienSessionInfo['cmd2func_map_nowb']['token-verify'] = DO_tokenverify
     AlienSessionInfo['cmd2func_map_nowb']['token-destroy'] = DO_tokendestroy
     AlienSessionInfo['cmd2func_map_nowb']['cert-info'] = DO_certinfo
+    AlienSessionInfo['cmd2func_map_nowb']['cert-verify'] = DO_certverify
     AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['error'] = error
@@ -3173,11 +3225,13 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
         args = input_alien.strip().split()
         cmd = args.pop(0)
 
-        print_opts = 'debug json' if _JSON_OUT else 'debug'
-        if '-json' in args or _JSON_OUT_GLOBAL:
+        _JSON_OUT = _JSON_OUT_GLOBAL  # if globally enabled then enable per command
+        if '-json' in args:  # if enabled for this command
             args.remove('-json')
             _JSON_OUT = True
-            if 'json' not in print_opts: print_opts = f'print_opts {json}'
+
+        print_opts = 'debug json' if _JSON_OUT else 'debug'
+        if _JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -3189,7 +3243,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
         retf_session_update(ret_obj)  # Update the globals exitcode, out, err
         retf_print(ret_obj, print_opts)
         if cmd == 'cd': SessionSave()
-        if not _JSON_OUT_GLOBAL: _JSON_OUT = False  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
+        _JSON_OUT = _JSON_OUT_GLOBAL  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
     return ret_obj.exitcode
 
 
