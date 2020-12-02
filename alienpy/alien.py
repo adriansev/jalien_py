@@ -1948,6 +1948,25 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
     return RET(0, '\n'.join(rez_list))
 
 
+def get_qos(wb: websockets.client.WebSocketClientProtocol, se_str: str) -> str:
+    """Get qos tags for a given SE"""
+    if not wb: return ''
+    if '::' not in se_str: return ''  # the se name should have :: in it
+    ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
+    for se in ret_obj.ansdict["results"]:
+        if se["seName"].lower().replace('alice::', '') == se_str.lower().replace('alice::', ''):
+            return se["qos"]
+    return ''
+
+
+def DO_SEqos(wb: websockets.client.WebSocketClientProtocol, args: list = None) -> RET:
+    if not wb: return []
+    if not args or '-h' in args or '-help' in args:
+        msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be ommited and capitalization does not matter)'
+        return RET(0, msg)
+    return RET(0, get_qos(wb, args[0]))
+
+
 def get_lfn_meta(meta_fn: str) -> str:
     if not os.path.isfile(meta_fn): return ''
     import xml.dom.minidom
@@ -3125,6 +3144,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['nano'] = DO_nano
     AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vi
     AlienSessionInfo['cmd2func_map_client']['vim'] = DO_vim
+    AlienSessionInfo['cmd2func_map_client']['SEqos'] = DO_SEqos
 
 
 def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
