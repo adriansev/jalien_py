@@ -1351,7 +1351,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
         else:
             if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
             if os.path.isfile(dst) and not overwrite:
-                return RET(0, f'{dst} exists, skipping..')  # Destination present we will not overwrite it
+                return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
             tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
             if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
@@ -1383,7 +1383,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
             lfn_exists = pathtype_grid(wb, dst)
             if lfn_exists:
-                if not overwrite: return RET(0, f'{dst} exists, skipping..')  # if the lfn is already present and not overwrite lets's skip the upload
+                if not overwrite: return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
                 print(f'{dst} exists, deleting..', flush = True)  # clear up the destination lfn
                 ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
                 retf_print(ret_obj, 'print')
