@@ -646,6 +646,7 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
         print('Default RET object used, invalid return', file=sys.stderr, flush = True)
         return ret_obj.exitcode
 
+    retf_session_update(ret_obj)
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 4)
@@ -1102,30 +1103,35 @@ def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> RET:
     if os.path.isfile(file):  # first check
         if int(os.stat(file).st_size) != int(size):
             os.remove(file)
-            return RET(1, '', f"Removed file (invalid size): {file}")
+            return RET(1, '', f'{file} : Removed (invalid size)')
         if md5(file) != reported_md5:
             os.remove(file)
-            return RET(1, '', f"Removed file (invalid md5): {file}")
-        return RET(0, f"{file} --> TARGET VALID")
-    return RET(1)
+            return RET(1, '', f'{file} : Removed (invalid md5 hash)')
+        return RET(0, f'{file} --> TARGET VALID')
+    return RET(2, '', f'{file} : No such file')  # ENOENT
 
 
-def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Union[None, list] = None):
+def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Union[None, list] = None) -> str:
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
-    if not replica_list: return
-    published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
-    with open(meta_filename, 'w') as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
-        f.write("   <published>{}</published>\n".format(published))
-        f.write("   <file name=\"{}\">\n".format(local_filename))
-        f.write("     <lfn>{}</lfn>\n".format(lfn))
-        f.write("     <size>{}</size>\n".format(size))
-        if md5in: f.write("     <hash type=\"md5\">{}</hash>\n".format(md5in))
-        for url in replica_list:
-            f.write("     <url><![CDATA[{}]]></url>\n".format(url))
-        f.write('   </file>\n')
-        f.write(' </metalink>\n')
+    if not (meta_filename and replica_list): return ''
+    try:
+        with open(meta_filename, 'w') as f:
+            published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
+            f.write("   <published>{}</published>\n".format(published))
+            f.write("   <file name=\"{}\">\n".format(local_filename))
+            f.write("     <lfn>{}</lfn>\n".format(lfn))
+            f.write("     <size>{}</size>\n".format(size))
+            if md5in: f.write("     <hash type=\"md5\">{}</hash>\n".format(md5in))
+            for url in replica_list:
+                f.write("     <url><![CDATA[{}]]></url>\n".format(url))
+            f.write('   </file>\n')
+            f.write(' </metalink>\n')
+        return meta_filename
+    except Exception:
+        logging.error(traceback.format_exc())
+        return ''
 
 
 def md5(file: str) -> str:
@@ -1340,23 +1346,33 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
             for item in src_list_files_dict['results']:
                 dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
-                if os.path.isfile(dst_filename) and not overwrite:
+                if os.path.isfile(dst_filename) and not overwrite:  # if no -f
                     print(f'{dst_filename} exists, skipping..', flush = True)
                     continue
                 tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
+                file_size = tokens['answer']['results'][0]['size']
+                file_md5 = tokens['answer']['results'][0]['md5']
+                if os.path.isfile(dst_filename):  # -f was used, we checked for it above
+                    if retf_print(fileIsValid(dst, file_size, file_md5)) == 0: continue  # destination exists and is valid
                 if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                     error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
                     continue
                 copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, tokens['answer'], ''))
         else:
             if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-            if os.path.isfile(dst) and not overwrite:
-                return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
             tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
+            file_size = tokens['answer']['results'][0]['size']
+            file_md5 = tokens['answer']['results'][0]['md5']
+            if os.path.isfile(dst):
+                if overwrite:
+                    ret_obj = fileIsValid(dst, file_size, file_md5)
+                    if retf_print(ret_obj) == 0: return ret_obj  # destination exists and is valid
+                else:
+                    return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
             if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
             else:
-                copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
+                copy_list.append(CopyFile(tokens['lfn'], dst, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
         specs = dst_specs_remotes
@@ -1392,50 +1408,38 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
             else:
                 copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
-    if error_msg:
-        print(error_msg, file=sys.stderr, flush = True)
-    return RET(0)
+
+    return RET(1, '', error_msg) if error_msg else RET(0)
 
 
 def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
     """Process a list of lfns to XRootD copy jobs and add them to the list"""
     for cpfile in copylist_lfns:
-        if not cpfile.isUpload:
-            lfn = cpfile.src
-            if not cpfile.token_request["results"]: continue
-            dst = cpfile.dst
+        if not cpfile.token_request["results"]: continue
+        if cpfile.isUpload:  # src is local, dst is lfn, request is replica(pfn)
+            for replica in cpfile.token_request['results']:
+                copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
+        else:  # src is lfn(remote), dst is local, request is replica(pfn)
             size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
             md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-            if retf_print(fileIsValid(dst, size_4meta, md5_4meta), 'noprint') == 0: continue  # destination exists and is valid
-
-            # multiple replicas are downloaded to a single file
-            is_zip = False
-            file_in_zip = ''
+            file_in_zip = None
             url_list_4meta = []
             for replica in cpfile.token_request['results']:
                 url_components = replica['url'].rsplit('#', maxsplit = 1)
-                if len(url_components) > 1:
-                    is_zip = True
-                    file_in_zip = url_components[1]
+                if len(url_components) > 1: file_in_zip = url_components[1]
                 # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
                 url_list_4meta.append(f'{url_components[0]}?authz={replica["envelope"]}')
-
             if not url_list_4meta:
-                print(f'Could not find working replicas of {lfn}', file=sys.stderr, flush = True)
+                print(f'Could not find working replicas of {cpfile.src}', file=sys.stderr, flush = True)
                 continue
 
-            # Create the metafile based link
-            meta_fn = make_tmp_fn(lfn, '.meta4', True)  # create a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
-            create_metafile(meta_fn, lfn, dst, size_4meta, md5_4meta, url_list_4meta)
-            download_link = meta_fn
-            if is_zip: download_link = f'{download_link}?xrdcl.unzip={file_in_zip}'
-            copylist_xrd.append(CopyFile(download_link, dst, cpfile.isUpload, {}, lfn))  # we do not need the tokens in job list when downloading
-        else:  # is upload
-            src = cpfile.src
-            lfn = cpfile.dst
-            if not cpfile.token_request['results']: continue
-            for request in cpfile.token_request['results']:
-                copylist_xrd.append(CopyFile(src, f"{request['url']}?authz={request['envelope']}", cpfile.isUpload, request, lfn))
+            # Create the metafile as a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
+            metafile = create_metafile(make_tmp_fn(cpfile.src, '.meta4', uuid5 = True), cpfile.src, cpfile.dst, size_4meta, md5_4meta, url_list_4meta)
+            if not metafile:
+                print("Could not create the metafile for download, bail out!", file=sys.stderr, flush = True)
+                sys.exit(1)
+            if file_in_zip: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
+            copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
 def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
@@ -1646,10 +1650,8 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
 
-    if not copy_lfnlist:
-        msg = "No copy operations in list! enable the DEBUG mode for more info"
-        logging.info(msg)
-        return RET(2, '', msg)  # ENOENT /* No such file or directory */
+    if not copy_lfnlist:  # at this point if any errors, the processing was already stopped
+        return RET(0)
 
     if _DEBUG:
         logging.debug("We are going to copy these files:")
