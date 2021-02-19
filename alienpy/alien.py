@@ -165,6 +165,7 @@ class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     chunks: int
     chunksize: int
     makedir: bool
+    tpc: str
     posc: bool
     hashtype: str
     streams: int
@@ -1518,9 +1519,15 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         cksum = True
         xrd_copy_command.remove('-cksum')
 
-    # if '-tpc' in xrd_copy_command:
-        # tpc = str('first')
-        # xrd_copy_command.remove('-tpc')
+    tpc = 'none'
+    if '-tpc' in xrd_copy_command:
+        tpc_idx = xrd_copy_command.index('-tpc')
+        tpc_arg = int(xrd_copy_command.pop(tpc_idx + 1))
+        if tpc_arg == 'first' or tpc_arg == 'only':
+            tpc = tpc_arg
+        else:
+            print('tpc argument not recognized: it should be one of [first|only]')
+        xrd_copy_command.pop(tpc_idx)
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
@@ -1670,7 +1677,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         logging.debug("XRootD copy jobs:")
         for file in xrdcopy_job_list: logging.debug(file)
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, posc, hashtype, streams, cksum)
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, tpc, posc, hashtype, streams, cksum)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout)
 
@@ -1765,6 +1772,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
     chunks = xrd_cp_args.chunks
     chunksize = xrd_cp_args.chunksize
     makedir = xrd_cp_args.makedir
+    tpc = xrd_cp_args.tpc
     posc = xrd_cp_args.posc
     # hashtype = xrd_cp_args.hashtype
     streams = xrd_cp_args.streams
@@ -1813,10 +1821,12 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         if has_cksum:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks,
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
+                            chunksize = chunksize, parallelchunks = chunks,
                             checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
         else:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, chunksize = chunksize, parallelchunks = chunks)
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
+                            chunksize = chunksize, parallelchunks = chunks)
 
     process.prepare()
     process.run(handler)
