@@ -1523,11 +1523,8 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     if '-tpc' in xrd_copy_command:
         tpc_idx = xrd_copy_command.index('-tpc')
         tpc_arg = int(xrd_copy_command.pop(tpc_idx + 1))
-        if tpc_arg == 'first' or tpc_arg == 'only':
-            tpc = tpc_arg
-        else:
-            print('tpc argument not recognized: it should be one of [first|only]')
         xrd_copy_command.pop(tpc_idx)
+        return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
