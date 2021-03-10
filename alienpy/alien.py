@@ -1429,7 +1429,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 url_components = replica['url'].rsplit('#', maxsplit = 1)
                 if len(url_components) > 1: file_in_zip = url_components[1]
                 # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                url_list_4meta.append(f'{url_components[0]}?authz={replica["envelope"]}')
+                url_list_4meta.append(f'{url_components[0]}?xrd.wantprot=unix&authz={replica["envelope"]}')
             if not url_list_4meta:
                 print(f'Could not find working replicas of {cpfile.src}', file=sys.stderr, flush = True)
                 continue
