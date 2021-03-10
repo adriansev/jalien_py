@@ -1720,7 +1720,9 @@ if _HAS_XROOTD:
                 status = f'{PrintColor(COLORS.BIRed)}UNKNOWN{PrintColor(COLORS.ColorReset)}'
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
             if not xrdjob.isUpload:
-                if not os.getenv('ALIENPY_KEEP_META'): os.remove(xrdjob.src)  # remove the created metalink
+                if not os.getenv('ALIENPY_KEEP_META'):
+                    meta_path, sep, url_opts = str(xrdjob.src).partition("?")
+                    os.remove(meta_path)  # remove the created metalink
             if results['status'].ok:
                 deltaT = datetime.datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
