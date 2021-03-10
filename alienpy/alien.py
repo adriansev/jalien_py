@@ -1419,7 +1419,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
         if not cpfile.token_request["results"]: continue
         if cpfile.isUpload:  # src is local, dst is lfn, request is replica(pfn)
             for replica in cpfile.token_request['results']:
-                copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
+                copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
         else:  # src is lfn(remote), dst is local, request is replica(pfn)
             size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
             md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
