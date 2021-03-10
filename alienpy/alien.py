@@ -1440,6 +1440,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 print("Could not create the metafile for download, bail out!", file=sys.stderr, flush = True)
                 sys.exit(1)
             if file_in_zip: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
+            if _DEBUG: print(metafile)
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
@@ -1690,7 +1691,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 if _HAS_XROOTD:
     class MyCopyProgressHandler(client.utils.CopyProgressHandler):
         """Custom ProgressHandler for XRootD copy process"""
-        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout')
+        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout', 'debug')
 
         def __init__(self):
             self.wb = None
@@ -1699,6 +1700,7 @@ if _HAS_XROOTD:
             self.job_list = []
             self.xrdjob_list = []
             self.printout = ''
+            self.debug = False
 
         def begin(self, jobId, total, source, target):
             timestamp_begin = datetime.datetime.now().timestamp()
@@ -1707,7 +1709,10 @@ if _HAS_XROOTD:
             self.jobs = int(total)
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
-            if _DEBUG: logging.debug("CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target))
+            if self.debug:
+                msg = "CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target)
+                print(f'{msg}\n', flush = True)
+                logging.debug(msg)
 
         def end(self, jobId, results):
             if results['status'].ok:
@@ -1736,7 +1741,7 @@ if _HAS_XROOTD:
                     perm = '644'
                     expire = '0'
                     ret_obj = commit(self.wb, urltoken, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
-                    if _DEBUG: retf_print(ret_obj, 'debug')
+                    if self.debug: retf_print(ret_obj, 'debug')
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
                     print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message), flush = True)
@@ -1794,6 +1799,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
     handler.wb = wb
     handler.xrdjob_list = job_list
     handler.printout = printout
+    if _DEBUG: handler.debug = True
 
     # get xrootd client version
     has_cksum = False
