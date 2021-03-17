@@ -996,7 +996,7 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
     return helpstr
 
 
-def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False) -> dict:
+def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
     if not wb: return {}
     if not arg_lfn2file: return {}
@@ -1019,6 +1019,8 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         access_type = 'read'
         get_envelope_arg_list = [access_type, lfn]
     if specs: get_envelope_arg_list.append(str(",".join(specs)))
+    if httpurl: get_envelope_arg_list.insert(0, '-u')
+    if strictspec: get_envelope_arg_list.insert(0, '-f')
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     if ret_obj.exitcode != 0:
         retf_print(ret_obj, opts = 'err')
@@ -1037,13 +1039,13 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
     return {"lfn": lfn, "answer": result}
 
 
-def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False) -> list:
+def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return []
     access_list = []
     if not input_lfn_list: return access_list
     if specs is None: specs = []
-    for l2f in input_lfn_list: access_list.append(getEnvelope_lfn(wb, l2f, specs, isWrite))
+    for l2f in input_lfn_list: access_list.append(getEnvelope_lfn(wb, l2f, specs, isWrite, strictspec, httpurl))
     return access_list
 
 
@@ -1218,7 +1220,7 @@ def name2regex(pattern_regex: str = '') -> str:
     return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
 
-def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = bool(False)
     # isDstDir = bool(False)
@@ -1323,6 +1325,17 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             dst_type = 'd'  # we just created it
         # if dst_type == 'd': isDstDir = bool(True)
 
+    if strictspec:
+        if src_specs_remotes:
+            print("Strict specifications were enabled!!")
+        if dst_specs_remotes:
+            print("Strict specifications option for uploads is ignored!!")
+            strictspec = False
+
+    if httpurl and isSrcLocal:
+        print("httpurl option is ignored for uploads")
+        httpurl = False
+
     error_msg = ''  # container which accumulates the error messages
     # if src is directory, then create list of files coresponding with options
     isWrite = bool(False)
@@ -1350,7 +1363,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 if os.path.isfile(dst_filename) and not overwrite:  # if no -f
                     print(f'{dst_filename} exists, skipping..', flush = True)
                     continue
-                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite)
+                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite, strictspec, httpurl)
                 file_size = tokens['answer']['results'][0]['size']
                 file_md5 = tokens['answer']['results'][0]['md5']
                 if os.path.isfile(dst_filename):  # -f was used, we checked for it above
@@ -1361,7 +1374,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, tokens['answer'], ''))
         else:
             if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite)
+            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite, strictspec, httpurl)
             file_size = tokens['answer']['results'][0]['size']
             file_md5 = tokens['answer']['results'][0]['md5']
             if os.path.isfile(dst):
@@ -1594,6 +1607,16 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
         xrd_copy_command.pop(skip_nr_idx)
 
+    strictspec = False
+    if '-strictspec' in xrd_copy_command:
+        strictspec = True
+        xrd_copy_command.remove('-strictspec')
+
+    httpurl = False
+    if '-http' in xrd_copy_command:
+        httpurl = True
+        xrd_copy_command.remove('-http')
+
     pattern = '*'
     pattern_regex = '.*'  # default regex selection for find
     use_regex = False
@@ -1647,12 +1670,12 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
                 if len(arglist) > 2:
                     print(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
                     continue
-                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist, strictspec, httpurl)
                 if retobj.exitcode != 0:
                     retf_print(retobj)
                     break  # stop the parsing if any error is encountered
     else:
-        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist)
+        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
 
     if not copy_lfnlist:  # at this point if any errors, the processing was already stopped
