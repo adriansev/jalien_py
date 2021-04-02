@@ -1023,6 +1023,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
     if strictspec: get_envelope_arg_list.insert(0, '-f')
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     if ret_obj.exitcode != 0:
+        ret_obj = ret_obj._replace(err = f'{lfn} :: {ret_obj.err}')
         retf_print(ret_obj, opts = 'err')
         return {}
     result = ret_obj.ansdict
@@ -1047,16 +1048,6 @@ def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: l
     if specs is None: specs = []
     for l2f in input_lfn_list: access_list.append(getEnvelope_lfn(wb, l2f, specs, isWrite, strictspec, httpurl))
     return access_list
-
-
-def setDst(file: str = '', parent: int = 0) -> str:
-    """For a fiven file path return the file path keeping the <parent> number of components"""
-    p = Path(file)
-    path_components = len(p.parts)
-    if parent >= (path_components - 1): parent = path_components - 1 - 1  # IF parent >= number of components without filename THEN make parent = number of component without / and filename
-    basedir = p.parents[parent].as_posix()
-    if basedir == '/': return file
-    return p.as_posix().replace(basedir, '', 1)
 
 
 def expand_path_local(path_input: str) -> str:
@@ -1151,6 +1142,7 @@ def md5(file: str) -> str:
 
 
 def format_dst_fn(src_dir, src_file, dst, parent):
+    """Return the destination filename given the source dir/name, destination directory and number of parents to keep"""
     src_path = Path(src_dir)
     if not src_dir.endswith('/'): parent = parent + 1
     if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
@@ -1166,16 +1158,28 @@ def format_dst_fn(src_dir, src_file, dst, parent):
     return dst_file
 
 
+def setDst(file: str = '', parent: int = 0) -> str:
+    """For a given file path return the file path keeping the <parent> number of components"""
+    p = Path(file)
+    path_components = len(p.parts)
+    if parent >= (path_components - 1): parent = path_components - 1 - 1  # IF parent >= number of components without filename THEN make parent = number of component without / and filename
+    basedir = p.parents[parent].as_posix()
+    if basedir == '/': return file
+    return p.as_posix().replace(basedir, '', 1)
+
+
 def commit(wb: websockets.client.WebSocketClientProtocol, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
+    """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
     if not wb: return RET()
     arg_list = [tokenstr, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
     return SendMsg(wb, 'commit', arg_list, opts = 'log')
 
 
 def GetHumanReadable(size, precision = 2):
-    suffixes = ['B', 'KiB', 'MiB']
+    """Convert bytes to higher units"""
+    suffixes = ['B', 'KiB', 'MiB', 'GiB']
     suffixIndex = 0
-    while size > 1024 and suffixIndex < 4:
+    while size > 1024 and suffixIndex < 5:
         suffixIndex += 1  # increment the index of the suffix
         size = size/1024.0  # apply the division
     return '%.*f %s' % (precision, size, suffixes[suffixIndex])
@@ -1341,6 +1345,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
     isWrite = bool(False)
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
         specs = src_specs_remotes
+        lfn_list = []  # list of lfns to be downloaded
         if isSrcDir:  # recursive download
             find_defaults = ['-a', '-s', src]
             if use_regex:
@@ -1351,42 +1356,36 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             find_args.extend(find_defaults)
             send_opts = 'nomsg' if not _DEBUG else ''
             ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
-            src_list_files_dict = ret_obj.ansdict
             if ret_obj.exitcode != 0:
                 msg = f"Find returned error when using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            if len(src_list_files_dict['results']) < 1:
+            if len(ret_obj.ansdict['results']) < 1:
                 msg = f"No files found using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            for item in src_list_files_dict['results']:
-                dst_filename = format_dst_fn(src, item['lfn'], dst, parent)
-                if os.path.isfile(dst_filename) and not overwrite:  # if no -f
-                    print(f'{dst_filename} exists, skipping..', flush = True)
-                    continue
-                tokens = getEnvelope_lfn(wb, lfn2file(item['lfn'], dst_filename), specs, isWrite, strictspec, httpurl)
-                file_size = tokens['answer']['results'][0]['size']
-                file_md5 = tokens['answer']['results'][0]['md5']
-                if os.path.isfile(dst_filename):  # -f was used, we checked for it above
-                    if retf_print(fileIsValid(dst, file_size, file_md5)) == 0: continue  # destination exists and is valid
-                if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
-                    error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-                    continue
-                copy_list.append(CopyFile(item['lfn'], dst_filename, isWrite, tokens['answer'], ''))
-        else:
-            if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-            tokens = getEnvelope_lfn(wb, lfn2file(src, dst), specs, isWrite, strictspec, httpurl)
+            lfn_list = [item['lfn'] for item in ret_obj.ansdict['results']]
+        else:  # single file download
+            lfn_list.append(src)
+
+        for lfn in lfn_list:  # make CopyFile objs for each lfn
+            if len(lfn_list) == 1:
+                if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
+                dst_filename = dst
+            else:
+                dst_filename = format_dst_fn(src, lfn, dst, parent)
+
+            if os.path.isfile(dst_filename) and not overwrite:  # if no -f
+                print(f'{dst_filename} exists, skipping..', flush = True)
+                continue
+            tokens = getEnvelope_lfn(wb, lfn2file(lfn, dst_filename), specs, isWrite, strictspec, httpurl)
+            if not tokens or 'answer' not in tokens:
+                print(f"No tokens for {lfn} -> {AlienSessionInfo['error']}", file=sys.stderr, flush = True)
+                continue
+
             file_size = tokens['answer']['results'][0]['size']
             file_md5 = tokens['answer']['results'][0]['md5']
-            if os.path.isfile(dst):
-                if overwrite:
-                    ret_obj = fileIsValid(dst, file_size, file_md5)
-                    if retf_print(ret_obj) == 0: return ret_obj  # destination exists and is valid
-                else:
-                    return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
-            if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
-                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-            else:
-                copy_list.append(CopyFile(tokens['lfn'], dst, isWrite, tokens['answer'], ''))
+            if os.path.isfile(dst_filename):  # -f (force) was used, we checked for it above
+                if retf_print(fileIsValid(dst, file_size, file_md5)) == 0: continue  # destination exists and is valid, no point to re-download
+            copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
         specs = dst_specs_remotes
