@@ -225,21 +225,21 @@ class AliEn:
 
     def help(self):  # pylint: disable=no-self-use
         """Print help message"""
-        print('Methods of AliEn session:\n'
-              '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
-              '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
-              '.wb() : return the session WebSocket to be used with other function within alien.py', flush = True)
+        print_out('Methods of AliEn session:\n'
+                  '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
+                  '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
+                  '.wb() : return the session WebSocket to be used with other function within alien.py')
 
 
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
-    print(f'\nCought signal {sig.name}, let\'s exit')
+    print_out(f'\nCought signal {sig.name}, let\'s exit')
     exit_message(int(AlienSessionInfo['exitcode']))
 
 
 def exit_message(code: int = 0, msg = ''):
     """Exit with msg and with specied code"""
-    print(msg if msg else 'Exit')
+    print_out(msg if msg else 'Exit')
     sys.exit(code)
 
 
@@ -253,6 +253,12 @@ def run_function(function_name: str, *args, **kwargs):
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
 
 
+def print_out(msg: str): print(msg, flush = True)
+
+
+def print_err(msg: str): print(msg, file=sys.stderr, flush = True)
+
+
 def io_q_proc():
     """IO queue:: print stdout/stderr and clear queue"""
     global AlienSessionInfo
@@ -260,8 +266,8 @@ def io_q_proc():
     AlienSessionInfo['q_err'].clear()
     stdout = "\n". join(AlienSessionInfo['q_out'])
     AlienSessionInfo['q_out'].clear()
-    if stdout: print(stdout, flush = True)
-    if stderr: print(stderr, file=sys.stderr, flush = True)
+    if stdout: print_out(stdout)
+    if stderr: print_err(stderr)
 
 
 def io_q_proc_out():
@@ -269,7 +275,7 @@ def io_q_proc_out():
     global AlienSessionInfo
     stdout = "\n". join(AlienSessionInfo['q_out'])
     AlienSessionInfo['q_out'].clear()
-    if stdout: print(stdout, flush = True)
+    if stdout: print_out(stdout)
 
 
 def io_q_get_out() -> str:
@@ -285,7 +291,7 @@ def io_q_proc_err():
     global AlienSessionInfo
     stderr = "\n". join(AlienSessionInfo['q_err'])
     AlienSessionInfo['q_err'].clear()
-    if stderr: print(stderr, file=sys.stderr, flush = True)
+    if stderr: print_err(stderr)
 
 
 def io_q_get_err() -> str:
@@ -445,7 +451,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
     while result is None:
         if nr_tries > 3:
             msg = f"SendMsg:: {nr_tries - 1} communication errors!\nSent command: {jsonmsg}"
-            print(msg, file=sys.stderr, flush = True)
+            print_err(msg)
             logging.error(msg)
             break
         try:
@@ -459,7 +465,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                 logging.exception(e)
                 msg = f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}'
                 logging.error(msg)
-                print(msg, file=sys.stderr, flush = True)
+                print_err(msg)
         except Exception as e:
             logging.exception(e)
             if not IsWbConnected(wb):
@@ -469,7 +475,7 @@ def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: U
                     logging.exception(e)
                     msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {_DEBUG_FILE}'
                     logging.error(msg)
-                    print(msg, file=sys.stderr, flush = True)
+                    print_err(msg)
                     break
         if result is None: time.sleep(0.1)
 
@@ -507,8 +513,8 @@ def PrintDict(in_arg: Union[str, dict, list]):
         try:
             in_arg = json.loads(in_arg)
         except Exception as e:
-            print('PrintDict:: Could not load argument as json!\n{0}'.format(e))
-    print(json.dumps(in_arg, sort_keys = True, indent = 4))
+            print_err('PrintDict:: Could not load argument as json!\n{0}'.format(e))
+    print_out(json.dumps(in_arg, sort_keys = True, indent = 4))
 
 
 def Update_meta2session(message: dict = None):
@@ -635,7 +641,6 @@ def retf_result2ret(result: Union[dict, str]) -> Union[None, RET]:
         logging.error(msg)
         return RET(1, '', msg)
 
-    # print(json.dumps(out_dict, sort_keys = True, indent = 4))
     message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
     output = '\n'.join(message_list)
     return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
@@ -644,17 +649,17 @@ def retf_result2ret(result: Union[dict, str]) -> Union[None, RET]:
 def retf_print(ret_obj: RET, opts: str = '') -> int:
     """Process the return struture of function"""
     if ret_obj.exitcode == -1:
-        print('Default RET object used, invalid return', file=sys.stderr, flush = True)
+        print_err('Default RET object used, invalid return')
         return ret_obj.exitcode
 
     retf_session_update(ret_obj)
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 4)
-            print(json_out, flush = True)
+            print_out(json_out)
             if _DEBUG: logging.debug(json_out)
         else:
-            print('This command did not return a json dictionary', file=sys.stderr, flush = True)
+            print_err('This command did not return a json dictionary')
         return ret_obj.exitcode
 
     if ret_obj.exitcode != 0:
@@ -663,10 +668,10 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
         if 'err' in opts: logging.error(ret_obj.err)
         if 'debug' in opts: logging.debug(ret_obj.err)
         if ret_obj.err and not ('noerr' in opts or 'noprint' in opts):
-            print(f'{ret_obj.err.strip()}', file=sys.stderr, flush = True)
+            print_err(f'{ret_obj.err.strip()}')
     else:
         if ret_obj.out and not ('noout' in opts or 'noprint' in opts):
-            print(f'{ret_obj.out.strip()}', flush = True)
+            print_out(f'{ret_obj.out.strip()}')
     return ret_obj.exitcode
 
 
@@ -914,7 +919,7 @@ def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', 
             msg = " ".join(AlienSessionInfo['pathq'])
             return RET(0, msg)  # end of +N|-N
 
-        path = expand_path_grid(arg_list[0])
+        path = expand_path_grid(wb, arg_list[0])
         if do_not_cd:
             cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(path)
@@ -955,8 +960,8 @@ def DO_exit(args: Union[list, None] = None) -> RET:
             print2stdout = sys.stderr
         msg = ' '.join(args).strip()
         if msg:
-            if code != 0: print(msg, file = sys.stderr, flush = True)
-            else: print(msg, flush = True)
+            if code != 0: print_err(msg)
+            else: print_out(msg)
     sys.exit(int(code))
 
 
@@ -1003,6 +1008,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
     lfn = arg_lfn2file.lfn
     file = arg_lfn2file.file
     if not specs: specs = []
+
     if isWrite:
         access_type = 'write'
         size = int(os.stat(file).st_size)
@@ -1010,20 +1016,18 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576:  # we have a special lfn
             if not specs: specs.append('disk:4')  # if no specs defined then default to disk:4
-            # index_disk = [idx for idx, s in enumerate(specs) if 'disk:' in s or 'disk=' in s]
-            #   if int(re.split(':|=', specs[index_disk[0]])[-1]) < 4:  # check if the already specified disk is large enough
-            #       specs[index_disk[0]] = 'disk:4'  # there should be only one disk entry in the specs
         get_envelope_arg_list = ['-s', size, '-m', md5sum, access_type, lfn]
         if not specs: specs.append('disk:2')  # hard default if nothing is specified
     else:
         access_type = 'read'
         get_envelope_arg_list = [access_type, lfn]
-    if specs: get_envelope_arg_list.append(str(",".join(specs)))
+
+    if specs: get_envelope_arg_list.append(",".join(specs))
     if httpurl: get_envelope_arg_list.insert(0, '-u')
     if strictspec: get_envelope_arg_list.insert(0, '-f')
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     if ret_obj.exitcode != 0:
-        ret_obj = ret_obj._replace(err = f'{lfn} :: {ret_obj.err}')
+        ret_obj = ret_obj._replace(err = f'No token for {lfn} :: {ret_obj.err}')
         retf_print(ret_obj, opts = 'err')
         return {}
     result = ret_obj.ansdict
@@ -1052,24 +1056,24 @@ def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: l
 
 def expand_path_local(path_input: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = path_input
-    exp_path = lfn_prefix_re.sub('', exp_path)
-    exp_path = re.sub(r"^\~\/*", f'{Path.home().as_posix()}/', exp_path)
-    if not exp_path.startswith('/'): exp_path = f'{Path.cwd().as_posix()}/{exp_path}'
-    exp_path = os.path.normpath(exp_path)
-    exp_path = os.path.realpath(exp_path)
+    exp_path = None
+    try:
+        exp_path = Path(path_input).expanduser().resolve().as_posix()
+    except RuntimeError:
+        print_err(f"Loop encountered along the resolution of {path_input}")
+    if exp_path is None: return ''
     if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
 
 
-def expand_path_grid(path_input: str) -> str:
+def expand_path_grid(wb: websockets.client.WebSocketClientProtocol, path_input: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
-    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
+    if path_input.endswith("/") or pathtype_grid(wb, exp_path) == 'd': exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -1193,7 +1197,7 @@ def name2regex(pattern_regex: str = '') -> str:
     pattern_list = pattern_regex.split('_')
     if any(verb in pattern_regex for verb in verbs):
         if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
-            print('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+            print_out('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
             return ''
 
         list_begin = []
@@ -1219,19 +1223,48 @@ def name2regex(pattern_regex: str = '') -> str:
             if not list_ends:  # we already added the ext in list_ends
                 translated_pattern_regex = f'{translated_pattern_regex}{list_ext[0].val}'
 
-        if _DEBUG: print(f"Regex to be applied: {translated_pattern_regex}")
+        if _DEBUG: print_out(f"Regex to be applied: {translated_pattern_regex}")
         return translated_pattern_regex
     return pattern_regex  # catch-all return just in case pattern_regex is rubbish
 
 
+def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: str = '*', is_regex: bool = False, find_args_add: str = '') -> list:
+    """Return a list of files(lfn/grid files) that match pattern found in dir"""
+    if not dir: return []
+    find_args = ['-a', '-s']
+    if find_args_add: find_args.extend(find_args_add.split())  # insert any other additional find arguments
+    if is_regex: find_args.insert(0, '-r')
+    find_args.append(dir)
+    find_args.append(pattern)
+    send_opts = 'nomsg' if not _DEBUG else ''
+    ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
+    if ret_obj.exitcode != 0:
+        print_err(f"find '{find_args}' --> error: {ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging")
+        return []
+    if 'results' not in ret_obj.ansdict: return []
+    return [item['lfn'] for item in ret_obj.ansdict['results']]
+
+
+def list_files_local(start_dir: str, regex: re.Pattern = None) -> list:
+    """Return a list of files(local) that match pattern found in dir"""
+    if regex is None: regex = re.compile('.*')
+    directory = None
+    try:
+        directory = Path(start_dir).expanduser().resolve(strict = True).as_posix()
+    except FileNotFoundError:
+        print_err(f"{start_dir} not found")
+    except RuntimeError:
+        print_err(f"Loop encountered along the resolution of {start_dir}")
+    if directory is None: return []
+    return [os.path.join(root, f) for (root, dirs, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
+
+
 def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
-    isSrcDir = bool(False)
-    # isDstDir = bool(False)
+    isSrcDir = isDstDir = bool(False)
     slashend_src = arg_source.endswith('/')
-    # slashend_dst = arg_target.endswith('/')  # not used
 
-    isSrcLocal = isDstLocal = isDownload = None
+    isSrcLocal = isDstLocal = isDownload = specs = None
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
         return RET(22, '', 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
 
@@ -1279,63 +1312,43 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             msg = "regex argument of -select or -name option is invalid!!"
             return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
-    src = src_type = src_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    src = None  # let's record specifications like disk=3,SE1,!SE2
     if isSrcLocal:
         src = expand_path_local(arg_source)
-        if not os.path.exists(src):
-            msg = "source does not exist (or is not accessible)"
-            return RET(2, '', msg)  # ENOENT /* No such file or directory */
-        src_type = pathtype_local(src)
-        if src_type == 'd':
-            isSrcDir = bool(True)
-            if not arg_glob and not slashend_src: parent = parent + 1
+        if not src: return RET(2, '', f"{arg_source} does not exist (or is not accessible)")  # ENOENT /* No such file or directory */
     else:
         src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        src = expand_path_grid(src)
-        src_type = pathtype_grid(wb, src)
-        if not src_type:
-            msg = f"Could not check source argument type: {AlienSessionInfo['error']}"
-            return RET(2, '', msg)  # ENOENT /* No such file or directory */
-        if src_type == 'd': isSrcDir = bool(True)
+        if src_specs_remotes: specs = src_specs_remotes.pop(0)  # whatever remains is the specifications
+        src = expand_path_grid(wb, src)
+        if not src: return RET(2, '', f"{src} does not exist (or is not accessible): {AlienSessionInfo['error']}")  # ENOENT /* No such file or directory */
 
-    dst = dst_type = dst_specs_remotes = None  # let's record specifications like disk=3,SE1,!SE2
+    isSrcDir = src.endswith('/')
+    if isSrcDir and not arg_glob and not slashend_src: parent = parent + 1
+    isDstDir = isSrcDir
+
+    dst = None  # let's record specifications like disk=3,SE1,!SE2
     if isDstLocal:
         dst = expand_path_local(arg_target)
-        dst_type = pathtype_local(dst)
-        if not dst_type:
-            try:
-                mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent
-                mk_path.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                logging.error(traceback.format_exc())
-                path_str = mk_path.as_posix()
-                msg = f"Could not create local destination directory: {path_str}\ncheck log file {_DEBUG_FILE}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            dst_type = 'd'  # we just created it
-        # if dst_type == 'd': isDstDir = bool(True)
-    else:
+        try:  # we can try anyway, this is like mkdir -p
+            mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
+            mk_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            logging.error(traceback.format_exc())
+            msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {_DEBUG_FILE}"
+            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+    else:  # this is uoload to GRID
         dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
         dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        dst = expand_path_grid(dst)
-        dst_type = pathtype_grid(wb, dst)
-        if not dst_type:
-            mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
-            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')
-            retf_print(ret_obj, opts = 'noprint err')
-            if ret_obj.exitcode != 0:
-                msg = f"check log file {_DEBUG_FILE}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            dst_type = 'd'  # we just created it
-        # if dst_type == 'd': isDstDir = bool(True)
+        if dst_specs_remotes: specs = dst_specs_remotes.pop(0)  # whatever remains is the specifications
+        dst = expand_path_grid(wb, dst)
+        mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
+        ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
+        retf_print(ret_obj, opts = 'noprint err')
+        if ret_obj.exitcode != 0: return ret_obj  # just return the mkdir result
 
-    if strictspec:
-        if src_specs_remotes:
-            print("Strict specifications were enabled!!")
-        if dst_specs_remotes:
-            print("Strict specifications option for uploads is ignored!!")
-            strictspec = False
-
+    specs_list = specs.split(',') if specs else []
+    if strictspec: print_out("Strict specifications were enabled!! Command may fail!!")
     if httpurl and isSrcLocal:
         print("httpurl option is ignored for uploads")
         httpurl = False
@@ -1344,25 +1357,13 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
     # if src is directory, then create list of files coresponding with options
     isWrite = bool(False)
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
-        specs = src_specs_remotes
         lfn_list = []  # list of lfns to be downloaded
         if isSrcDir:  # recursive download
-            find_defaults = ['-a', '-s', src]
-            if use_regex:
-                find_defaults.insert(0, '-r')
-                find_defaults.append(pattern_regex)
-            else:
-                find_defaults.append(pattern)
-            find_args.extend(find_defaults)
-            send_opts = 'nomsg' if not _DEBUG else ''
-            ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
-            if ret_obj.exitcode != 0:
-                msg = f"Find returned error when using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
+            if use_regex: pattern = pattern_regex
+            lfn_list = list_files_grid(wb, src, pattern, use_regex, " ".join(find_args))
+            if len(lfn_list) < 1:
+                msg = f"No files found with: find {' '.join(find_args)} {'-r' if use_regex else ''} -a -s {src} {pattern}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            if len(ret_obj.ansdict['results']) < 1:
-                msg = f"No files found using: {find_args}\n{ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-            lfn_list = [item['lfn'] for item in ret_obj.ansdict['results']]
         else:  # single file download
             lfn_list.append(src)
 
@@ -1373,14 +1374,12 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             else:
                 dst_filename = format_dst_fn(src, lfn, dst, parent)
 
-            if os.path.isfile(dst_filename) and not overwrite:  # if no -f
-                print(f'{dst_filename} exists, skipping..', flush = True)
-                continue
-            tokens = getEnvelope_lfn(wb, lfn2file(lfn, dst_filename), specs, isWrite, strictspec, httpurl)
-            if not tokens or 'answer' not in tokens:
-                print(f"No tokens for {lfn} -> {AlienSessionInfo['error']}", file=sys.stderr, flush = True)
+            if os.path.isfile(dst_filename) and not overwrite:
+                print_out(f'{dst_filename} exists, skipping..')
                 continue
 
+            tokens = getEnvelope_lfn(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
+            if not tokens or 'answer' not in tokens: continue
             file_size = tokens['answer']['results'][0]['size']
             file_md5 = tokens['answer']['results'][0]['md5']
             if os.path.isfile(dst_filename):  # -f (force) was used, we checked for it above
@@ -1388,47 +1387,47 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
-        specs = dst_specs_remotes
+        file_list = []
         if isSrcDir:  # recursive upload
-            for root, dirs, files in os.walk(src):
-                for file in files:
-                    filepath = os.path.join(root, file)
-                    if regex.search(filepath):
-                        lfn = format_dst_fn(src, filepath, dst, parent)
-                        lfn_exists = pathtype_grid(wb, lfn)
-                        if lfn_exists:
-                            if not overwrite:  # if the lfn is already present and not overwrite lets's skip the upload
-                                print(f'{lfn} exists, skipping..', flush = True)
-                                continue
-                            # clear up the destination lfn
-                            print(f'{lfn} exists, deleting..', flush = True)
-                            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
-                        tokens = getEnvelope_lfn(wb, lfn2file(lfn, filepath), specs, isWrite)
-                        if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
-                            error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-                            continue
-                        copy_list.append(CopyFile(filepath, lfn, isWrite, tokens['answer'], ''))
+            file_list = list_files_local(src, regex)
+            if len(file_list) < 1:
+                msg = f"No files found in {src} with pattern {pattern_regex}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
         else:
-            if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-            lfn_exists = pathtype_grid(wb, dst)
-            if lfn_exists:
-                if not overwrite: return RET(17, '', f'{dst} exists, skipping..')  # EEXIST /* File exists */
-                print(f'{dst} exists, deleting..', flush = True)  # clear up the destination lfn
-                ret_obj = SendMsg(wb, 'rm', ['-f', dst], 'nomsg')
-                retf_print(ret_obj, 'print')
-            tokens = getEnvelope_lfn(wb, lfn2file(dst, src), specs, isWrite)
-            if 'answer' not in tokens or not tokens['answer'] or AlienSessionInfo['exitcode'] != 0:
-                error_msg = f"{error_msg}\n{tokens['lfn']} -> {AlienSessionInfo['error']}" if error_msg else f"{tokens['lfn']} -> {AlienSessionInfo['error']}"
-            else:
-                copy_list.append(CopyFile(src, dst, isWrite, tokens['answer'], ''))
+            file_list.append(src)
 
+        for f in file_list:
+            if len(file_list) == 1:
+                if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
+                lfn = dst
+            else:
+                lfn = format_dst_fn(src, f, dst, parent)
+
+            if pathtype_grid(wb, lfn) == 'f':
+                if overwrite:
+                    print_out(f'{lfn} exists, deleting..')  # clear up the destination lfn
+                    ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+                else:
+                    print_out(f'{lfn} exists, skipping..')
+                    continue
+
+            tokens = getEnvelope_lfn(wb, lfn2file(lfn, f), specs_list, isWrite)
+            if not tokens or 'answer' not in tokens: continue
+            copy_list.append(CopyFile(f, lfn, isWrite, tokens['answer'], ''))
     return RET(1, '', error_msg) if error_msg else RET(0)
 
 
 def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
-    """Process a list of lfns to XRootD copy jobs and add them to the list"""
+    """Process a list of lfns to add to XRootD copy jobs list"""
     for cpfile in copylist_lfns:
-        if not cpfile.token_request["results"]: continue
+        if 'results' not in cpfile.token_request:
+            print_err(f"No token info for {cpfile}\nThis message should not happen! Please contact the developer if you see this!")
+            continue
+
+        if len(cpfile.token_request['results']) < 1:
+            print_err(f'Could not find working replicas for {cpfile.src}')
+            continue
+
         if cpfile.isUpload:  # src is local, dst is lfn, request is replica(pfn)
             for replica in cpfile.token_request['results']:
                 copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
@@ -1442,17 +1441,14 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 if len(url_components) > 1: file_in_zip = url_components[1]
                 # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
                 url_list_4meta.append(f'{url_components[0]}?xrd.wantprot=unix&authz={replica["envelope"]}')
-            if not url_list_4meta:
-                print(f'Could not find working replicas of {cpfile.src}', file=sys.stderr, flush = True)
-                continue
 
             # Create the metafile as a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
             metafile = create_metafile(make_tmp_fn(cpfile.src, '.meta4', uuid5 = True), cpfile.src, cpfile.dst, size_4meta, md5_4meta, url_list_4meta)
             if not metafile:
-                print("Could not create the metafile for download, bail out!", file=sys.stderr, flush = True)
-                sys.exit(1)
+                print_err(f"Could not create the download metafile for {cpfile.src}")
+                continue
             if file_in_zip: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
-            if _DEBUG: print(metafile)
+            if _DEBUG: print_out(metafile)
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
@@ -1541,7 +1537,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
 
     if '-y' in xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
-        print("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored", flush = True)
+        print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
         # sources = int(xrd_copy_command.pop(y_idx + 1))
         xrd_copy_command.pop(y_idx)
 
@@ -1667,7 +1663,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
                 if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
                 arglist = line.strip().split()
                 if len(arglist) > 2:
-                    print(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
+                    print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
                     continue
                 retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist, strictspec, httpurl)
                 if retobj.exitcode != 0:
@@ -1727,13 +1723,13 @@ if _HAS_XROOTD:
         def begin(self, jobId, total, source, target):
             timestamp_begin = datetime.datetime.now().timestamp()
             if not ('quiet' in self.printout or 'silent' in self.printout):
-                print("jobID: {0}/{1} >>> Start".format(jobId, total), flush = True)
+                print_out("jobID: {0}/{1} >>> Start".format(jobId, total))
             self.jobs = int(total)
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
             if self.debug:
                 msg = "CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target)
-                print(f'{msg}\n', flush = True)
+                print_out(f'{msg}\n')
                 logging.debug(msg)
 
         def end(self, jobId, results):
@@ -1766,14 +1762,14 @@ if _HAS_XROOTD:
                     if self.debug: retf_print(ret_obj, 'debug')
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
-                    print("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message), flush = True)
+                    print_out("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message))
             else:
                 if xrdjob.isUpload:
                     self.copy_failed_list.append(xrdjob.token_request)
-                    print(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas", flush = True)
+                    print_out(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas")
                 else:
                     self.copy_failed_list.append(xrdjob.lfn)
-                    print(f"Failed download: {xrdjob.lfn}", flush = True)
+                    print_out(f"Failed download: {xrdjob.lfn}")
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
@@ -1786,10 +1782,10 @@ if _HAS_XROOTD:
 def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
-        print("XRootD not found", file=sys.stderr, flush = True)
+        print_err("XRootD not found")
         return []
     if not xrd_cp_args:
-        print("cp arguments are not set, XrdCpArgs tuple missing", file=sys.stderr, flush = True)
+        print_err("cp arguments are not set, XrdCpArgs tuple missing")
         return []
 
     overwrite = xrd_cp_args.overwrite
@@ -1862,7 +1858,7 @@ def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_c
 
 def xrd_stat(pfn: str):
     if not _HAS_XROOTD:
-        print('python XRootD module cannot be found, the copy process cannot continue')
+        print_err('python XRootD module cannot be found, the copy process cannot continue')
         return None
     url_components = urlparse(pfn)
     endpoint = client.FileSystem(url_components.netloc)
@@ -2035,7 +2031,7 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
 def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     global AlienSessionInfo
-    tmpfile = make_tmp_fn(expand_path_grid(lfn))
+    tmpfile = make_tmp_fn(expand_path_grid(wb, lfn))
     if os.path.isfile(tmpfile):
         if overwrite:
             os.remove(tmpfile)
@@ -2160,7 +2156,7 @@ def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, N
         msg = ("Specifications as where to upload the jdl to be submitted and with what parameters are not yet defined"
                "Upload first the jdl to a suitable location (with a safe number of replicas) and then submit")
         return RET(0, msg)
-    args[0] = expand_path_grid(args[0])
+    args[0] = expand_path_grid(wb, args[0])
     return SendMsg(wb, 'submit', args)
 
 
@@ -2285,13 +2281,13 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     if not editor:
         editor = os.getenv('EDITOR')
         if not editor:
-            print('EDITOR env variable not set, we will fallback to mcedit (no check if exists)')
+            print_out('EDITOR env variable not set, we will fallback to mcedit (no check if exists)')
             editor = 'mcedit -u'
     versioned_backup = False
     if '-datebck' in args:
         args.remove('-datebck')
         versioned_backup = True
-    lfn = expand_path_grid(args[-1])  # assume that the last argument is the lfn
+    lfn = expand_path_grid(wb, args[-1])  # assume that the last argument is the lfn
     # check for valid (single) specifications delimiter
     count_tokens = collections.Counter(lfn)
     if count_tokens[','] + count_tokens['@'] > 1:
@@ -2446,7 +2442,7 @@ Command formant: find2 <options> <directory>
         args.remove('-s')
 
     if '-v' in args:
-        # print("Verbose mode not implemented, ignored")
+        # print_out("Verbose mode not implemented, ignored")
         args.remove('-v')
 
     if '-j' in args:
@@ -2491,7 +2487,7 @@ Command formant: find2 <options> <directory>
         return RET(64, '', "regex argument of -select or -name option is invalid!!")  # EX_USAGE /* command line usage error */
 
     if len(args) > 1: return RET(1, '', f'Too many elements remained in arg list, it should be just the directory\nArg list: {args}')
-    find_args.extend(['-r', '-s', expand_path_grid(args[0]), pattern_regex])
+    find_args.extend(['-r', '-s', expand_path_grid(wb, args[0]), pattern_regex])
     return SendMsg(wb, 'find', find_args, opts = 'nokeys')
 
 
@@ -2903,7 +2899,7 @@ def get_ca_path() -> str:
 
     if not capath_default:
         msg = "No CA location or files specified or found!!! Connection will not be possible!!"
-        print(msg, file=sys.stderr, flush = True)
+        print_err(msg)
         logging.info(msg)
         sys.exit(2)
     if _DEBUG: logging.debug(f'CApath = {capath_default}')
@@ -2943,13 +2939,13 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     else:
         if not (os.path.exists(usercert) and os.path.exists(userkey)):
             msg = "User certificate files NOT FOUND!!! Connection will not be possible!!"
-            print(msg, file=sys.stderr, flush = True)
+            print_err(msg)
             logging.info(msg)
             sys.exit(126)
         cert, key = usercert, userkey
         if not IsValidCert(cert):
             msg = f'Invalid user certificate!! Check the content of {cert}'
-            print(msg, file=sys.stderr, flush = True)
+            print_err(msg)
             logging.info(msg)
             sys.exit(129)
         AlienSessionInfo['use_usercert'] = True
@@ -2997,7 +2993,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         except Exception as e:
             msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
             logging.error(msg)
-            print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
+            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
             return None
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
@@ -3021,7 +3017,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         except Exception as e:
             msg = 'Could NOT establish connection (TCP socket) to {0}:{1}\n{2}'.format(host, port, e)
             logging.error(msg)
-            print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
+            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
             return None
 
         if socket_endpoint:
@@ -3039,7 +3035,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             except Exception as e:
                 msg = 'Could NOT establish connection (WebSocket) to {0}:{1}\n{2}'.format(socket_endpoint_addr, socket_endpoint_port, e)
                 logging.error(msg)
-                print(f'{msg}\nCheck the logfile: {_DEBUG_FILE}', file=sys.stderr, flush = True)
+                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
                 return None
         if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
     return wb
@@ -3070,7 +3066,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         msg = f'>>>   Endpoint total connecting time: {init_delta:.3f} ms'
         if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print(msg, flush = True)
+        if _TIME_CONNECT: print_out(msg)
 
     if wb and localConnect:
         pid_filename = f'{_TMPDIR}/jboxpy_{os.getuid()}.pid'
@@ -3107,7 +3103,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     if wb is None:
         msg = f'Check the logfile: {_DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
-        print(msg, file=sys.stderr, flush = True)
+        print_err(msg)
         sys.exit(1)
 
     if AlienSessionInfo['use_usercert']: token(wb, token_args)  # if we connect with usercert then let get a default token
@@ -3224,7 +3220,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         if _DEBUG: logging.debug(f">>>   Time for websocket connection: {init_delta:.3f} ms")
-        if _TIME_CONNECT: print(f">>>   Time for websocket connection: {init_delta:.3f} ms", flush = True)
+        if _TIME_CONNECT: print_out(f">>>   Time for websocket connection: {init_delta:.3f} ms")
 
     if wb is not None: AlienSessionInfo['session_started'] = True
     # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
@@ -3232,7 +3228,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
         if _DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
-        if _TIME_CONNECT: print(f">>>   Time for session connection: {init_delta:.3f} ms", flush = True)
+        if _TIME_CONNECT: print_out(f">>>   Time for session connection: {init_delta:.3f} ms")
     return wb
 
 
@@ -3313,6 +3309,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
 
     ret_obj = None
     for cmdline in cmdline_list:
+        if _DEBUG: logging.info(f'>>> RUN COMMAND: {cmdline}')
         if cmdline.startswith('!'):  # if shell command, just run it and return
             capture_out = True
             if '-noout' in cmdline:
@@ -3326,7 +3323,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
         # process the input and take care of pipe to shell
         input_alien, sep, pipe_to_shell_cmd = cmdline.partition('|')
         if not input_alien:
-            print("AliEn command before the | token was not found")
+            print_out("AliEn command before the | token was not found")
             continue
 
         args = input_alien.strip().split()
@@ -3385,7 +3382,7 @@ def JAlien(commands: str = '') -> int:
         rl.set_completer(complete)
         setupHistory()  # enable history saving
 
-    print('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n', flush=True)
+    print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
@@ -3409,15 +3406,16 @@ def setup_logging():
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
     logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
-    logger_wb = logging.getLogger('websockets')
-    logger_wb.setLevel(MSG_LVL)
+    logging.getLogger().setLevel(MSG_LVL)
+    logging.getLogger('websockets').setLevel(MSG_LVL)
+    # concurrent concurrent.futures asyncio async_stagger websockets websockets.protocol websockets.client websockets.server
 
 
 def main():
+    setup_logging()
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
     global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE
-    setup_logging()
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
@@ -3450,15 +3448,16 @@ def main():
 
     try:
         JAlien(cmd_string)
-    except KeyboardInterrupt:
-        print("Received keyboard intrerupt, exiting..")
+    except KeyboardInterrupt as e:
+        print_out("Received keyboard intrerupt, exiting..")
         sys.exit(int(AlienSessionInfo['exitcode']))
-    except Exception:
-        print(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {_DEBUG_FILE}
+    except Exception as e:
+        logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
+        logging.error("\n\n")
+        print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {_DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
 If the exception is reproductible including on lxplus, please create a detailed debug report this way:
-ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''', file=sys.stderr, flush = True)
-        logging.error(traceback.format_exc())
+ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
         sys.exit(1)
     sys.exit(int(AlienSessionInfo['exitcode']))
 
