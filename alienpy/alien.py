@@ -1028,7 +1028,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     if ret_obj.exitcode != 0:
         ret_obj = ret_obj._replace(err = f'No token for {lfn} :: {ret_obj.err}')
-        retf_print(ret_obj, opts = 'err')
+        retf_print(ret_obj, opts = 'err noprint')
         return {}
     result = ret_obj.ansdict
     qos_tags = [el for el in specs if 'ALICE::' not in el]  # for element in specs, if not ALICE:: then is qos tag
@@ -3309,6 +3309,7 @@ def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, Non
 
     ret_obj = None
     for cmdline in cmdline_list:
+        if not cmdline: continue
         if _DEBUG: logging.info(f'>>> RUN COMMAND: {cmdline}')
         if cmdline.startswith('!'):  # if shell command, just run it and return
             capture_out = True
