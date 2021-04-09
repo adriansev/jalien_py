@@ -1180,6 +1180,13 @@ def commit(wb: websockets.client.WebSocketClientProtocol, tokenstr: str, size: i
     return SendMsg(wb, 'commit', arg_list, opts = 'log')
 
 
+def file_set_atime(path: str):
+    """Set atime of file to now"""
+    if not os.path.isfile(path): return
+    file_stat = os.stat(path)
+    os.utime(path, (datetime.datetime.now().timestamp(), file_stat.st_mtime))
+
+
 def GetHumanReadable(size, precision = 2):
     """Convert bytes to higher units"""
     suffixes = ['B', 'KiB', 'MiB', 'GiB']
