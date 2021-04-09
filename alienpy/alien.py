@@ -1190,9 +1190,19 @@ def GetHumanReadable(size, precision = 2):
     return '%.*f %s' % (precision, size, suffixes[suffixIndex])
 
 
+def valid_regex(regex_str: str) -> Union[None, re.Pattern]:
+    """Validate a regex string and return a re.Pattern if valid"""
+    regex = None
+    try:
+        regex = re.compile(regex_str.encode('unicode-escape').decode())  # try to no hit https://docs.python.org/3.6/howto/regex.html#the-backslash-plague
+    except re.error:
+        logging.error(f"regex validation failed:: {regex_str}")
+    return regex
+
+
 def name2regex(pattern_regex: str = '') -> str:
     if not pattern_regex: return ''
-    translated_pattern_regex = '.*'
+    translated_pattern_regex = ''
     re_all = '.*'
     verbs = ('begin', 'contain', 'ends', 'ext')
     pattern_list = pattern_regex.split('_')
@@ -1223,33 +1233,53 @@ def name2regex(pattern_regex: str = '') -> str:
         for path in list_ext:
             if not list_ends:  # we already added the ext in list_ends
                 translated_pattern_regex = f'{translated_pattern_regex}{list_ext[0].val}'
-
-        if _DEBUG: print_out(f"Regex to be applied: {translated_pattern_regex}")
-        return translated_pattern_regex
-    return pattern_regex  # catch-all return just in case pattern_regex is rubbish
+    return translated_pattern_regex
 
 
-def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: str = '*', is_regex: bool = False, find_args_add: str = '') -> list:
+def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: Union[None, re.Pattern, str] = None, is_regex: bool = False, find_args: str = '') -> list:
     """Return a list of files(lfn/grid files) that match pattern found in dir"""
     if not dir: return []
-    find_args = ['-a', '-s']
-    if find_args_add: find_args.extend(find_args_add.split())  # insert any other additional find arguments
-    if is_regex: find_args.insert(0, '-r')
-    find_args.append(dir)
-    find_args.append(pattern)
+    if pattern is None: pattern = '*'  # prefer globbing as default
+    if type(pattern) is re.Pattern:  # unlikely but supported to match list_files_local
+        pattern = pattern.pattern  # We pass the regex pattern into command as string
+        is_regex = True
+
+    if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex, let's validate it
+        if valid_regex(pattern) is None:
+            logging.error(f"list_files_grid:: {pattern} failed to re.compile")
+            return []
+
+    find_args_default = ['-a', '-s']
+    if is_regex: find_args_default.insert(0, '-r')
+    find_args_list = find_args.split() if find_args else None
+    if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
+    # TODO this is the place for processing custom arguments
+    find_args_default.append(dir)
+    find_args_default.append(pattern)
     send_opts = 'nomsg' if not _DEBUG else ''
-    ret_obj = SendMsg(wb, 'find', find_args, opts = send_opts)
+    ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
+    print(f'>>>>>>>> find args: {find_args}')
+    print(ret_obj.ansdict)
     if ret_obj.exitcode != 0:
         print_err(f"find '{find_args}' --> error: {ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging")
         return []
     if 'results' not in ret_obj.ansdict: return []
-    return [item['lfn'] for item in ret_obj.ansdict['results']]
+    lfn_list = [item['lfn'] for item in ret_obj.ansdict['results']]
+    # TODO process the list taking into accound custom (client-side) arguments
+    return lfn_list
 
 
-def list_files_local(start_dir: str, regex: re.Pattern = None) -> list:
-    """Return a list of files(local) that match pattern found in dir"""
-    if regex is None: regex = re.compile('.*')
-    directory = None
+def list_files_local(start_dir: str, pattern: Union[None, re.Pattern, str] = None, is_regex: bool = False, find_args: str = '') -> list:
+    """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
+    if pattern is None: pattern = '*'  # prefer globbing as default
+    regex = pattern if type(pattern) is re.Pattern else None
+    if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
+        regex = valid_regex(pattern)
+        if regex is None:
+            logging.error(f"list_files_local:: {pattern} failed to re.compile")
+            return []
+
+    directory = None  # resolve start_dir to an absolute_path
     try:
         directory = Path(start_dir).expanduser().resolve(strict = True).as_posix()
     except FileNotFoundError:
@@ -1257,10 +1287,18 @@ def list_files_local(start_dir: str, regex: re.Pattern = None) -> list:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {start_dir}")
     if directory is None: return []
-    return [os.path.join(root, f) for (root, dirs, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
+
+    find_args_list = find_args.split() if find_args else None
+    # TODO this is the place for processing custom arguments
+    if regex:
+        file_list = [os.path.join(root, f) for (root, dirs, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
+    else:
+        file_list = [p.expanduser().resolve(strict = True).as_posix() for p in list(Path(directory).glob(f'**/{pattern}')) if p.is_file()]
+    # TODO process the list taking into accound custom (client-side) arguments
+    return file_list
 
 
-def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: str, pattern_regex: str, use_regex: bool, filtering_enabled: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, re.Pattern, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = isDstDir = bool(False)
     slashend_src = arg_source.endswith('/')
@@ -1274,11 +1312,11 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
     arg_source = lfn_prefix_re.sub('', arg_source)
     arg_target = lfn_prefix_re.sub('', arg_target)
 
-    arg_glob = False
-    if '*' in arg_source:
-        arg_glob = True
+    src_glob = False
+    if '*' in arg_source:  # we have globbing in src path
+        src_glob = True
         src_arr = arg_source.split("/")
-        base_path_arr = []
+        base_path_arr = []  # let's establish the base path
         for el in src_arr:
             if '*' not in el:
                 base_path_arr.append(el)
@@ -1286,32 +1324,25 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 break
 
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        arg_source = '/'.join(base_path_arr)  # rewrite the source path without the globbing part
-        if arg_source: arg_source = f'{arg_source}/'
+        arg_source = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+    else:  # pattern is specified by argument
+        if pattern is None: pattern = '*'  # prefer globbing as default
+        if type(pattern) is re.Pattern:  # unlikely but supported to match signatures
+            pattern = pattern.pattern  # We pass the regex pattern into command as string
+            is_regex = True
 
-        if isSrcLocal:
-            pattern_regex = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
-            pattern_regex = pattern_regex.replace('*', '.*')
-            use_regex = True
-            filtering_enabled = True
-        else:
-            pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
-            use_regex = False
-            filtering_enabled = True
+        if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
+            if valid_regex(pattern) is None:
+                msg = f"makelist_lfn:: {pattern} failed to re.compile"
+                logging.error(msg)
+                return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     # check for valid (single) specifications delimiter
     count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
     if count_tokens[','] + count_tokens['@'] > 1:
         msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
         return RET(64, '', msg)  # EX_USAGE /* command line usage error */
-
-    if not isDownload: use_regex = True
-    if use_regex:
-        try:
-            regex = re.compile(pattern_regex)
-        except re.error:
-            msg = "regex argument of -select or -name option is invalid!!"
-            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     src = None  # let's record specifications like disk=3,SE1,!SE2
     if isSrcLocal:
@@ -1325,7 +1356,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
         if not src: return RET(2, '', f"{src} does not exist (or is not accessible): {AlienSessionInfo['error']}")  # ENOENT /* No such file or directory */
 
     isSrcDir = src.endswith('/')
-    if isSrcDir and not arg_glob and not slashend_src: parent = parent + 1
+    if isSrcDir and not src_glob and not slashend_src: parent = parent + 1
     isDstDir = isSrcDir
 
     dst = None  # let's record specifications like disk=3,SE1,!SE2
@@ -1360,10 +1391,9 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
         lfn_list = []  # list of lfns to be downloaded
         if isSrcDir:  # recursive download
-            if use_regex: pattern = pattern_regex
-            lfn_list = list_files_grid(wb, src, pattern, use_regex, " ".join(find_args))
+            lfn_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
             if len(lfn_list) < 1:
-                msg = f"No files found with: find {' '.join(find_args)} {'-r' if use_regex else ''} -a -s {src} {pattern}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
+                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
         else:  # single file download
             lfn_list.append(src)
@@ -1390,7 +1420,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
         isWrite = True
         file_list = []
         if isSrcDir:  # recursive upload
-            file_list = list_files_local(src, regex)
+            file_list = list_files_local(src, pattern, is_regex, " ".join(find_args))
             if len(file_list) < 1:
                 msg = f"No files found in {src} with pattern {pattern_regex}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
@@ -1614,7 +1644,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         xrd_copy_command.remove('-http')
 
     pattern = '*'
-    pattern_regex = '.*'  # default regex selection for find
+    pattern_regex = None
     use_regex = False
     filtering_enabled = False
 
@@ -1630,7 +1660,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
         select_idx = xrd_copy_command.index('-select')
-        pattern_regex = xrd_copy_command.pop(select_idx + 1)
+        pattern_regex_arg = xrd_copy_command.pop(select_idx + 1)
         xrd_copy_command.pop(select_idx)
         use_regex = True
         filtering_enabled = True
@@ -1640,14 +1670,16 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
         name_idx = xrd_copy_command.index('-name')
-        pattern_regex = xrd_copy_command.pop(name_idx + 1)
+        pattern_regex_arg = xrd_copy_command.pop(name_idx + 1)
         xrd_copy_command.pop(name_idx)
         use_regex = True
         filtering_enabled = True
 
-        pattern_regex = name2regex(pattern_regex)
-        if not pattern_regex:
-            msg = "No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
+        pattern_regex = name2regex(pattern_regex_arg)
+        if use_regex and not pattern_regex:
+            msg = ("No selection verbs were recognized!"
+                   "usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
+                   f"The invalid pattern was: {pattern_regex_arg}")
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
     copy_lfnlist = []  # list of lfn copy tasks
@@ -1666,12 +1698,10 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
                 if len(arglist) > 2:
                     print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
                     continue
-                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist, strictspec, httpurl)
-                if retobj.exitcode != 0:
-                    retf_print(retobj)
-                    break  # stop the parsing if any error is encountered
+                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
+                if retobj.exitcode != 0: retf_print(retobj, "err")  # print error and continue with the other files
     else:
-        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, pattern_regex, use_regex, filtering_enabled, copy_lfnlist, strictspec, httpurl)
+        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
 
     if not copy_lfnlist:  # at this point if any errors, the processing was already stopped
