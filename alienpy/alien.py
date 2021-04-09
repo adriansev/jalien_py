@@ -71,7 +71,8 @@ try:  # let's fail fast if the xrootd python bindings are not present
 except ImportError:
     _HAS_XROOTD = False
 
-_HAS_COLOR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+_HAS_TTY = sys.stdout.isatty()
+_HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
 
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
