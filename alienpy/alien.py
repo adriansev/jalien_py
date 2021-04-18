@@ -1419,7 +1419,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             file_size = tokens['answer']['results'][0]['size']
             file_md5 = tokens['answer']['results'][0]['md5']
             if os.path.isfile(dst_filename):  # -f (force) was used, we checked for it above
-                if retf_print(fileIsValid(dst, file_size, file_md5)) == 0: continue  # destination exists and is valid, no point to re-download
+                if retf_print(fileIsValid(dst_filename, file_size, file_md5)) == 0: continue  # destination exists and is valid, no point to re-download
             copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
