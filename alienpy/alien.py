@@ -1265,8 +1265,6 @@ def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pat
     find_args_default.append(pattern)
     send_opts = 'nomsg' if not _DEBUG else ''
     ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
-    print(f'>>>>>>>> find args: {find_args}')
-    print(ret_obj.ansdict)
     if ret_obj.exitcode != 0:
         print_err(f"find '{find_args}' --> error: {ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging")
         return []
