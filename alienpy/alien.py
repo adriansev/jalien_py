@@ -1738,7 +1738,7 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     copy_jobs_nr = len(xrdcopy_job_list)
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
-    msg = f"Succesful copy jobs: {copy_jobs_success_nr}/{copy_jobs_nr}"
+    msg = f"Succesful copy jobs: {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
     return RET(0, msg) if copy_jobs_failed_nr < copy_jobs_nr else RET(1, '', msg)
 
 
