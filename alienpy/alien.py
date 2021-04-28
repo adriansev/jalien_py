@@ -1604,6 +1604,16 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     elif os.getenv('XRD_CPCHUNKSIZE'):
         chunksize = int(os.getenv('XRD_CPCHUNKSIZE'))
 
+    if '-timeout' in xrd_copy_command:
+        timeout_idx = xrd_copy_command.index('-timeout')
+        os.environ["XRD_CPTIMEOUT"] = xrd_copy_command.pop(timeout_idx + 1)  # do not convert to int as env is string
+        xrd_copy_command.pop(timeout_idx)
+
+    if '-ratethreshold' in xrd_copy_command:
+        rate_idx = xrd_copy_command.index('-ratethreshold')
+        os.environ["XRD_XRATETHRESHOLD"] = xrd_copy_command.pop(rate_idx + 1)  # do not convert to int as env is string
+        xrd_copy_command.pop(rate_idx)
+
     # find options for recursive copy of directories
     find_args = []
     parent = int(0)
