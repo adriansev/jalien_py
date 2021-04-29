@@ -1524,33 +1524,30 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     # Override the application name reported to the server.
     os.environ["XRD_APPNAME"] = "alien.py"
 
+    # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
+    if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s
+
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
-    if not os.getenv('XRD_CONNECTIONRETRY'): os.environ["XRD_CONNECTIONRETRY"] = "3"
+    if not os.getenv('XRD_CONNECTIONRETRY'): XRD_EnvPut('ConnectionRetry', int(3))
 
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
     # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
-    if not os.getenv('XRD_CONNECTIONWINDOW'): os.environ["XRD_CONNECTIONWINDOW"] = "10"
+    if not os.getenv('XRD_CONNECTIONWINDOW'): XRD_EnvPut('ConnectionWindow', int(10))
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
-    if not os.getenv('XRD_REQUESTTIMEOUT'): os.environ["XRD_REQUESTTIMEOUT"] = "30"
+    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(30))
 
     # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
-    if not os.getenv('XRD_CPINITTIMEOUT'): os.environ["XRD_CPINITTIMEOUT"] = "90"  #
-
-    # Maximum time allowed for a third-party copy operation to finish.
-    if not os.getenv('XRD_CPTPCTIMEOUT'): os.environ["XRD_CPTPCTIMEOUT"] = "1800"  # this is the default
+    if not os.getenv('XRD_CPINITTIMEOUT'): XRD_EnvPut('CPInitTimeout', int(30))
 
     # Time period after which an idle connection to a data server should be closed.
-    if not os.getenv('XRD_DATASERVERTTL'): os.environ["XRD_DATASERVERTTL"] = "15"  # we have no reasons to keep idle connections
+    if not os.getenv('XRD_DATASERVERTTL'): XRD_EnvPut('DataServerTTL', int(20))  # we have no reasons to keep idle connections
 
     # Time period after which an idle connection to a manager or a load balancer should be closed.
-    if not os.getenv('XRD_LOADBALANCERTTL'): os.environ["XRD_LOADBALANCERTTL"] = "30"  # we have no reasons to keep idle connections
-
-    # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
-    if not os.getenv('XRD_TIMEOUTRESOLUTION'): os.environ["XRD_TIMEOUTRESOLUTION"] = "1"
+    if not os.getenv('XRD_LOADBALANCERTTL'): XRD_EnvPut('LoadBalancerTTL', int(30))  # we have no reasons to keep idle connections
 
     # If set the client tries first IPv4 address (turned off by default).
-    if not os.getenv('XRD_PREFERIPV4'): os.environ["XRD_PREFERIPV4"] = "1"
+    if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
     if '-f' in xrd_copy_command:
         overwrite = True
@@ -1575,14 +1572,13 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         y_idx = xrd_copy_command.index('-y')
         print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
         # sources = int(xrd_copy_command.pop(y_idx + 1))
+        xrd_copy_command.pop(y_idx + 1)
         xrd_copy_command.pop(y_idx)
 
     if '-S' in xrd_copy_command:
         s_idx = xrd_copy_command.index('-S')
         streams = int(xrd_copy_command.pop(s_idx + 1))
         xrd_copy_command.pop(y_idx)
-    elif os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
-        streams = int(os.getenv('XRD_SUBSTREAMSPERCHANNEL'))
 
     batch = 8  # a nice enough default
     if '-T' in xrd_copy_command:
@@ -1594,25 +1590,23 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
         chunks_nr_idx = xrd_copy_command.index('-chunks')
         chunks = int(xrd_copy_command.pop(chunks_nr_idx + 1))
         xrd_copy_command.pop(chunks_nr_idx)
-    elif os.getenv('XRD_CPPARALLELCHUNKS'):
-        chunks = int(os.getenv('XRD_CPPARALLELCHUNKS'))
 
     if '-chunksz' in xrd_copy_command:
         chksz_idx = xrd_copy_command.index('-chunksz')
         chunksize = int(xrd_copy_command.pop(chksz_idx + 1))
         xrd_copy_command.pop(chksz_idx)
-    elif os.getenv('XRD_CPCHUNKSIZE'):
-        chunksize = int(os.getenv('XRD_CPCHUNKSIZE'))
 
     if '-timeout' in xrd_copy_command:
         timeout_idx = xrd_copy_command.index('-timeout')
-        os.environ["XRD_CPTIMEOUT"] = xrd_copy_command.pop(timeout_idx + 1)  # do not convert to int as env is string
+        timeout = xrd_copy_command.pop(timeout_idx + 1)  # do not convert to int as env is string
         xrd_copy_command.pop(timeout_idx)
+        XRD_EnvPut('CPTimeout', int(timeout))
 
     if '-ratethreshold' in xrd_copy_command:
         rate_idx = xrd_copy_command.index('-ratethreshold')
-        os.environ["XRD_XRATETHRESHOLD"] = xrd_copy_command.pop(rate_idx + 1)  # do not convert to int as env is string
+        rate = xrd_copy_command.pop(rate_idx + 1)  # do not convert to int as env is string
         xrd_copy_command.pop(rate_idx)
+        XRD_EnvPut('XRateThreshold', int(rate))
 
     # find options for recursive copy of directories
     find_args = []
@@ -1827,6 +1821,14 @@ if _HAS_XROOTD:
 
         def should_cancel(self, jobId):
             return False
+
+    def XRD_EnvPut(key, value):
+        """Sets the given key in the xrootd client environment to the given value.
+        Returns false if there is already a shell-imported setting for this key, true otherwise"""
+        if str(value).isdigit():
+            return client.EnvPutInt(key, value)
+        else:
+            return client.EnvPutString(key, value)
 
 
 def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
