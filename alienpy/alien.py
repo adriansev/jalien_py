@@ -1055,7 +1055,7 @@ def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: l
     return access_list
 
 
-def expand_path_local(path_input: str) -> str:
+def expand_path_local(path_input: str, check_path: bool = False) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = None
     try:
@@ -1063,18 +1063,23 @@ def expand_path_local(path_input: str) -> str:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
-    if path_input.endswith("/") or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
+    is_dir = os.path.isdir(exp_path)
+    is_file = os.path.isfile(exp_path)
+    if check_path and not (is_dir or is_file): return ''
+    if path_input.endswith("/") or is_dir: exp_path = f'{exp_path}/'
     return exp_path
 
 
-def expand_path_grid(wb: websockets.client.WebSocketClientProtocol, path_input: str) -> str:
+def expand_path_grid(wb: websockets.client.WebSocketClientProtocol, path_input: str, check_path: bool = False) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
-    if path_input.endswith("/") or pathtype_grid(wb, exp_path) == 'd': exp_path = f'{exp_path}/'
+    path_type = pathtype_grid(wb, exp_path)
+    if check_path and not path_type: return ''
+    if path_input.endswith("/") or path_type == 'd': exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -1305,22 +1310,25 @@ def list_files_local(start_dir: str, pattern: Union[None, re.Pattern, str] = Non
 
 def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, re.Pattern, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
-    isSrcDir = isDstDir = bool(False)
-    slashend_src = arg_source.endswith('/')
-
-    isSrcLocal = isDstLocal = isDownload = specs = None
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
-        return RET(22, '', 'The operands cannot have the same type and need at least one specifier.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
+        return RET(22, '', 'The operands cannot have the same type and if missing they will be determined from the type of source.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
 
-    isSrcLocal = (arg_source.startswith('file:') or arg_target.startswith('alien:')) and not (arg_source.startswith('alien:') or arg_target.startswith('file:'))
-    isDownload = isDstLocal = not isSrcLocal
-    arg_source = lfn_prefix_re.sub('', arg_source)
-    arg_target = lfn_prefix_re.sub('', arg_target)
+    isSrcDir = isDstDir = isSrcLocal = isDstLocal = isDownload = specs = None  # make sure we set these to valid values later
 
+    # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
+    src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
+    arg_src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+    src_specs = src_specs_remotes.pop(0) if src_specs_remotes else None  # whatever remains is the specifications
+
+    dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)
+    arg_dst = dst_specs_remotes.pop(0)
+    dst_specs = dst_specs_remotes.pop(0) if dst_specs_remotes else None
+
+    # lets process the pattern: extract it from src if is in the path globbing form
     src_glob = False
-    if '*' in arg_source:  # we have globbing in src path
+    if '*' in arg_src:  # we have globbing in src path
         src_glob = True
-        src_arr = arg_source.split("/")
+        src_arr = arg_src.split("/")
         base_path_arr = []  # let's establish the base path
         for el in src_arr:
             if '*' not in el:
@@ -1329,7 +1337,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 break
 
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        arg_source = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        arg_src = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
         pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
     else:  # pattern is specified by argument
         if pattern is None: pattern = '*'  # prefer globbing as default
@@ -1343,30 +1351,29 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
                 logging.error(msg)
                 return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
-    # check for valid (single) specifications delimiter
-    count_tokens = collections.Counter(arg_source if isDstLocal else arg_target)
-    if count_tokens[','] + count_tokens['@'] > 1:
-        msg = f"At most one of >,< or >@< tokens used for copy specification can be present in the argument. The offender is: {''.join(count_tokens)}"
-        return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+    slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
 
-    src = None  # let's record specifications like disk=3,SE1,!SE2
-    if isSrcLocal:
-        src = expand_path_local(arg_source)
-        if not src: return RET(2, '', f"{arg_source} does not exist (or is not accessible)")  # ENOENT /* No such file or directory */
-    else:
-        src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
-        src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        if src_specs_remotes: specs = src_specs_remotes.pop(0)  # whatever remains is the specifications
-        src = expand_path_grid(wb, src)
-        if not src: return RET(2, '', f"{src} does not exist (or is not accessible): {AlienSessionInfo['error']}")  # ENOENT /* No such file or directory */
+    if lfn_prefix_re.match(arg_src) or lfn_prefix_re.match(arg_dst):  # if any prefix is present
+        isSrcLocal = (arg_src.startswith('file:') or arg_dst.startswith('alien:')) and not (arg_src.startswith('alien:') or arg_dst.startswith('file:'))
+        arg_src = lfn_prefix_re.sub('', arg_src)  # lets remove any prefixes
+        arg_dst = lfn_prefix_re.sub('', arg_dst)
 
-    isSrcDir = src.endswith('/')
-    if isSrcDir and not src_glob and not slashend_src: parent = parent + 1
-    isDstDir = isSrcDir
+    src = None
+    if isSrcLocal or isSrcLocal is None:      # there were no prefixes or isSrcLocal so we must resolve src
+        src = expand_path_local(arg_src, check_path = True)  # src must always be present
+        if src: isSrcLocal = True
+    if not isSrcLocal or isSrcLocal is None:  # isSrcLocal still not qualified, so lets resolve src from grid
+        src = expand_path_grid(wb, arg_src, check_path = True)
+        if src: isSrcLocal = False
+    if not src: return RET(2, '', f'{arg_src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
 
-    dst = None  # let's record specifications like disk=3,SE1,!SE2
-    if isDstLocal:
-        dst = expand_path_local(arg_target)
+    isDstDir = isSrcDir = src.endswith("/")  # the checkin procedure will append / if src is directory; is src is dir, so dst must be
+    isDownload = isDstLocal = not isSrcLocal
+    if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
+
+    dst = None
+    if isDownload:
+        dst = expand_path_local(arg_dst)
         try:  # we can try anyway, this is like mkdir -p
             mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
             mk_path.mkdir(parents=True, exist_ok=True)
@@ -1374,24 +1381,22 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
             logging.error(traceback.format_exc())
             msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {_DEBUG_FILE}"
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-    else:  # this is uoload to GRID
-        dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
-        dst = dst_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-        if dst_specs_remotes: specs = dst_specs_remotes.pop(0)  # whatever remains is the specifications
-        dst = expand_path_grid(wb, dst)
+    else:  # this is upload to GRID
+        dst = expand_path_grid(wb, arg_dst)
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
         ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
         retf_print(ret_obj, opts = 'noprint err')
         if ret_obj.exitcode != 0: return ret_obj  # just return the mkdir result
 
-    specs_list = specs.split(',') if specs else []
+    specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
+    specs_list = specs_split.split(specs) if specs else []
+
     if strictspec: print_out("Strict specifications were enabled!! Command may fail!!")
     if httpurl and isSrcLocal:
         print("httpurl option is ignored for uploads")
         httpurl = False
 
     error_msg = ''  # container which accumulates the error messages
-    # if src is directory, then create list of files coresponding with options
     isWrite = bool(False)
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
         lfn_list = []  # list of lfns to be downloaded
