@@ -1578,7 +1578,8 @@ def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command:
     if '-S' in xrd_copy_command:
         s_idx = xrd_copy_command.index('-S')
         streams = int(xrd_copy_command.pop(s_idx + 1))
-        xrd_copy_command.pop(y_idx)
+        if (streams > 15): streams = 15
+        xrd_copy_command.pop(s_idx)
 
     batch = 8  # a nice enough default
     if '-T' in xrd_copy_command:
