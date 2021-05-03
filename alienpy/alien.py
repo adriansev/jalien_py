@@ -74,6 +74,7 @@ except ImportError:
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
 
+REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands
 specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
@@ -1202,7 +1203,7 @@ def GetHumanReadable(size, precision = 2):
     return '%.*f %s' % (precision, size, suffixes[suffixIndex])
 
 
-def valid_regex(regex_str: str) -> Union[None, re.Pattern]:
+def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
     """Validate a regex string and return a re.Pattern if valid"""
     regex = None
     try:
@@ -1248,11 +1249,11 @@ def name2regex(pattern_regex: str = '') -> str:
     return translated_pattern_regex
 
 
-def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: Union[None, re.Pattern, str] = None, is_regex: bool = False, find_args: str = '') -> list:
+def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
     """Return a list of files(lfn/grid files) that match pattern found in dir"""
     if not dir: return []
     if pattern is None: pattern = '*'  # prefer globbing as default
-    if type(pattern) is re.Pattern:  # unlikely but supported to match list_files_local
+    if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match list_files_local
         pattern = pattern.pattern  # We pass the regex pattern into command as string
         is_regex = True
 
@@ -1279,10 +1280,10 @@ def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pat
     return lfn_list
 
 
-def list_files_local(start_dir: str, pattern: Union[None, re.Pattern, str] = None, is_regex: bool = False, find_args: str = '') -> list:
+def list_files_local(start_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
     if pattern is None: pattern = '*'  # prefer globbing as default
-    regex = pattern if type(pattern) is re.Pattern else None
+    regex = pattern if (type(pattern) == REGEX_PATTERN_TYPE) else None
     if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
         regex = valid_regex(pattern)
         if regex is None:
@@ -1308,7 +1309,7 @@ def list_files_local(start_dir: str, pattern: Union[None, re.Pattern, str] = Non
     return file_list
 
 
-def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, re.Pattern, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
         return RET(22, '', 'The operands cannot have the same type and if missing they will be determined from the type of source.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
@@ -1341,7 +1342,7 @@ def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_
         pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
     else:  # pattern is specified by argument
         if pattern is None: pattern = '*'  # prefer globbing as default
-        if type(pattern) is re.Pattern:  # unlikely but supported to match signatures
+        if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
