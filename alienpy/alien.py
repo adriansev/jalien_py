@@ -29,7 +29,7 @@ import asyncio
 import OpenSSL
 import async_stagger
 import websockets
-import websockets.extensions
+from websockets.extensions import permessage_deflate
 
 deque = collections.deque
 
@@ -221,7 +221,7 @@ class AliEn:
         if not opts: opts = self.opts
         return ProcessCommandChain(self.internal_wb, cmd)
 
-    def wb(self) -> websockets.client.WebSocketClientProtocol:
+    def wb(self):
         """Get the websocket, to be used in other functions"""
         return self.internal_wb
 
@@ -383,7 +383,7 @@ def syncify(fn):
 
 
 @syncify
-async def IsWbConnected(wb: websockets.client.WebSocketClientProtocol) -> bool:
+async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
@@ -414,7 +414,7 @@ async def msg_proxy(websocket, use_usercert = False):
 
 
 @syncify
-async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, jsonmsg: str) -> str:
+async def __sendmsg(wb, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
@@ -424,7 +424,7 @@ async def __sendmsg(wb: websockets.client.WebSocketClientProtocol, jsonmsg: str)
     return result
 
 
-def SendMsg(wb: websockets.client.WebSocketClientProtocol, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
+def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
         msg = "SendMsg:: websocket not initialized"
@@ -739,7 +739,7 @@ def SessionSave():
         logging.exception(e)
 
 
-def SessionRestore(wb: websockets.client.WebSocketClientProtocol):
+def SessionRestore(wb):
     if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     global AlienSessionInfo
     if os.path.exists(GetSessionFilename()):
@@ -794,7 +794,7 @@ def convert_time(str_line: str) -> str:
     return ''
 
 
-def cd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list] = None, opts: str = '') -> RET:
+def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
     """Override cd to add to home and to prev functions"""
     if args is None: args = []
     if isinstance(args, str): args = args.split()
@@ -826,22 +826,22 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     return val
 
 
-def DO_dirs(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
     """dirs"""
     return DO_path_stack(wb, 'dirs', args)
 
 
-def DO_popd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_popd(wb, args: Union[str, list, None] = None) -> RET:
     """popd"""
     return DO_path_stack(wb, 'popd', args)
 
 
-def DO_pushd(wb: websockets.client.WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_pushd(wb, args: Union[str, list, None] = None) -> RET:
     """pushd"""
     return DO_path_stack(wb, 'pushd', args)
 
 
-def DO_path_stack(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
+def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
     if not cmd: return RET(1)
     if args is None: return RET(1)
@@ -1003,7 +1003,7 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
     return helpstr
 
 
-def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
+def getEnvelope_lfn(wb, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
     if not wb: return {}
     if not arg_lfn2file: return {}
@@ -1046,7 +1046,7 @@ def getEnvelope_lfn(wb: websockets.client.WebSocketClientProtocol, arg_lfn2file:
     return {"lfn": lfn, "answer": result}
 
 
-def getEnvelope(wb: websockets.client.WebSocketClientProtocol, input_lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> list:
+def getEnvelope(wb, input_lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return []
     access_list = []
@@ -1071,7 +1071,7 @@ def expand_path_local(path_input: str, check_path: bool = False) -> str:
     return exp_path
 
 
-def expand_path_grid(wb: websockets.client.WebSocketClientProtocol, path_input: str, check_path: bool = False) -> str:
+def expand_path_grid(wb, path_input: str, check_path: bool = False) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
@@ -1084,7 +1084,7 @@ def expand_path_grid(wb: websockets.client.WebSocketClientProtocol, path_input: 
     return exp_path
 
 
-def pathtype_grid(wb: websockets.client.WebSocketClientProtocol, path: str) -> str:
+def pathtype_grid(wb, path: str) -> str:
     """Query if a lfn is a file or directory, return f, d or empty"""
     if not wb: return ''
     if not path: return ''
@@ -1179,7 +1179,7 @@ def setDst(file: str = '', parent: int = 0) -> str:
     return p.as_posix().replace(basedir, '', 1)
 
 
-def commit(wb: websockets.client.WebSocketClientProtocol, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
+def commit(wb, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
     """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
     if not wb: return RET()
     arg_list = [tokenstr, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
@@ -1249,7 +1249,7 @@ def name2regex(pattern_regex: str = '') -> str:
     return translated_pattern_regex
 
 
-def list_files_grid(wb: websockets.client.WebSocketClientProtocol, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
+def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
     """Return a list of files(lfn/grid files) that match pattern found in dir"""
     if not dir: return []
     if pattern is None: pattern = '*'  # prefer globbing as default
@@ -1309,7 +1309,7 @@ def list_files_local(start_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, st
     return file_list
 
 
-def makelist_lfn(wb: websockets.client.WebSocketClientProtocol, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
         return RET(22, '', 'The operands cannot have the same type and if missing they will be determined from the type of source.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
@@ -1494,7 +1494,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
-def DO_XrootdCp(wb: websockets.client.WebSocketClientProtocol, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
+def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
     if xrd_copy_command is None: xrd_copy_command = []
@@ -1838,7 +1838,7 @@ if _HAS_XROOTD:
             return client.EnvPutString(key, value)
 
 
-def XrdCopy(wb: websockets.client.WebSocketClientProtocol, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
+def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
         print_err("XRootD not found")
@@ -1973,7 +1973,7 @@ def DO_pfnstatus(args: Union[list, None] = None) -> RET:
     return RET(response_stat.shellcode, msg)
 
 
-def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> list:
+def get_pfn_list(wb, lfn: str) -> list:
     if not wb: return []
     if not lfn: return []
     if pathtype_grid(wb, lfn) != 'f': return []
@@ -1982,7 +1982,7 @@ def get_pfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str) -> lis
     return [str(item['pfn']) for item in ret_obj.ansdict['results']]
 
 
-def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -> RET:
+def DO_getSE(wb, args: list = None) -> RET:
     if not wb: return []
     if not args: args = []
     if '-h' in args or '-help' in args:
@@ -2042,7 +2042,7 @@ def DO_getSE(wb: websockets.client.WebSocketClientProtocol, args: list = None) -
     return RET(0, '\n'.join(rez_list))
 
 
-def get_qos(wb: websockets.client.WebSocketClientProtocol, se_str: str) -> str:
+def get_qos(wb, se_str: str) -> str:
     """Get qos tags for a given SE"""
     if not wb: return ''
     if '::' not in se_str: return ''  # the se name should have :: in it
@@ -2053,7 +2053,7 @@ def get_qos(wb: websockets.client.WebSocketClientProtocol, se_str: str) -> str:
     return ''
 
 
-def DO_SEqos(wb: websockets.client.WebSocketClientProtocol, args: list = None) -> RET:
+def DO_SEqos(wb, args: list = None) -> RET:
     if not wb: return []
     if not args or '-h' in args or '-help' in args:
         msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be ommited and capitalization does not matter)'
@@ -2087,7 +2087,7 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     return lfn.replace(f'{_TMPDIR}/', '').replace("%%", "/")
 
 
-def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwrite: bool = False) -> str:
+def download_tmp(wb, lfn: str, overwrite: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     global AlienSessionInfo
     tmpfile = make_tmp_fn(expand_path_grid(wb, lfn))
@@ -2108,7 +2108,7 @@ def download_tmp(wb: websockets.client.WebSocketClientProtocol, lfn: str, overwr
     return ''
 
 
-def upload_tmp(wb: websockets.client.WebSocketClientProtocol, temp_file_name: str, upload_specs: str = '', dated_backup: bool = False) -> str:
+def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bool = False) -> str:
     """Upload a temporary file: the original lfn will be renamed and the new file will be uploaded with the original lfn"""
     lfn = get_lfn_name(temp_file_name)  # lets recover the lfn from temp file name
     lfn_backup = f'{lfn}.{now_str()}' if dated_backup else f'{lfn}~'
@@ -2207,7 +2207,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     return RET(AlienSessionInfo['exitcode'], msg, "")
 
 
-def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_submit(wb, args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     if not args or args is None: args = ['-h']
     if '-h' in args: return get_help_srv(wb, 'submit')
@@ -2219,7 +2219,7 @@ def DO_submit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, N
     return SendMsg(wb, 'submit', args)
 
 
-def DO_ps(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_ps(wb, args: Union[list, None] = None) -> RET:
     """ps : show and process ps output"""
     if args is None: args = []
     ret_obj = SendMsg(wb, 'ps', args)
@@ -2229,7 +2229,7 @@ def DO_ps(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None]
     return ret_obj
 
 
-def DO_cat(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_cat(wb, args: Union[list, None] = None) -> RET:
     """cat lfn :: download lfn as a temporary file and cat"""
     if not args or args is None: args = ['-h']
     if '-h' in args: return get_help_srv(wb, 'cat')
@@ -2238,21 +2238,21 @@ def DO_cat(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     return RET(1, '', f'Could not download {args[-1]}')
 
 
-def DO_less(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_less(wb, args: Union[list, None] = None) -> RET:
     """less lfn :: apply less on a downloaded lfn as a temporary file"""
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'less')
     return DO_run(wb, args, external = True)
 
 
-def DO_more(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_more(wb, args: Union[list, None] = None) -> RET:
     """more lfn :: apply more on a downloaded lfn as a temporary file"""
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'more')
     return DO_run(wb, args, external = True)
 
 
-def DO_pfn(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_pfn(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if '-h' in args:
         msg = 'Command format : pfn [lfn]\nIt will print only the list of associtated pfns (simplified form of whereis)'
@@ -2264,7 +2264,7 @@ def DO_pfn(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     return ret_obj._replace(out = msg)
 
 
-def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None) -> int:
+def token(wb, args: Union[None, list] = None) -> int:
     """(Re)create the tokencert and tokenkey files"""
     if not wb: return 1
     if not args: args = []
@@ -2291,7 +2291,7 @@ def token(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list]
     return ret_obj.exitcode
 
 
-def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None) -> websockets.client.WebSocketClientProtocol:
+def token_regen(wb, args: Union[None, list] = None):
     global AlienSessionInfo
     if not AlienSessionInfo['use_usercert']:
         wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
@@ -2312,14 +2312,14 @@ def token_regen(wb: websockets.client.WebSocketClientProtocol, args: Union[None,
     return wb
 
 
-def DO_token(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_token(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments\n"
     ret_obj = SendMsg(wb, 'token', args, opts = 'nokeys')
     return ret_obj._replace(out = f'{msg}{ret_obj.out}')
 
 
-def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_token_init(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
@@ -2329,7 +2329,7 @@ def DO_token_init(wb: websockets.client.WebSocketClientProtocol, args: Union[lis
     return CertInfo(tokencert)
 
 
-def DO_edit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None, editor: str = '') -> RET:
+def DO_edit(wb, args: Union[list, None] = None, editor: str = '') -> RET:
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if not args or args is None: args = ['-h']
     if '-h' in args:
@@ -2369,19 +2369,19 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     return RET(1, '', f'Error downloading {lfn}, editing could not be done.')
 
 
-def DO_mcedit(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'mcedit')
+def DO_mcedit(wb, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'mcedit')
 
 
-def DO_vi(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'vi')
+def DO_vi(wb, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'vi')
 
 
-def DO_vim(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'vim')
+def DO_vim(wb, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'vim')
 
 
-def DO_nano(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'nano')
+def DO_nano(wb, args: Union[list, None] = None) -> RET: return DO_edit(wb, args, editor = 'nano')
 
 
-def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None, external: bool = False) -> RET:
+def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
     """run shell_command lfn|alien: tagged lfns :: download lfn(s) as a temporary file and run shell command on the lfn(s)"""
     if args is None: args = []
     if not args: return RET(1, '', 'No shell command specified')
@@ -2428,7 +2428,7 @@ def DO_run(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None
     return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(tmp_list)}')
 
 
-def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: Union[list, None] = None) -> RET:
+def DO_exec(wb,  args: Union[list, None] = None) -> RET:
     """exec lfn :: download lfn as a temporary file and executed in the shell"""
     if args is None: args = []
     if not args or '-h' in args or '-help' in args:
@@ -2455,7 +2455,7 @@ def DO_exec(wb: websockets.client.WebSocketClientProtocol,  args: Union[list, No
     return RET(1, '', f'There was an error downloading script: {lfn}')
 
 
-def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args: Union[None, list, str] = None) -> RET:
+def DO_syscmd(wb, cmd: str = '', args: Union[None, list, str] = None) -> RET:
     """run system command with all the arguments but all alien: specifications are downloaded to temporaries"""
     global AlienSessionInfo
     if args is None: args = []
@@ -2466,7 +2466,7 @@ def DO_syscmd(wb: websockets.client.WebSocketClientProtocol, cmd: str = '', args
     return runShellCMD(' '.join(new_arg_list))
 
 
-def DO_find2(wb: websockets.client.WebSocketClientProtocol,  args: list) -> RET:
+def DO_find2(wb,  args: list) -> RET:
     if args is None: args = []
     if '-h' in args or '-help' in args:
         msg = (f'''Client-side implementation of find; it will use as default the regex option of server's find.
@@ -2568,7 +2568,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
     return RET(shcmd.returncode, '' if shcmd.stdout is None else shcmd.stdout.strip(), '' if shcmd.stderr is None else shcmd.stderr.strip())
 
 
-def DO_quota(wb: websockets.client.WebSocketClientProtocol, args: Union[None, list] = None) -> RET:
+def DO_quota(wb, args: Union[None, list] = None) -> RET:
     """quota : put togheter both job and file quota"""
     if not args: args = []
     if '-h' in args:
@@ -2637,19 +2637,19 @@ def check_port(address: str, port: Union[str, int]) -> bool:
     return is_open
 
 
-def get_help(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
+def get_help(wb, cmd: str = '') -> RET:
     """Return the help option even for client-side commands"""
     if not cmd: return RET(1, '', 'No command specified for help')
     return ProcessInput(wb, cmd, ['-h'])
 
 
-def get_help_srv(wb: websockets.client.WebSocketClientProtocol, cmd: str = '') -> RET:
+def get_help_srv(wb, cmd: str = '') -> RET:
     """Return the help option for server-side known commands"""
     if not cmd: return RET(1, '', 'No command specified for help request')
     return SendMsg(wb, f'{cmd} -h')
 
 
-def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_help(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args:
@@ -2673,7 +2673,7 @@ def DO_help(wb: websockets.client.WebSocketClientProtocol, args: Union[list, Non
     return get_help(wb, args.pop(0))
 
 
-def DO_user(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_user(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     ret_obj = SendMsg(wb, 'user', args)
@@ -2701,7 +2701,7 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
     return list(os.path.normpath(item[key]) for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
 
 
-def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
+def lfn_list(wb, lfn: str = ''):
     """Completer function : for a given lfn return all options for latest leaf"""
     if not wb: return []
     if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
@@ -2726,7 +2726,7 @@ def lfn_list(wb: websockets.client.WebSocketClientProtocol, lfn: str = ''):
     return list_lfns
 
 
-def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
+def wb_ping(wb) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_delta = float(-999.0)
     init_begin = datetime.datetime.now().timestamp()
@@ -2737,7 +2737,7 @@ def wb_ping(wb: websockets.client.WebSocketClientProtocol) -> float:
     return float(-1)
 
 
-def DO_ping(wb: websockets.client.WebSocketClientProtocol, args: Union[list, None] = None) -> RET:
+def DO_ping(wb, args: Union[list, None] = None) -> RET:
     """Command implementation for ping functionality"""
     if args is None: args = []
     if '-h' in args: return RET(0, "ping <count>\nwhere count is integer")
@@ -3031,7 +3031,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
 
 
 @syncify
-async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
+async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     QUEUE_SIZE = int(2)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
@@ -3085,7 +3085,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
                 if _DEBUG: init_begin = datetime.datetime.now().timestamp()
-                deflateFact = websockets.extensions.permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
+                deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
                 if _DEBUG:
@@ -3100,7 +3100,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     return wb
 
 
-def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
+def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
     wb = None
     nr_tries = 0
@@ -3133,7 +3133,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     return wb
 
 
-def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> Union[websockets.client.WebSocketClientProtocol, None]:
+def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
@@ -3241,7 +3241,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['SEqos'] = DO_SEqos
 
 
-def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
+def getSessionVars(wb):
     """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
     if not wb: return
     global AlienSessionInfo
@@ -3270,7 +3270,7 @@ def getSessionVars(wb: websockets.client.WebSocketClientProtocol):
     if AlienSessionInfo['prevdir'] and (AlienSessionInfo['prevdir'] != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
-def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False) -> websockets.client.WebSocketClientProtocol:
+def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a session to AliEn services, including session globals"""
     global AlienSessionInfo
     init_begin = init_delta = None
@@ -3291,7 +3291,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     return wb
 
 
-def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
+def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
     """Process a command line within shell or from command line mode input"""
     global AlienSessionInfo
     if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
@@ -3358,7 +3358,7 @@ def ProcessInput(wb: websockets.client.WebSocketClientProtocol, cmd: str, args: 
     return ret_obj
 
 
-def ProcessCommandChain(wb: Union[websockets.client.WebSocketClientProtocol, None] = None, cmd_chain: str = '') -> int:
+def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     global AlienSessionInfo, _JSON_OUT, _JSON_OUT_GLOBAL
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
