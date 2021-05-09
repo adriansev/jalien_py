@@ -32,8 +32,8 @@ else:
 setuptools.setup(
     name="alienpy",
     version=get_version_from_file(),
-    author="ALICE JAliEn",
-    author_email="jalien@cern.ch",
+    author="Adrian Sevcenco",
+    author_email="adrian.sevcenco@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -49,8 +49,10 @@ setuptools.setup(
     project_urls={
         "Dev git": "https://github.com/adriansev/jalien_py",
         "Issues": "https://github.com/adriansev/jalien_py/issues",
+        "Changelog": "https://github.com/adriansev/jalien_py/commits/master",
         "Documentation": "https://jalien.docs.cern.ch",
         "CERN Mattermost/JAliEn": "https://mattermost.web.cern.ch/alice/channels/jalien",
+        "ALICE JAliEn group mail": "jalien@cern.ch",
     },
     entry_points = {
         'console_scripts': [
