@@ -14,6 +14,7 @@ import ssl
 import uuid
 import statistics
 import collections
+import multiprocessing as mp
 from typing import Union
 from typing import NamedTuple
 import shlex
@@ -63,16 +64,33 @@ if _HAS_READLINE:
         def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
         rl.set_startup_hook(startup_hook)
 
-
+_XRDVER_MAJOR = None
+_XRDVER_MINOR = None
+# _XRDVER_PATCH = None
+_XRDVER_DATE = None
+_XRDVER_GIT = None  # for cases of git build
 _HAS_XROOTD = False
 try:  # let's fail fast if the xrootd python bindings are not present
     from XRootD import client
     _HAS_XROOTD = True
+
+    xrd_ver_arr = client.__version__.split(".")
+    if len(xrd_ver_arr) > 1:
+        _XRDVER_MAJOR = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
+        _XRDVER_MINOR = xrd_ver_arr[1]
+    else:  # version is not of x.y.z form
+        xrdver_git = xrd_ver_arr[0].split("-")
+        _XRDVER_DATE = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
+        _XRDVER_GIT = xrdver_git[1]
 except ImportError:
     _HAS_XROOTD = False
 
+_HAS_XROOTD_GETDEFAULT = True if (_HAS_XROOTD and hasattr(client, 'EnvGetDefault')) else False
+
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
+
+_NCPU = mp.cpu_count()
 
 REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
@@ -172,6 +190,8 @@ class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     hashtype: str
     streams: int
     cksum: bool
+    timeout: int
+    rate: int
 
 
 class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
@@ -1003,6 +1023,75 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
     return helpstr
 
 
+def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
+    """xrdcp stanalone system command"""
+    if not cmdline: return RET(1, '', '_xrdcp_proc:: empty command line')
+    if timeout is not None: timeout = int(timeout)
+    # --nopbar --posc
+    cmdline_list = shlex.split(f'xrdcp -N -P {cmdline}')
+    except_msg = None
+    try:
+        status = subprocess.run(cmdline_list, encoding = 'utf-8', errors = 'replace', stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    except Exception as e:
+        ex_type, ex_value, ex_traceback = sys.exc_info()
+        except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
+
+    msg_out = '' if status.stdout is None else status.stdout.strip()
+    msg_err = '' if status.stderr is None else status.stderr.strip()
+    if except_msg: msg_err = f'{except_msg}{msg_err}'
+    return (int(status.returncode), msg_out, msg_err)
+
+
+def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = ''):
+    """xrdcp based task that process a copyfile and it's arguments"""
+    if not copy_job: return
+
+    overwrite = xrd_cp_args.overwrite
+    batch = xrd_cp_args.batch
+    sources = xrd_cp_args.sources
+    chunks = xrd_cp_args.chunks
+    chunksize = xrd_cp_args.chunksize
+    makedir = xrd_cp_args.makedir
+    tpc = xrd_cp_args.tpc
+    posc = xrd_cp_args.posc
+    # hashtype = xrd_cp_args.hashtype
+    streams = xrd_cp_args.streams
+    cksum = xrd_cp_args.cksum
+    timeout = xrd_cp_args.timeout
+    rate = xrd_cp_args.rate
+
+    cmdline = f'{copy_job.src} {copy_job.dst}'
+    print(cmdline)
+    print(copy_job)
+
+
+def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
+    """XRootD copy command :: the actual XRootD copy process"""
+    if not _HAS_XROOTD:
+        print_err("XRootD not found")
+        return []
+    if not xrd_cp_args:
+        print_err("cp arguments are not set, XrdCpArgs tuple missing")
+        return []
+
+    overwrite = xrd_cp_args.overwrite
+    batch = xrd_cp_args.batch
+    makedir = xrd_cp_args.makedir
+
+    # ctx = mp.get_context('forkserver')
+    # q = ctx.JoinableQueue()
+    # p = ctx.Process(target=_xrdcp_copyjob, args=(q,))
+    # p.start()
+    # print(q.get())
+    # p.join()
+    for copy_job in job_list:
+        if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
+        xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
+        print(copy_job)
+
+    return []
+
+
 def getEnvelope_lfn(wb, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
     if not wb: return {}
@@ -1522,6 +1611,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     overwrite = bool(False)  # overwrite target if it exists
     posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
     cksum = bool(False)
+    timeout = int(0)
+    rate = int(0)
 
     # xrdcp parameters (used by ALICE tests)
     # http://xrootd.org/doc/man/xrdcp.1.html
@@ -1530,6 +1621,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # Override the application name reported to the server.
     os.environ["XRD_APPNAME"] = "alien.py"
 
+    # TODO these will not work for xrdcp subprocess; the env vars should also be set
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s
 
@@ -1554,6 +1646,11 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+    _use_system_xrdcp = False
+    if '-xrdcp' in xrd_copy_command:
+        _use_system_xrdcp = True
+        xrd_copy_command.remove('-xrdcp')
 
     if '-f' in xrd_copy_command:
         overwrite = True
@@ -1740,9 +1837,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         logging.debug("XRootD copy jobs:")
         for file in xrdcopy_job_list: logging.debug(file)
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, tpc, posc, hashtype, streams, cksum)
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, tpc, posc, hashtype, streams, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout)
+    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(wb, xrdcopy_job_list, my_cp_args, printout)
 
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
@@ -1858,6 +1955,8 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     # hashtype = xrd_cp_args.hashtype
     streams = xrd_cp_args.streams
     cksum = xrd_cp_args.cksum
+    timeout = xrd_cp_args.timeout
+    rate = xrd_cp_args.rate
 
     if streams > 0:
         if streams > 15: streams = 15
@@ -1880,23 +1979,10 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 
     # get xrootd client version
     has_cksum = False
-    xrd_ver_arr = client.__version__.split(".")
-    if len(xrd_ver_arr) > 1:
-        xrdver_major = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
-        if xrdver_major.isdecimal() and int(xrdver_major) >= 5:
-            has_cksum = True
-        elif xrd_ver_arr[1].isdigit():
-            xrdver_minor = int(xrd_ver_arr[1])
-            # xrdver_patch = xrd_ver_arr[2]
-            if xrdver_major == '4' and xrdver_minor > 12: has_cksum = True
-        else:
-            xrdver_minor = xrd_ver_arr[1]
-            has_cksum = True  # minor version is not proper digit, it is assumed a version with this feature
-    else:  # version is not of x.y.z form
-        xrdver_git = xrd_ver_arr[0].split("-")
-        if xrdver_git[0].isdecimal():
-            xrdver_date = int(xrdver_git[0][1:])
-            if xrdver_date > 20200408: has_cksum = True
+    if (_XRDVER_MAJOR and _XRDVER_MAJOR.isdecimal() and int(_XRDVER_MAJOR) >= 5) \
+            or (_XRDVER_MAJOR and _XRDVER_MAJOR == '4' and int(_XRDVER_MINOR) > 12) \
+            or (_XRDVER_DATE and int(_XRDVER_DATE) > 20200408):
+        has_cksum = True
 
     process = client.CopyProcess()
     process.parallel(int(batch))
