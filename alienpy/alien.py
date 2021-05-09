@@ -459,7 +459,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         try:
             nr_tries += 1
             result = __sendmsg(wb, jsonmsg)
-        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK) as e:
+        except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
             logging.exception(e)
             try:
                 wb = InitConnection()
