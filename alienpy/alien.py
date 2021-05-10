@@ -38,6 +38,7 @@ ALIENPY_VERSION_DATE = '20210318_223040'
 ALIENPY_VERSION_STR = '1.2.9'
 ALIENPY_EXECUTABLE = ''
 
+
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", flush = True)
     sys.exit(1)
@@ -71,10 +72,10 @@ _XRDVER_DATE = None
 _XRDVER_GIT = None  # for cases of git build
 _HAS_XROOTD = False
 try:  # let's fail fast if the xrootd python bindings are not present
-    from XRootD import client
+    from XRootD import client as xrd_client
     _HAS_XROOTD = True
 
-    xrd_ver_arr = client.__version__.split(".")
+    xrd_ver_arr = xrd_client.__version__.split(".")
     if len(xrd_ver_arr) > 1:
         _XRDVER_MAJOR = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_MINOR = xrd_ver_arr[1]
@@ -85,7 +86,10 @@ try:  # let's fail fast if the xrootd python bindings are not present
 except ImportError:
     _HAS_XROOTD = False
 
-_HAS_XROOTD_GETDEFAULT = True if (_HAS_XROOTD and hasattr(client, 'EnvGetDefault')) else False
+if _HAS_XROOTD:
+    os.environ["XRD_APPNAME"] = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'  # Override the application name reported to the xrootd server.
+
+_HAS_XROOTD_GETDEFAULT = True if (_HAS_XROOTD and hasattr(xrd_client, 'EnvGetDefault')) else False
 
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
@@ -1618,9 +1622,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # http://xrootd.org/doc/man/xrdcp.1.html
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
-    # Override the application name reported to the server.
-    os.environ["XRD_APPNAME"] = "alien.py"
-
     # TODO these will not work for xrdcp subprocess; the env vars should also be set
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s
@@ -1646,6 +1647,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+    if '-noxrdzip' in xrd_copy_command:
+        os.environ["ALIENPY_NOXRDZIP"] = "nozip"
+        xrd_copy_command.remove('-noxrdzip')
 
     _use_system_xrdcp = False
     if '-xrdcp' in xrd_copy_command:
@@ -1847,11 +1852,12 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
     msg = f"Succesful copy jobs: {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+    if 'ALIENPY_NOXRDZIP' in os.environ: os.environ.pop("ALIENPY_NOXRDZIP")
     return RET(0, msg) if copy_jobs_failed_nr < copy_jobs_nr else RET(1, '', msg)
 
 
 if _HAS_XROOTD:
-    class MyCopyProgressHandler(client.utils.CopyProgressHandler):
+    class MyCopyProgressHandler(xrd_client.utils.CopyProgressHandler):
         """Custom ProgressHandler for XRootD copy process"""
         __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout', 'debug')
 
@@ -1930,9 +1936,9 @@ if _HAS_XROOTD:
         """Sets the given key in the xrootd client environment to the given value.
         Returns false if there is already a shell-imported setting for this key, true otherwise"""
         if str(value).isdigit():
-            return client.EnvPutInt(key, value)
+            return xrd_client.EnvPutInt(key, value)
         else:
-            return client.EnvPutString(key, value)
+            return xrd_client.EnvPutString(key, value)
 
 
 def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
@@ -1960,13 +1966,13 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 
     if streams > 0:
         if streams > 15: streams = 15
-        client.EnvPutInt('SubStreamsPerChannel', streams)
+        xrd_client.EnvPutInt('SubStreamsPerChannel', streams)
 
     cksum_mode = 'none'
     cksum_type = ''
     delete_invalid_chk = False
     if cksum:
-        client.EnvPutInt('ZipMtlnCksum', 1)
+        xrd_client.EnvPutInt('ZipMtlnCksum', 1)
         cksum_mode = 'end2end'
         cksum_type = 'auto'
         delete_invalid_chk = True
@@ -1984,7 +1990,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
             or (_XRDVER_DATE and int(_XRDVER_DATE) > 20200408):
         has_cksum = True
 
-    process = client.CopyProcess()
+    process = xrd_client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
@@ -2006,7 +2012,7 @@ def xrd_stat(pfn: str):
         print_err('python XRootD module cannot be found, the copy process cannot continue')
         return None
     url_components = urlparse(pfn)
-    endpoint = client.FileSystem(url_components.netloc)
+    endpoint = xrd_client.FileSystem(url_components.netloc)
     answer = endpoint.stat(url_components.path)
     return answer
 
@@ -2020,7 +2026,7 @@ def get_pfn_flags(pfn: str):
 def is_pfn_readable(pfn: str) -> bool:
     flags = get_pfn_flags(pfn)
     if flags is None: return False
-    return bool(flags & client.flags.StatInfoFlags.IS_READABLE)
+    return bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE)
 
 
 def DO_pfnstatus(args: Union[list, None] = None) -> RET:
@@ -2040,13 +2046,13 @@ def DO_pfnstatus(args: Union[list, None] = None) -> RET:
     size = response_statinfo.size
     modtime = response_statinfo.modtimestr
     flags = response_statinfo.flags
-    x_bit_set = 1 if flags & client.flags.StatInfoFlags.X_BIT_SET else 0
-    is_dir = 1 if flags & client.flags.StatInfoFlags.IS_DIR else 0
-    other = 1 if flags & client.flags.StatInfoFlags.OTHER else 0
-    offline = 1 if flags & client.flags.StatInfoFlags.OFFLINE else 0
-    posc_pending = 1 if flags & client.flags.StatInfoFlags.POSC_PENDING else 0
-    is_readable = 1 if flags & client.flags.StatInfoFlags.IS_READABLE else 0
-    is_writable = 1 if flags & client.flags.StatInfoFlags.IS_WRITABLE else 0
+    x_bit_set = 1 if flags & xrd_client.flags.StatInfoFlags.X_BIT_SET else 0
+    is_dir = 1 if flags & xrd_client.flags.StatInfoFlags.IS_DIR else 0
+    other = 1 if flags & xrd_client.flags.StatInfoFlags.OTHER else 0
+    offline = 1 if flags & xrd_client.flags.StatInfoFlags.OFFLINE else 0
+    posc_pending = 1 if flags & xrd_client.flags.StatInfoFlags.POSC_PENDING else 0
+    is_readable = 1 if flags & xrd_client.flags.StatInfoFlags.IS_READABLE else 0
+    is_writable = 1 if flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE else 0
     msg = (f'''Size: {size}\n'''
            f'''Modification time: {modtime}\n'''
            f'''Executable bit: {x_bit_set}\n'''
