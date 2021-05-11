@@ -3135,12 +3135,20 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
 
     wb = None
     ctx = None
+    deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
         socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
-            wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl, max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+            wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl,
+                                                      max_queue=QUEUE_SIZE,
+                                                      max_size=MSG_SIZE,
+                                                      ping_interval=PING_INTERVAL,
+                                                      ping_timeout=PING_TIMEOUT,
+                                                      close_timeout=CLOSE_TIMEOUT,
+                                                      extra_headers=[('User-Agent', f'alien.py/{ALIENPY_VERSION_STR}')]
+                                                      )
         except Exception as e:
             msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
             logging.error(msg)
@@ -3177,9 +3185,15 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
                 if _DEBUG: init_begin = datetime.datetime.now().timestamp()
-                deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
-                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact, ],
-                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE, ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT, close_timeout=CLOSE_TIMEOUT)
+                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
+                                              extensions=[deflateFact, ],
+                                              max_queue=QUEUE_SIZE,
+                                              max_size=MSG_SIZE,
+                                              ping_interval=PING_INTERVAL,
+                                              ping_timeout=PING_TIMEOUT,
+                                              close_timeout=CLOSE_TIMEOUT,
+                                              extra_headers=[('User-Agent', f'alien.py/{ALIENPY_VERSION_STR}')]
+                                              )
                 if _DEBUG:
                     init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
