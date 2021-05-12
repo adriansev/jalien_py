@@ -31,6 +31,7 @@ import OpenSSL
 import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
+import zipfile
 
 deque = collections.deque
 
@@ -1011,6 +1012,9 @@ options are the following :
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-noxrdzip: circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
+N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
+If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
 
 for the recursive copy of directories the following options (of the find command) can be used:
 -glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
@@ -1582,7 +1586,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
             if not metafile:
                 print_err(f"Could not create the download metafile for {cpfile.src}")
                 continue
-            if file_in_zip: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
+            if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
             if _DEBUG: print_out(metafile)
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
@@ -1914,6 +1918,19 @@ if _HAS_XROOTD:
                     expire = '0'
                     ret_obj = commit(self.wb, urltoken, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
                     if self.debug: retf_print(ret_obj, 'debug')
+                else:  # isDownload
+                    if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
+                        if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
+                            file_name = os.path.basename(xrdjob.dst)
+                            file_path = os.path.dirname(xrdjob.dst)
+                            zip_name = f'{xrdjob.dst}_{uuid.uuid4()}.zip'
+                            os.replace(xrdjob.dst, zip_name)
+                            with zipfile.ZipFile(zip_name) as myzip:
+                                if file_name in myzip.namelist():
+                                    myzip.extract(file_name, path = file_path)
+                                else:  # the downloaded file is actually a zip file
+                                    os.replace(zip_name, xrdjob.dst)
+                            if os.path.isfile(zip_name): os.remove(zip_name)
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
                     print_out("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message))
