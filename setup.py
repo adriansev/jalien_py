@@ -8,7 +8,7 @@ def get_version_from_file():
         version = f.read().strip()
         f.close()
         return version
-    except:
+    except Exception as e:
         print('Failed to get version from file. Using unknown')
         return 'unknown'
 
