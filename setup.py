@@ -52,7 +52,6 @@ setuptools.setup(
         "Changelog": "https://github.com/adriansev/jalien_py/commits/master",
         "Documentation": "https://jalien.docs.cern.ch",
         "CERN Mattermost/JAliEn": "https://mattermost.web.cern.ch/alice/channels/jalien",
-        "ALICE JAliEn group mail": "jalien@cern.ch",
     },
     entry_points = {
         'console_scripts': [
