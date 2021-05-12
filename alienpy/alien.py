@@ -3136,6 +3136,8 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     wb = None
     ctx = None
     deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
+    headers_list = []
+    headers_list.append(('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}'))
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f"Request connection to : {fHostWSUrl}")
@@ -3147,7 +3149,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                                                       ping_interval=PING_INTERVAL,
                                                       ping_timeout=PING_TIMEOUT,
                                                       close_timeout=CLOSE_TIMEOUT,
-                                                      extra_headers=[('User-Agent', f'alien.py/{ALIENPY_VERSION_STR}')]
+                                                      extra_headers=headers_list
                                                       )
         except Exception as e:
             msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
@@ -3192,7 +3194,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                                               ping_interval=PING_INTERVAL,
                                               ping_timeout=PING_TIMEOUT,
                                               close_timeout=CLOSE_TIMEOUT,
-                                              extra_headers=[('User-Agent', f'alien.py/{ALIENPY_VERSION_STR}')]
+                                              extra_headers=headers_list
                                               )
                 if _DEBUG:
                     init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
