@@ -967,7 +967,7 @@ def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
               f'Python version: {sys.version}\n')
     if _HAS_XROOTD:
-        stdout = f'{stdout}XRootD version: {client.__version__}\nXRootD path: {client.__file__}'
+        stdout = f'{stdout}XRootD version: {xrd_client.__version__}\nXRootD path: {xrd_client.__file__}'
     else:
         stdout = f'{stdout}XRootD version: Not Found!'
     return RET(0, stdout, "")
