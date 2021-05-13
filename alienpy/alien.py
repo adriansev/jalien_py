@@ -1037,17 +1037,27 @@ def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     if timeout is not None: timeout = int(timeout)
     # --nopbar --posc
     cmdline_list = shlex.split(f'xrdcp -N -P {cmdline}')
-    except_msg = None
+    status = exitcode = except_msg = None
+    msg_out = msg_err = ''
     try:
         status = subprocess.run(cmdline_list, encoding = 'utf-8', errors = 'replace', stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    except subprocess.TimeoutExpired:
+        print(f"Expired timeout {timeout}s for: xrdcp {cmdline}")
+        exitcode = int(62)
+    except FileNotFoundError:
+        print(f"xrdcp command not found")
+        exitcode = int(2)
     except Exception as e:
         ex_type, ex_value, ex_traceback = sys.exc_info()
         except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
+        exitcode = int(1)
 
-    msg_out = '' if status.stdout is None else status.stdout.strip()
-    msg_err = '' if status.stderr is None else status.stderr.strip()
+    if status:
+        if status.stdout: msg_out = status.stdout.strip()
+        if status.stderr: msg_err = status.stderr.strip()
+        exitcode = status.returncode
     if except_msg: msg_err = f'{except_msg}{msg_err}'
-    return (int(status.returncode), msg_out, msg_err)
+    return (exitcode, msg_out, msg_err)
 
 
 def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = ''):
