@@ -637,6 +637,13 @@ def cleanup_temp():
 def now_str() -> str: return str(datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
 
 
+def is_help(args: Union[str, list]) -> bool:
+    if not args: return False
+    if isinstance(args, str): args = args.split()
+    help_opts = ('-h', '--h', '-help', '--help')
+    return any(opt in args for opt in help_opts)
+
+
 def retf_session_update(ret_info: RET):
     global AlienSessionInfo
     AlienSessionInfo['exitcode'] = int(ret_info.exitcode)
@@ -823,7 +830,7 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
     """Override cd to add to home and to prev functions"""
     if args is None: args = []
     if isinstance(args, str): args = args.split()
-    if '-h' in args: return get_help_srv(wb, 'cd')
+    if is_help(args): return get_help_srv(wb, 'cd')
     if args:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
         if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)
@@ -883,7 +890,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
                 'popd [-n] [+N | -N]\n'
                 'pushd [-n] [+N | -N | dir]')
 
-    if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or ('-h' in arg_list):
+    if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
         return RET(1, '', help_msg)
 
     sign = None
@@ -1033,34 +1040,14 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 
 def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     """xrdcp stanalone system command"""
-    if not cmdline: return RET(1, '', '_xrdcp_proc:: empty command line')
+    if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')
     if timeout is not None: timeout = int(timeout)
     # --nopbar --posc
-    cmdline_list = shlex.split(f'xrdcp -N -P {cmdline}')
-    status = exitcode = except_msg = None
-    msg_out = msg_err = ''
-    try:
-        status = subprocess.run(cmdline_list, encoding = 'utf-8', errors = 'replace', stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-    except subprocess.TimeoutExpired:
-        print(f"Expired timeout {timeout}s for: xrdcp {cmdline}")
-        exitcode = int(62)
-    except FileNotFoundError:
-        print(f"xrdcp command not found")
-        exitcode = int(2)
-    except Exception as e:
-        ex_type, ex_value, ex_traceback = sys.exc_info()
-        except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
-        exitcode = int(1)
-
-    if status:
-        if status.stdout: msg_out = status.stdout.strip()
-        if status.stderr: msg_err = status.stderr.strip()
-        exitcode = status.returncode
-    if except_msg: msg_err = f'{except_msg}{msg_err}'
-    return (exitcode, msg_out, msg_err)
+    xrdcp_cmdline = f'xrdcp -N -P {cmdline}'
+    return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
 
 
-def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = ''):
+def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> int:
     """xrdcp based task that process a copyfile and it's arguments"""
     if not copy_job: return
 
@@ -1080,7 +1067,7 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
 
     cmdline = f'{copy_job.src} {copy_job.dst}'
     print(cmdline)
-    print(copy_job)
+    return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
 
 def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
@@ -1608,7 +1595,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     global AlienSessionInfo
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
 
-    if not xrd_copy_command or len(xrd_copy_command) < 2 or '-h' in xrd_copy_command or '-help' in xrd_copy_command:
+    if not xrd_copy_command or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
         help_msg = xrdcp_help()
         return RET(0, help_msg)  # EX_USAGE /* command line usage error */
 
@@ -2059,7 +2046,7 @@ def is_pfn_readable(pfn: str) -> bool:
 def DO_pfnstatus(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
-    if not args or '-h' in args or '-help' in args:
+    if not args or is_help(args):
         msg = ('Command format: pfn_status <pfn>\n'
                'It will return all flags reported by the xrootd server - this is direct access to server')
         return RET(0, msg)
@@ -2104,7 +2091,7 @@ def get_pfn_list(wb, lfn: str) -> list:
 def DO_getSE(wb, args: list = None) -> RET:
     if not wb: return []
     if not args: args = []
-    if '-h' in args or '-help' in args:
+    if is_help(args):
         msg = 'Command format: getSE <-id | -name | -srv> identifier_string\nReturn the specified property for the SE specified label'
         return RET(0, msg)
 
@@ -2174,7 +2161,7 @@ def get_qos(wb, se_str: str) -> str:
 
 def DO_SEqos(wb, args: list = None) -> RET:
     if not wb: return []
-    if not args or '-h' in args or '-help' in args:
+    if not args or is_help(args):
         msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be ommited and capitalization does not matter)'
         return RET(0, msg)
     return RET(0, get_qos(wb, args[0]))
@@ -2285,7 +2272,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     global AlienSessionInfo
     if args is None: args = []
-    if '-h' in args:
+    if is_help(args):
         msg_help = ('usage: queryML <ML node>\n'
                     'time range can be specified for a parameter:\n'
                     '/[starting time spec]/[ending time spec]/parameter\n'
@@ -2329,7 +2316,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
 def DO_submit(wb, args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     if not args or args is None: args = ['-h']
-    if '-h' in args: return get_help_srv(wb, 'submit')
+    if is_help(args): return get_help_srv(wb, 'submit')
     if args[0].startswith("file:"):
         msg = ("Specifications as where to upload the jdl to be submitted and with what parameters are not yet defined"
                "Upload first the jdl to a suitable location (with a safe number of replicas) and then submit")
@@ -2349,12 +2336,10 @@ def DO_ps(wb, args: Union[list, None] = None) -> RET:
 
 
 def DO_cat(wb, args: Union[list, None] = None) -> RET:
-    """cat lfn :: download lfn as a temporary file and cat"""
-    if not args or args is None: args = ['-h']
-    if '-h' in args: return get_help_srv(wb, 'cat')
-    tmp = download_tmp(wb, args[-1])
-    if tmp and os.path.isfile(tmp): return runShellCMD(f'cat {tmp}')
-    return RET(1, '', f'Could not download {args[-1]}')
+    """cat lfn :: apply cat on a downloaded lfn as a temporary file"""
+    args.insert(0, '-noout')  # keep app open, do not terminate
+    args.insert(0, 'cat')
+    return DO_run(wb, args, external = True)
 
 
 def DO_less(wb, args: Union[list, None] = None) -> RET:
@@ -2373,7 +2358,7 @@ def DO_more(wb, args: Union[list, None] = None) -> RET:
 
 def DO_pfn(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    if '-h' in args:
+    if is_help(args):
         msg = 'Command format : pfn [lfn]\nIt will print only the list of associtated pfns (simplified form of whereis)'
         return RET(0, msg)
     cmd = 'whereis'
@@ -2440,7 +2425,7 @@ def DO_token(wb, args: Union[list, None] = None) -> RET:
 
 def DO_token_init(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    if len(args) > 0 and args[0] in ['-h', 'help', '-help']:
+    if len(args) > 0 and is_help(args):
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
         return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'usage: token-init'))
     wb = token_regen(wb, args)
@@ -2451,7 +2436,7 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
 def DO_edit(wb, args: Union[list, None] = None, editor: str = '') -> RET:
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
     if not args or args is None: args = ['-h']
-    if '-h' in args:
+    if is_help(args):
         msg = """Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs
 -datebck : the backup filename will be date based
 N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exists)"""
@@ -2504,7 +2489,7 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
     """run shell_command lfn|alien: tagged lfns :: download lfn(s) as a temporary file and run shell command on the lfn(s)"""
     if args is None: args = []
     if not args: return RET(1, '', 'No shell command specified')
-    if '-h' in args or len(args) == 1:
+    if is_help(args) or len(args) == 1:
         msg_last = ('Command format: shell_command arguments lfn\n'
                     'N.B.!! the lfn must be the last element of the command!!\n'
                     'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
@@ -2514,7 +2499,7 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
                     '-noout : will not capture output, the actual application can be used')
 
         if external:
-            ret_obj = runShellCMD(f'{args[0]} -h')
+            ret_obj = runShellCMD(f'{args[0]} -h', captureout = True, do_shell = True)
             return ret_obj._replace(out = f'{ret_obj.out}\n{msg_last}')
         msg = ('Command format: run shell_command arguments lfn\n'
                'the lfn must be the last element of the command\n'
@@ -2543,14 +2528,14 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
     cmd = " ".join(args)
     files = " ".join(tmp_list)
     if tmp_list and all(os.path.isfile(tmp) for tmp in tmp_list):
-        return runShellCMD(f'{cmd} {files}', capture_out)
+        return runShellCMD(f'{cmd} {files}', capture_out, do_shell = True)
     return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(tmp_list)}')
 
 
 def DO_exec(wb,  args: Union[list, None] = None) -> RET:
     """exec lfn :: download lfn as a temporary file and executed in the shell"""
     if args is None: args = []
-    if not args or '-h' in args or '-help' in args:
+    if not args or is_help(args):
         msg = ('Command format: exec lfn list_of_arguments\n'
                'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                'for working within application use <edit>')
@@ -2582,12 +2567,12 @@ def DO_syscmd(wb, cmd: str = '', args: Union[None, list, str] = None) -> RET:
     if not cmd: return RET(1, '', 'No system command specified!')
     new_arg_list = [download_tmp(wb, arg) if arg.startswith('alien:') else arg for arg in args]
     new_arg_list.index(0, cmd)
-    return runShellCMD(' '.join(new_arg_list))
+    return runShellCMD(' '.join(new_arg_list), captureout = True, do_shell = True)
 
 
 def DO_find2(wb,  args: list) -> RET:
     if args is None: args = []
-    if '-h' in args or '-help' in args:
+    if is_help(args):
         msg = (f'''Client-side implementation of find; it will use as default the regex option of server's find.
 Command formant: find2 <options> <directory>
 -select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
@@ -2669,28 +2654,39 @@ Command formant: find2 <options> <directory>
     return SendMsg(wb, 'find', find_args, opts = 'nokeys')
 
 
-def runShellCMD(INPUT: str = '', captureout: bool = True) -> RET:
+def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
+    args = sh_cmd if do_shell else shlex.split(sh_cmd)
+    capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
+    status = exitcode = except_msg = None
+    msg_out = msg_err = ''
     try:
-        if captureout:
-            args = sh_cmd
-            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell=True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)  # pylint: disable=subprocess-run-check
-        else:
-            args = shlex.split(sh_cmd)
-            shcmd = subprocess.run(args, encoding = 'utf-8', errors = 'replace')  # pylint: disable=subprocess-run-check
+        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check
+    except subprocess.TimeoutExpired:
+        print_err(f"Expired timeout: {timeout} for: {sh_cmd}")
+        exitcode = int(62)
+    except FileNotFoundError:
+        print_err(f"Command not found: {sh_cmd}")
+        exitcode = int(2)
     except Exception as e:
-        msg = 'Shell process threw this:\n{0}'.format(e)
-        logging.error(msg)
-        return RET(1, '', msg)
-    return RET(shcmd.returncode, '' if shcmd.stdout is None else shcmd.stdout.strip(), '' if shcmd.stderr is None else shcmd.stderr.strip())
+        ex_type, ex_value, ex_traceback = sys.exc_info()
+        except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
+        exitcode = int(1)
+
+    if status:
+        if status.stdout: msg_out = status.stdout.strip()
+        if status.stderr: msg_err = status.stderr.strip()
+        exitcode = status.returncode
+    if except_msg: msg_err = f'{except_msg}{msg_err}'
+    return RET(exitcode, msg_out, msg_err)
 
 
 def DO_quota(wb, args: Union[None, list] = None) -> RET:
     """quota : put togheter both job and file quota"""
     if not args: args = []
-    if '-h' in args:
+    if is_help(args):
         msg = ('Client-side implementation that make use of server\'s jquota and fquota (hidden by this implementation)\n'
                'Command format: quota [user]\n'
                'if [user] is not provided, it will be assumed the current user')
@@ -2804,7 +2800,7 @@ def DO_prompt(args: Union[list, None] = None) -> RET:
     """Add local dir and date information to the alien.py shell prompt"""
     global AlienSessionInfo
     if args is None: args = []
-    if not args or '-h' in args:
+    if not args or is_help(args):
         msg = "Toggle the following in the command prompt : <date> for date information and <pwd> for local directory"
         return RET(0, msg)
 
@@ -2859,7 +2855,7 @@ def wb_ping(wb) -> float:
 def DO_ping(wb, args: Union[list, None] = None) -> RET:
     """Command implementation for ping functionality"""
     if args is None: args = []
-    if '-h' in args: return RET(0, "ping <count>\nwhere count is integer")
+    if is_help(args): return RET(0, "ping <count>\nwhere count is integer")
 
     if len(args) > 0 and args[0].isdigit():
         count = int(args[0])
@@ -2892,8 +2888,7 @@ def get_token_names() -> tuple:
 
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Delete the token{cert,key}.pem files")
+    if len(args) > 0 and is_help(args): return RET(0, "Delete the token{cert,key}.pem files")
     tokencert, tokenkey = get_token_names()
     if os.path.exists(tokencert): os.remove(tokencert)
     if os.path.exists(tokenkey): os.remove(tokenkey)
@@ -2945,15 +2940,13 @@ def CertInfo(fname: str) -> RET:
 def DO_certinfo(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     cert, key = get_files_cert()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print user certificate information", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Print user certificate information", "")
     return CertInfo(cert)
 
 
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print token certificate information", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
     tokencert, tokenkey = get_token_filenames()
     return CertInfo(tokencert)
 
@@ -2996,15 +2989,13 @@ def CertVerify(fname: str) -> RET:
 def DO_certverify(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     cert, key = get_files_cert()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
     return CertVerify(cert)
 
 
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print token certificate information", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
     tokencert, tokenkey = get_token_filenames()
     return CertVerify(tokencert)
 
@@ -3038,16 +3029,14 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
 def DO_certkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     cert, key = get_files_cert()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print user certificate information", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Check match of user cert with key cert", "")
     return CertKeyMatch(cert, key)
 
 
 def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     cert, key = get_token_filenames()
-    if len(args) > 0 and (args[0] in ['-h', 'help', '-help']):
-        return RET(0, "Print user certificate information", "")
+    if len(args) > 0 and is_help(args): return RET(0, "Check match of user token with key token", "")
     return CertKeyMatch(cert, key)
 
 
@@ -3355,6 +3344,9 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
     del AlienSessionInfo['cmd2func_map_srv']['user']
 
+    AlienSessionInfo['cmd2func_map_client']['cat'] = DO_cat
+    del AlienSessionInfo['cmd2func_map_srv']['cat']
+
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
     AlienSessionInfo['cmd2func_map_client']['token-init'] = DO_token_init
@@ -3374,6 +3366,8 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['vi'] = DO_vi
     AlienSessionInfo['cmd2func_map_client']['vim'] = DO_vim
     AlienSessionInfo['cmd2func_map_client']['SEqos'] = DO_SEqos
+    AlienSessionInfo['cmd2func_map_client']['less'] = DO_less
+    AlienSessionInfo['cmd2func_map_client']['more'] = DO_more
 
 
 def getSessionVars(wb):
@@ -3449,7 +3443,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     time_begin = msg_timing = None
 
     if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
-        if not args or '-h' in args: return RET(0, 'Command format: time command arguments')
+        if not args or is_help(args): return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
         time_begin = datetime.datetime.now().timestamp()
 
