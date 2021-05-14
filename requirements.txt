@@ -1,5 +1,5 @@
 gnureadline
 async-stagger
-websockets
+websockets < 10.0.0
 pyOpenSSL
 xrootd
