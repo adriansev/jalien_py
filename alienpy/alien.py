@@ -1899,7 +1899,7 @@ if _HAS_XROOTD:
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
-                    os.popen(f'mv {meta_path} {os.getcwd()}/')
+                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
                 else:
                     os.remove(meta_path)  # remove the created metalink
             if results['status'].ok:
