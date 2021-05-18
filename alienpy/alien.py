@@ -858,6 +858,19 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     return val
 
 
+def rm_item(target: list, item):
+    """Remove inplace all instances of item from list"""
+    target[:] = [x for x in target if x != item]
+
+
+def rm_item_pair(target: list, item):
+    """Remove inplace all instances of item and item+1 from list"""
+    for x in target:
+        if x == item:
+            target.pop(target.index(x) + 1)
+            target.pop(target.index(x))
+
+
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
     """dirs"""
     return DO_path_stack(wb, 'dirs', args)
