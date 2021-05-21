@@ -858,17 +858,22 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     return val
 
 
-def rm_item(target: list, item):
+def get_arg(target: list, item) -> bool:
     """Remove inplace all instances of item from list"""
+    len_begin = len(target)
     target[:] = [x for x in target if x != item]
+    len_end = len(target)
+    return len_begin != len_end
 
 
-def rm_item_pair(target: list, item):
+def get_arg_value(target: list, item):
     """Remove inplace all instances of item and item+1 from list"""
+    val = None
     for x in target:
         if x == item:
-            target.pop(target.index(x) + 1)
+            val = target.pop(target.index(x) + 1)
             target.pop(target.index(x))
+    return val
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1324,6 +1329,7 @@ def name2regex(pattern_regex: str = '') -> str:
     if not pattern_regex: return ''
     translated_pattern_regex = ''
     re_all = '.*'
+    re_all_end = '[^/]*'
     verbs = ('begin', 'contain', 'ends', 'ext')
     pattern_list = pattern_regex.split('_')
     if any(verb in pattern_regex for verb in verbs):
@@ -1341,18 +1347,20 @@ def name2regex(pattern_regex: str = '') -> str:
             if tokenstr == 'ends': list_ends.append(KV(tokenstr, pattern_list[idx + 1]))
             if tokenstr == 'ext': list_ext.append(KV(tokenstr, pattern_list[idx + 1]))
 
-        if list_begin: translated_pattern_regex = f'{re_all}{list_begin[0].val}'  # first string after the last slash (last match explude /)
-        for patt in list_contain: translated_pattern_regex = f'{translated_pattern_regex}{re_all}{patt.val}'
-        for patt in list_ends:
-            translated_pattern_regex = f'{translated_pattern_regex}{re_all}{patt.val}'
+        if list_begin:
+            translated_pattern_regex = re_all + '/' + f'{list_begin[0].val}{re_all_end}'  # first string after the last slash (last match exclude /)
+        for patt in list_contain:
+            if not list_begin: translated_pattern_regex = f'{re_all}'
+            translated_pattern_regex = f'{translated_pattern_regex}{patt.val}{re_all_end}'
+        if list_ends:
+            translated_pattern_regex = f'{translated_pattern_regex}{list_ends[0].val}{re_all_end}'
+        if list_ext:
+            translated_pattern_regex = translated_pattern_regex + "\\." + list_ext[0].val
+        if translated_pattern_regex:
             if list_ext:
-                translated_pattern_regex = f'{translated_pattern_regex}\\.{list_ext[0].val}'
+                translated_pattern_regex = f'{translated_pattern_regex}' + '$'
             else:
-                translated_pattern_regex = f'{translated_pattern_regex}{re_all}'
-
-        for path in list_ext:
-            if not list_ends:  # we already added the ext in list_ends
-                translated_pattern_regex = f'{translated_pattern_regex}{list_ext[0].val}'
+                translated_pattern_regex = f'{translated_pattern_regex}{re_all_end}' + '$'
     return translated_pattern_regex
 
 
@@ -1369,9 +1377,17 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
             logging.error(f"list_files_grid:: {pattern} failed to re.compile")
             return []
 
+    # remove either default or not useful (-f API flag) from additional args
+    find_args_list = find_args.split() if find_args else None
+    get_arg(find_args_list, '-a')
+    get_arg(find_args_list, '-s')
+    get_arg(find_args_list, '-f')
+    get_arg(find_args_list, '-d')
+    get_arg(find_args_list, '-w')
+    get_arg(find_args_list, '-wh')
+
     find_args_default = ['-a', '-s']
     if is_regex: find_args_default.insert(0, '-r')
-    find_args_list = find_args.split() if find_args else None
     if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
     # TODO this is the place for processing custom arguments
     find_args_default.append(dir)
@@ -1662,148 +1678,100 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
-    if '-noxrdzip' in xrd_copy_command:
-        os.environ["ALIENPY_NOXRDZIP"] = "nozip"
-        xrd_copy_command.remove('-noxrdzip')
+    if get_arg(xrd_copy_command, '-noxrdzip'): os.environ["ALIENPY_NOXRDZIP"] = "nozip"
 
-    _use_system_xrdcp = False
-    if '-xrdcp' in xrd_copy_command:
-        _use_system_xrdcp = True
-        xrd_copy_command.remove('-xrdcp')
-
-    if '-f' in xrd_copy_command:
-        overwrite = True
-        xrd_copy_command.remove('-f')
-
-    if '-P' in xrd_copy_command:
-        posc = True
-        xrd_copy_command.remove('-P')
-
-    if '-cksum' in xrd_copy_command:
-        cksum = True
-        xrd_copy_command.remove('-cksum')
+    _use_system_xrdcp = get_arg(xrd_copy_command, '-xrdcp')
+    overwrite = get_arg(xrd_copy_command, '-f')
+    posc = get_arg(xrd_copy_command, '-P')
+    cksum = get_arg(xrd_copy_command, '-cksum')
 
     tpc = 'none'
-    if '-tpc' in xrd_copy_command:
-        tpc_idx = xrd_copy_command.index('-tpc')
-        tpc_arg = int(xrd_copy_command.pop(tpc_idx + 1))
-        xrd_copy_command.pop(tpc_idx)
-        return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
+    tpc_arg = get_arg_value(xrd_copy_command, '-tpc')
+    if tpc_arg: return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
 
-    if '-y' in xrd_copy_command:
-        y_idx = xrd_copy_command.index('-y')
-        print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
-        # sources = int(xrd_copy_command.pop(y_idx + 1))
-        xrd_copy_command.pop(y_idx + 1)
-        xrd_copy_command.pop(y_idx)
+    y_arg_val = get_arg_value(xrd_copy_command, '-y')
+    # sources = int(y_arg_val)
+    if y_arg_val: print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
 
-    if '-S' in xrd_copy_command:
-        s_idx = xrd_copy_command.index('-S')
-        streams = int(xrd_copy_command.pop(s_idx + 1))
+    streams_arg = get_arg_value(xrd_copy_command, '-S')
+    if streams_arg:
+        streams = int(streams)
         if (streams > 15): streams = 15
-        xrd_copy_command.pop(s_idx)
 
     batch = 8  # a nice enough default
-    if '-T' in xrd_copy_command:
-        batch_idx = xrd_copy_command.index('-T')
-        batch = int(xrd_copy_command.pop(batch_idx + 1))
-        xrd_copy_command.pop(batch_idx)
+    batch_arg = get_arg_value(xrd_copy_command, '-T')
+    if batch_arg: batch = int(batch_arg)
 
-    if '-chunks' in xrd_copy_command:
-        chunks_nr_idx = xrd_copy_command.index('-chunks')
-        chunks = int(xrd_copy_command.pop(chunks_nr_idx + 1))
-        xrd_copy_command.pop(chunks_nr_idx)
+    chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
+    if chunks_arg: chunks = int(chunks_arg)
 
-    if '-chunksz' in xrd_copy_command:
-        chksz_idx = xrd_copy_command.index('-chunksz')
-        chunksize = int(xrd_copy_command.pop(chksz_idx + 1))
-        xrd_copy_command.pop(chksz_idx)
+    chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
+    if chunksz_arg: chunksize = int(chunksz_arg)
 
-    if '-timeout' in xrd_copy_command:
-        timeout_idx = xrd_copy_command.index('-timeout')
-        timeout = xrd_copy_command.pop(timeout_idx + 1)  # do not convert to int as env is string
-        xrd_copy_command.pop(timeout_idx)
-        XRD_EnvPut('CPTimeout', int(timeout))
+    timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
+    if timeout_arg:
+        timeout = int(timeout_arg)
+        XRD_EnvPut('CPTimeout', timeout)
 
-    if '-ratethreshold' in xrd_copy_command:
-        rate_idx = xrd_copy_command.index('-ratethreshold')
-        rate = xrd_copy_command.pop(rate_idx + 1)  # do not convert to int as env is string
-        xrd_copy_command.pop(rate_idx)
-        XRD_EnvPut('XRateThreshold', int(rate))
+    rate_arg = get_arg_value(xrd_copy_command, '-ratethreshold')
+    if rate_arg:
+        rate = int(rate_arg)
+        XRD_EnvPut('XRateThreshold', rate)
+
+    # options for envelope request
+    strictspec = get_arg(xrd_copy_command, '-strictspec')
+    httpurl = get_arg(xrd_copy_command, '-http')
+
+    # keep this many path components into destination filepath
+    parent = int(0)
+    parent_arg = get_arg_value(xrd_copy_command, '-parent')
+    if parent_arg: parent = int(parent_arg)
 
     # find options for recursive copy of directories
     find_args = []
-    parent = int(0)
-    if '-parent' in xrd_copy_command:
-        parent_idx = xrd_copy_command.index('-parent')
-        parent = int(xrd_copy_command.pop(parent_idx + 1))
-        xrd_copy_command.pop(parent_idx)
+    if get_arg(xrd_copy_command, '-v'): print_out("Verbose mode not implemented, ignored; enable debugging with ALIENPY_DEBUG=1")
+    if get_arg(xrd_copy_command, '-a'): print_out("-a is enabled as default")
+    if get_arg(xrd_copy_command, '-s'): print_out("-s is enabled as default")
+    if get_arg(xrd_copy_command, '-f'): print_out("-f API flag not usefull for copy operations")
+    if get_arg(xrd_copy_command, '-w'): print_out("-w flag not usefull for copy operations")
+    if get_arg(xrd_copy_command, '-wh'): print_out("-wh flag not usefull for copy operations")
+    if get_arg(xrd_copy_command, '-d'): print_out("-d flag not usefull for copy operations")
 
-    if '-a' in xrd_copy_command:
-        find_args.append('-a')
-        xrd_copy_command.remove('-a')
+    qid = get_arg_value(xrd_copy_command, '-j')
+    if qid: find_args.extend(['-j', qid])
 
-    if '-v' in xrd_copy_command:
-        # print("Verbose mode not implemented, ignored")
-        xrd_copy_command.remove('-v')
+    files_limit = get_arg_value(xrd_copy_command, '-l')
+    if files_limit: find_args.extend(['-l', files_limit])
 
-    if '-j' in xrd_copy_command:
-        qid_idx = xrd_copy_command.index('-j')
-        find_args.append('-j')
-        find_args.append(xrd_copy_command.pop(qid_idx + 1))
-        xrd_copy_command.pop(qid_idx)
-
-    if '-l' in xrd_copy_command:
-        return_nr_idx = xrd_copy_command.index('-l')
-        find_args.append('-l')
-        find_args.append(xrd_copy_command.pop(return_nr_idx + 1))
-        xrd_copy_command.pop(return_nr_idx)
-
-    if '-o' in xrd_copy_command:
-        skip_nr_idx = xrd_copy_command.index('-o')
-        find_args.append('-o')
-        find_args.append(xrd_copy_command.pop(skip_nr_idx + 1))
-        xrd_copy_command.pop(skip_nr_idx)
-
-    strictspec = False
-    if '-strictspec' in xrd_copy_command:
-        strictspec = True
-        xrd_copy_command.remove('-strictspec')
-
-    httpurl = False
-    if '-http' in xrd_copy_command:
-        httpurl = True
-        xrd_copy_command.remove('-http')
+    offset = get_arg_value(xrd_copy_command, '-o')
+    if offset: find_args.extend(['-o', offset])
 
     pattern = '*'
     pattern_regex = None
     use_regex = False
     filtering_enabled = False
 
-    if '-glob' in xrd_copy_command:
-        select_idx = xrd_copy_command.index('-glob')
-        pattern = xrd_copy_command.pop(select_idx + 1)
-        xrd_copy_command.pop(select_idx)
+    glob_arg = get_arg_value(xrd_copy_command, '-glob')
+    if glob_arg:
+        pattern = glob_arg
         use_regex = False
         filtering_enabled = True
 
-    if '-select' in xrd_copy_command:
+    select_arg = get_arg_value(xrd_copy_command, '-select')
+    if select_arg:
         if filtering_enabled:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
-        select_idx = xrd_copy_command.index('-select')
-        pattern_regex_arg = xrd_copy_command.pop(select_idx + 1)
-        xrd_copy_command.pop(select_idx)
+        pattern_regex_arg = select_arg
         use_regex = True
         filtering_enabled = True
 
-    if '-name' in xrd_copy_command:
+    name_arg = get_arg_value(xrd_copy_command, '-name')
+    if name_arg:
         if filtering_enabled:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
-        name_idx = xrd_copy_command.index('-name')
-        pattern_regex_arg = xrd_copy_command.pop(name_idx + 1)
-        xrd_copy_command.pop(name_idx)
+        pattern_regex_arg = name_arg
         use_regex = True
         filtering_enabled = True
 
@@ -1817,12 +1785,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     copy_lfnlist = []  # list of lfn copy tasks
     input_file = ''  # input file with <source, destination> pairs
 
-    if '-input' in xrd_copy_command:
-        input_idx = xrd_copy_command.index('-input')
-        input_file = xrd_copy_command.pop(input_idx + 1)
-        xrd_copy_command.pop(input_idx)
+    inputfile_arg = get_arg_value(xrd_copy_command, '-input')
+    if inputfile_arg:
+        input_file = inputfile_arg
         if not os.path.isfile(input_file): return RET(1, '', f'Input file {input_file} not found')
-
         with open(input_file) as arglist_file:
             for line in arglist_file:
                 if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
@@ -1947,10 +1913,10 @@ if _HAS_XROOTD:
             else:
                 if xrdjob.isUpload:
                     self.copy_failed_list.append(xrdjob.token_request)
-                    print_out(f"Failed upload: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas")
+                    print_out(f"Failed upload ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas")
                 else:
                     self.copy_failed_list.append(xrdjob.lfn)
-                    print_out(f"Failed download: {xrdjob.lfn}")
+                    print_out(f"Failed download ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}: {xrdjob.lfn}")
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
@@ -2112,15 +2078,10 @@ def DO_getSE(wb, args: list = None) -> RET:
     if ret_obj.exitcode != 0: return ret_obj
 
     arg_select = None
-    if '-id' in args:
-        args.remove('-id')
-        arg_select = 'id'
-    if '-name' in args:
-        args.remove('-name')
-        arg_select = 'name'
-    if '-srv' in args:
-        args.remove('-srv')
-        arg_select = 'srv'
+    if get_arg(args, '-id'): arg_select = 'id'
+    if get_arg(args, '-name'): arg_select = 'name'
+    if get_arg(args, '-srv'): arg_select = 'srv'
+    if arg_select is None: arg_select = 'name'
 
     if not args:
         se_list = [f"{se['seNumber']}\t{se['seName']}\t{se['endpointUrl'].replace('root://','')}" for se in ret_obj.ansdict["results"]]
@@ -2460,9 +2421,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
             print_out('EDITOR env variable not set, we will fallback to mcedit (no check if exists)')
             editor = 'mcedit -u'
     versioned_backup = False
-    if '-datebck' in args:
-        args.remove('-datebck')
-        versioned_backup = True
+    if get_arg(args, '-datebck'): versioned_backup = True
     lfn = expand_path_grid(wb, args[-1])  # assume that the last argument is the lfn
     # check for valid (single) specifications delimiter
     count_tokens = collections.Counter(lfn)
@@ -2523,14 +2482,8 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
                '-noout : will not capture output, the actual application can be used')
         return RET(0, msg)
 
-    overwrite = False
-    if '-force' in args:
-        args.remove('-force')
-        overwrite = True
-    capture_out = True
-    if '-noout' in args:
-        args.remove('-noout')
-        capture_out = False
+    overwrite = get_arg(args, '-force')
+    capture_out = get_arg(args, '-noout')
 
     list_of_lfns = [arg for arg in args if 'alien:' in arg]
     if not list_of_lfns: list_of_lfns = [args.pop(-1)]
@@ -2554,14 +2507,8 @@ def DO_exec(wb,  args: Union[list, None] = None) -> RET:
                'for working within application use <edit>')
         return RET(0, msg)
 
-    overwrite = False
-    if '-force' in args:
-        args.remove('-force')
-        overwrite = True
-    capture_out = True
-    if '-noout' in args:
-        args.remove('-noout')
-        capture_out = False
+    overwrite = get_arg(args, '-force')
+    capture_out = get_arg(args, '-noout')
 
     lfn = args.pop(0)  # the script to be executed
     opt_args = " ".join(args)
@@ -2586,84 +2533,65 @@ def DO_syscmd(wb, cmd: str = '', args: Union[None, list, str] = None) -> RET:
 def DO_find2(wb,  args: list) -> RET:
     if args is None: args = []
     if is_help(args):
-        msg = (f'''Client-side implementation of find; it will use as default the regex option of server's find.
+        msg_client = (f'''Client-side implementation of find, it contain the following helpers.
 Command formant: find2 <options> <directory>
 -select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -name <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
 -name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive e.g.:
 -name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
--d  : return also the directories
--w[h] : long format, optionally human readable file sizes
--a : show hidden .* files
--j <queue_id> : filter files created by a certain job
--l <count> : limit the number of returned entries to at most the indicated value
--o <offset> : skip over the first <offset> results
-        ''')
-        return RET(0, msg)
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}\n
+The server options:''')
+        srv_answ = get_help_srv(wb, 'find')
+        msg_srv = srv_answ.out
+        return RET(0, f'{msg_client}\n{msg_srv}')
 
-    find_args = []
-    if '-a' in args:
-        find_args.append('-a')
-        args.remove('-a')
+    find_args = ['-a', '-s']
+    get_arg(args, '-a')
+    get_arg(args, '-s')
+    if get_arg(args, '-v'): print_out("Verbose mode not implemented, ignored")
 
-    if '-r' in args:
-        args.remove('-r')
-
-    if '-d' in args:
-        find_args.append('-d')
-        args.remove('-d')
-
-    if '-s' in args:
-        args.remove('-s')
-
-    if '-v' in args:
-        # print_out("Verbose mode not implemented, ignored")
-        args.remove('-v')
-
-    if '-j' in args:
-        qid_idx = args.index('-j')
-        find_args.append('-j')
-        find_args.append(args.pop(qid_idx + 1))
-        args.pop(qid_idx)
-
-    if '-l' in args:
-        return_nr_idx = args.index('-l')
-        find_args.append('-l')
-        find_args.append(args.pop(return_nr_idx + 1))
-        args.pop(return_nr_idx)
-
-    if '-o' in args:
-        skip_nr_idx = args.index('-o')
-        find_args.append('-o')
-        find_args.append(args.pop(skip_nr_idx + 1))
-        args.pop(skip_nr_idx)
-
-    pattern_regex = '.*'  # default regex selection for find
+    pattern = '*'
+    pattern_regex = None
+    use_regex = False
     filtering_enabled = False
-    if '-select' in args:
-        select_idx = args.index('-select')
-        pattern_regex = args.pop(select_idx + 1)
-        args.pop(select_idx)
+
+    glob_arg = get_arg_value(args, '-glob')
+    if glob_arg:
+        pattern = glob_arg
+        use_regex = False
         filtering_enabled = True
 
-    if '-name' in args:
-        if filtering_enabled: return RET(22, '', "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)")  # EINVAL /* Invalid argument */
-        name_idx = args.index('-name')
-        pattern_regex = args.pop(name_idx + 1)
-        args.pop(name_idx)
+    select_arg = get_arg_value(args, '-select')
+    if select_arg:
+        if filtering_enabled:
+            msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
+            return RET(22, '', msg)  # EINVAL /* Invalid argument */
+        pattern_regex = select_arg
+        use_regex = True
         filtering_enabled = True
 
-        pattern_regex = name2regex(pattern_regex)
-        if not pattern_regex: return RET(22, '', "No selection verbs were recognized! usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext")  # EINVAL /* Invalid argument */
+    name_arg = get_arg_value(args, '-name')
+    if name_arg:
+        if filtering_enabled:
+            msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
+            return RET(22, '', msg)  # EINVAL /* Invalid argument */
+        pattern_regex_arg = name_arg
+        use_regex = True
+        filtering_enabled = True
 
-    try:
-        re.compile(pattern_regex)
-    except re.error:
-        return RET(64, '', "regex argument of -select or -name option is invalid!!")  # EX_USAGE /* command line usage error */
+        pattern_regex = name2regex(pattern_regex_arg)
+        if use_regex and not pattern_regex:
+            msg = ("No selection verbs were recognized!"
+                   "usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
+                   f"The invalid pattern was: {pattern_regex_arg}")
+            return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
-    if len(args) > 1: return RET(1, '', f'Too many elements remained in arg list, it should be just the directory\nArg list: {args}')
-    find_args.extend(['-r', '-s', expand_path_grid(wb, args[0]), pattern_regex])
+    if use_regex:
+        find_args.insert(0, '-r')
+        pattern = pattern_regex
+    start_location = args[-1] if filtering_enabled else args[-2]
+    find_args.append(expand_path_grid(wb, start_location))
+    find_args.append(pattern)
     return SendMsg(wb, 'find', find_args, opts = 'nokeys')
 
 
@@ -3466,18 +3394,10 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         return ret_obj
 
     opts = ''  # let's proccess special server args
-    if '-nokeys' in args:
-        args.remove('-nokeys')
-        opts = f'{opts} nokeys'
-    if '-nomsg' in args:
-        args.remove('-nomsg')
-        opts = f'{opts} nomsg'
-    if '-showkeys' in args:
-        args.remove('-showkeys')
-        opts = f'{opts} showkeys'
-    if '-showmsg' in args:
-        args.remove('-showmsg')
-        opts = f'{opts} showmsg'
+    if get_arg(args, '-nokeys'): opts = f'{opts} nokeys'
+    if get_arg(args, '-nomsg'): opts = f'{opts} nomsg'
+    if get_arg(args, '-showkeys'): opts = f'{opts} showkeys'
+    if get_arg(args, '-showmsg'): opts = f'{opts} showmsg'
 
     # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
     if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in clien-side implementations list
@@ -3532,10 +3452,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         cmd = args.pop(0)
 
         _JSON_OUT = _JSON_OUT_GLOBAL  # if globally enabled then enable per command
-        if '-json' in args:  # if enabled for this command
-            args.remove('-json')
-            _JSON_OUT = True
-
+        if get_arg(args, '-json'): _JSON_OUT = True  # if enabled for this command
         print_opts = 'debug json' if _JSON_OUT else 'debug'
         if _JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
 
@@ -3624,8 +3541,7 @@ def main():
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv[0])
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
 
-    if '-json' in sys.argv:
-        sys.argv.remove('-json')
+    if get_arg(sys.argv, '-json'):
         _JSON_OUT = True
         _JSON_OUT_GLOBAL = True
 
