@@ -31,6 +31,8 @@ import OpenSSL
 import async_stagger
 import websockets
 from websockets.extensions import permessage_deflate
+import xml.dom.minidom
+import xml.etree.ElementTree as ET
 import zipfile
 
 deque = collections.deque
@@ -228,6 +230,29 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     ansdict: dict = {}
 
 
+class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
+    """AliEn style xml collection element strucure"""
+    name: str = ''
+    aclId: str = ''
+    broken: str = ''
+    ctime: str = ''
+    dir: str = ''
+    entryId: str = ''
+    expiretime: str = ''
+    gowner: str = ''
+    guid: str = ''
+    guidtime: str = ''
+    jobid: str = ''
+    lfn: str = ''
+    md5: str = ''
+    owner: str = ''
+    perm: str = ''
+    replicated: str = ''
+    size: str = ''
+    turl: str = ''
+    type: str = ''
+
+
 class AliEn:
     """Class to be used as advanced API for interaction with central servers"""
     __slots__ = ('internal_wb', 'opts')
@@ -284,6 +309,11 @@ def print_out(msg: str): print(msg, flush = True)
 
 
 def print_err(msg: str): print(msg, file=sys.stderr, flush = True)
+
+
+def time_unix2simple(time_arg: Union[str, int, None]) -> str:
+    if not time_arg: return ''
+    return datetime.datetime.fromtimestamp(time_arg).replace(microsecond=0).isoformat().replace('T', ' ')
 
 
 def io_q_proc():
@@ -720,6 +750,28 @@ def read_conf_file(file: str) -> dict:
             var = re.sub(r"\"$", '', var)
             DICT_INFO[name.strip()] = var
     return DICT_INFO
+
+
+def file2list(file: str) -> list:
+    """Parse a file and return a list of elements"""
+    if not file or not os.path.isfile(file): return []
+    file_list = []
+    with open(file) as filecontent:
+        for line in filecontent:
+            if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
+            file_list.extend(line.strip().split())
+    return file_list
+
+
+def fileline2list(file: str) -> list:
+    """Parse a file and return a list of file lines"""
+    if not file or not os.path.isfile(file): return []
+    file_list = []
+    with open(file) as filecontent:
+        for line in filecontent:
+            if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
+            file_list.extend([line.strip()])
+    return file_list
 
 
 def import_aliases():
@@ -1266,18 +1318,31 @@ def md5(file: str) -> str:
 
 def format_dst_fn(src_dir, src_file, dst, parent):
     """Return the destination filename given the source dir/name, destination directory and number of parents to keep"""
-    src_path = Path(src_dir)
-    if not src_dir.endswith('/'): parent = parent + 1
-    if parent > len(src_path.parents): parent = len(src_path.parents)  # make sure maximum parent var point to first dir in path
-    if parent == 0 and src_dir != '/':
-        file_relative_name = src_file.replace(src_dir, '', 1)
-    elif parent > 0:
-        src_root = src_path.parents[parent - 1].as_posix()
-        file_relative_name = src_file.replace(src_root, '', 1)
+    # let's get destination file name (relative path with parent value)
+    if src_dir != src_file:  # recursive operation
+        total_relative_path = src_file.replace(src_dir, '', 1)
+        src_dir_path = Path(src_dir)
+        src_dir_parts = src_dir_path.parts
+        if not src_dir.endswith('/'): src_dir_parts[:] = src_dir_parts[:-1]
+        src_dir = '/'.join(map(lambda x: str(x or ''), src_dir_parts))
+        src_dir = src_dir.replace('//', '/')
+        components_list = src_dir.split('/')
+        components_list[0] = '/'  # first slash is lost in split
+        file_components = len(components_list)  # it's directory'
+        if parent >= file_components: parent = file_components  # make sure maximum parent var point to first dir in path
+        parent_selection = components_list[(file_components - parent):]
+        rootdir_src_dir = '/'.join(parent_selection)
+        file_relative_name = f'{rootdir_src_dir}/{total_relative_path}'
     else:
-        file_relative_name = src_file
-    dst_file = f'{dst}/{file_relative_name}'
+        src_file_path = Path(src_file)
+        file_components = len(src_file_path.parts) - 1 - 1  # without the file and up to slash
+        if parent >= file_components: parent = file_components  # make sure maximum parent var point to first dir in path
+        rootdir_src_file = src_file_path.parents[parent].as_posix()
+        file_relative_name = src_file.replace(rootdir_src_file, '', 1)
+
+    dst_file = f'{dst}/{file_relative_name}' if dst.endswith('/') else dst
     dst_file = re.sub(r"\/{2,}", "/", dst_file)
+    print(dst_file)
     return dst_file
 
 
@@ -1367,29 +1432,49 @@ def name2regex(pattern_regex: str = '') -> str:
 def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
     """Return a list of files(lfn/grid files) that match pattern found in dir"""
     if not dir: return []
-    if pattern is None: pattern = '*'  # prefer globbing as default
-    if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match list_files_local
-        pattern = pattern.pattern  # We pass the regex pattern into command as string
-        is_regex = True
+    # lets process the pattern: extract it from src if is in the path globbing form
+    if '*' in dir:  # we have globbing in src path
+        is_regex = False
+        src_arr = dir.split("/")
+        base_path_arr = []  # let's establish the base path
+        for el in src_arr:
+            if '*' not in el:
+                base_path_arr.append(el)
+            else:
+                break
+        for el in base_path_arr: src_arr.remove(el)  # remove the base path
+        dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+    else:  # pattern is specified by argument
+        if pattern is None: pattern = '*'  # prefer globbing as default
+        if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+            pattern = pattern.pattern  # We pass the regex pattern into command as string
+            is_regex = True
 
-    if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex, let's validate it
-        if valid_regex(pattern) is None:
-            logging.error(f"list_files_grid:: {pattern} failed to re.compile")
-            return []
+        if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
+            if valid_regex(pattern) is None:
+                logging.error(f"list_files_grid:: {pattern} failed to re.compile")
+                return []
 
     # remove either default or not useful (-f API flag) from additional args
-    find_args_list = find_args.split() if find_args else None
-    get_arg(find_args_list, '-a')
-    get_arg(find_args_list, '-s')
-    get_arg(find_args_list, '-f')
-    get_arg(find_args_list, '-d')
-    get_arg(find_args_list, '-w')
-    get_arg(find_args_list, '-wh')
+    min_depth = max_depth = None
+    find_args_list = None
+    if find_args:
+        find_args_list = find_args.split()
+        get_arg(find_args_list, '-a')
+        get_arg(find_args_list, '-s')
+        get_arg(find_args_list, '-f')
+        get_arg(find_args_list, '-d')
+        get_arg(find_args_list, '-w')
+        get_arg(find_args_list, '-wh')
+        min_depth = get_arg_value(find_args_list, '-mindepth')
+        max_depth = get_arg_value(find_args_list, '-maxdepth')
 
     find_args_default = ['-a', '-s']
     if is_regex: find_args_default.insert(0, '-r')
     if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
     # TODO this is the place for processing custom arguments
+    if not dir.endswith('/'): dir = f'{dir}/'
     find_args_default.append(dir)
     find_args_default.append(pattern)
     send_opts = 'nomsg' if not _DEBUG else ''
@@ -1399,6 +1484,23 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         return []
     if 'results' not in ret_obj.ansdict: return []
     lfn_list = [item['lfn'] for item in ret_obj.ansdict['results']]
+    if min_depth or max_depth:
+        if min_depth:
+            min_depth = int(min_depth)
+            if min_depth < 0: min_depth = 0
+            min_depth = min_depth + 1  # the actual file component we ignore, so 0 is a file in source directory
+        if max_depth:
+            max_depth = int(max_depth)
+            if max_depth < 0: max_depth = 999999
+            max_depth = max_depth + 1
+        relative_lfns = [item.replace(dir, '') for item in lfn_list]
+        if min_depth:
+            relative_lfns[:] = [x for x in relative_lfns if len(x.split('/')) >= min_depth]
+        if max_depth:
+            relative_lfns[:] = [x for x in relative_lfns if len(x.split('/')) <= max_depth]
+        lfn_list.clear()
+        for sub_lfn in relative_lfns:
+            lfn_list.append(f'{dir}{sub_lfn}')
     # TODO process the list taking into accound custom (client-side) arguments
     return lfn_list
 
@@ -1432,6 +1534,25 @@ def list_files_local(start_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, st
     return file_list
 
 
+def extract_glob_pattern(path_arg: str) -> tuple:
+    """Extract glob pattern from a path"""
+    if not path_arg: return None, None
+    base_path = pattern = None
+    if '*' in path_arg:  # we have globbing in src path
+        path_components = path_arg.split("/")
+        base_path_arr = []  # let's establish the base path
+        for el in path_components:
+            if '*' not in el: base_path_arr.append(el)
+            else: break
+
+        for el in base_path_arr: path_components.remove(el)  # remove the base path components (those without *) from full path components
+        base_path = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        pattern = '/'.join(path_components)  # the globbing part is the rest of element that contain *
+    else:
+        base_path = path_arg
+    return (base_path, pattern)
+
+
 def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
@@ -1452,17 +1573,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     src_glob = False
     if '*' in arg_src:  # we have globbing in src path
         src_glob = True
-        src_arr = arg_src.split("/")
-        base_path_arr = []  # let's establish the base path
-        for el in src_arr:
-            if '*' not in el:
-                base_path_arr.append(el)
-            else:
-                break
-
-        for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        arg_src = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
-        pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
+        arg_src, pattern = extract_glob_pattern(arg_src)
     else:  # pattern is specified by argument
         if pattern is None: pattern = '*'  # prefer globbing as default
         if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
@@ -1476,7 +1587,6 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
-
     if lfn_prefix_re.match(arg_src) or lfn_prefix_re.match(arg_dst):  # if any prefix is present
         isSrcLocal = (arg_src.startswith('file:') or arg_dst.startswith('alien:')) and not (arg_src.startswith('alien:') or arg_dst.startswith('file:'))
         arg_src = lfn_prefix_re.sub('', arg_src)  # lets remove any prefixes
@@ -1527,18 +1637,13 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         if isSrcDir:  # recursive download
             lfn_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
             if len(lfn_list) < 1:
-                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging"
+                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
         else:  # single file download
             lfn_list.append(src)
 
         for lfn in lfn_list:  # make CopyFile objs for each lfn
-            if len(lfn_list) == 1:
-                if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-                dst_filename = dst
-            else:
-                dst_filename = format_dst_fn(src, lfn, dst, parent)
-
+            dst_filename = format_dst_fn(src, lfn, dst, parent)
             if os.path.isfile(dst_filename) and not overwrite:
                 print_out(f'{dst_filename} exists, skipping..')
                 continue
@@ -1561,13 +1666,8 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         else:
             file_list.append(src)
 
-        for f in file_list:
-            if len(file_list) == 1:
-                if dst.endswith("/"): dst = f'{dst[:-1]}{setDst(src, parent)}'
-                lfn = dst
-            else:
-                lfn = format_dst_fn(src, f, dst, parent)
-
+        for file in file_list:
+            lfn = format_dst_fn(src, file, dst, parent)
             if pathtype_grid(wb, lfn) == 'f':
                 if overwrite:
                     print_out(f'{lfn} exists, deleting..')  # clear up the destination lfn
@@ -1576,9 +1676,9 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                     print_out(f'{lfn} exists, skipping..')
                     continue
 
-            tokens = getEnvelope_lfn(wb, lfn2file(lfn, f), specs_list, isWrite)
+            tokens = getEnvelope_lfn(wb, lfn2file(lfn, file), specs_list, isWrite)
             if not tokens or 'answer' not in tokens: continue
-            copy_list.append(CopyFile(f, lfn, isWrite, tokens['answer'], ''))
+            copy_list.append(CopyFile(file, lfn, isWrite, tokens['answer'], ''))
     return RET(1, '', error_msg) if error_msg else RET(0)
 
 
@@ -1737,6 +1837,12 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     if get_arg(xrd_copy_command, '-wh'): print_out("-wh flag not usefull for copy operations")
     if get_arg(xrd_copy_command, '-d'): print_out("-d flag not usefull for copy operations")
 
+    mindepth_arg = get_arg_value(xrd_copy_command, '-mindepth')
+    if mindepth_arg: find_args.extend(['-mindepth', mindepth_arg])
+
+    maxdepth_arg = get_arg_value(xrd_copy_command, '-maxdepth')
+    if maxdepth_arg: find_args.extend(['-maxdepth', maxdepth_arg])
+
     qid = get_arg_value(xrd_copy_command, '-j')
     if qid: find_args.extend(['-j', qid])
 
@@ -1787,17 +1893,15 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     inputfile_arg = get_arg_value(xrd_copy_command, '-input')
     if inputfile_arg:
-        input_file = inputfile_arg
-        if not os.path.isfile(input_file): return RET(1, '', f'Input file {input_file} not found')
-        with open(input_file) as arglist_file:
-            for line in arglist_file:
-                if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
-                arglist = line.strip().split()
-                if len(arglist) > 2:
-                    print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
-                    continue
-                retobj = makelist_lfn(wb, arglist[0], arglist[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
-                if retobj.exitcode != 0: retf_print(retobj, "err")  # print error and continue with the other files
+        cp_arg_list = fileline2list(inputfile_arg)
+        if not cp_arg_list: return RET(1, '', f'Input file {inputfile_arg} not found or invalid content')
+        for cp_line in cp_arg_list:
+            cp_line_items = cp_line.strip().split()
+            if len(cp_line_items) > 2:
+                print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
+                continue
+            retobj = makelist_lfn(wb, cp_line_items[0], cp_line_items[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
+            if retobj.exitcode != 0: retf_print(retobj, "err")  # print error and continue with the other files
     else:
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
@@ -2143,7 +2247,6 @@ def DO_SEqos(wb, args: list = None) -> RET:
 
 def get_lfn_meta(meta_fn: str) -> str:
     if not os.path.isfile(meta_fn): return ''
-    import xml.dom.minidom
     content = xml.dom.minidom.parse(meta_fn).documentElement
     return content.getElementsByTagName('lfn')[0].firstChild.nodeValue
 
@@ -2240,6 +2343,79 @@ def queryML(args: list = None) -> str:
     else:
         AlienSessionInfo['exitcode'] = req.getcode()
     return ansraw
+
+
+def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
+    """Get a file and return an XML element structure"""
+    if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
+    p = Path(filepath).expanduser().resolve(strict = True)
+    p_stat = p.stat()
+    turl = f'file://{p.as_posix()}'
+    return ALIEN_COLLECTION_EL(
+        name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
+        dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
+        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",
+        size = str(p_stat.st_size), turl = turl, type = 'f')
+
+
+def mk_xml_local(filepath_list: list):
+    xml_root = ET.Element('alien')
+    collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
+    for idx, item in enumerate(filepath_list, start = 1):
+        e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
+        f = ET.SubElement(e, 'file', attrib=file2xml_el(item)._asdict())
+    oxml = ET.tostring(xml_root, encoding = 'ascii')
+    dom = xml.dom.minidom.parseString(oxml)
+    print(dom.toprettyxml())
+
+
+def DO_2xml(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if not args or is_help(args):
+        central_help = SendMsg(wb, 'toXml', ['-h'], opts = 'nokeys')
+        central_help_msg = central_help.out
+        msg_local = (f'\nAdditionally the client implements these options:'
+                     'other options to be added'
+                     )
+        msg = f'{central_help_msg}{msg_local}'
+        return RET(0, msg)
+
+    ignore_missing = get_arg(args, '-i')
+    do_append = get_arg(args, '-a')
+    output_file = get_arg_value(args, '-x')
+    if do_append and output_file is None: return RET(1, '', 'Append operation need -x argument for specification of target file')
+
+    lfn_filelist = get_arg_value(args, '-l')
+    do_find = get_arg(args, '-find')
+    if lfn_filelist and do_find:
+        return RET(1, '', 'Incompatible inputs! either specify lfn file list with -l, specify -find, or just a list of lfns')
+
+    lfn_list = []
+    find_arg_list = None
+    lfn_arg_list = None
+    if do_find:
+        find_arg_list = args  # the rest of remaining arguments are find options
+    else:
+        lfn_arg_list = args  # the rest of arguments are lfns
+
+    if lfn_filelist:
+        lfn_list = file2list(lfn_filelist)
+        if not lfn_arg_list: return RET(1, '', f'Input file {lfn_filelist} not found or empty')
+
+    elif do_find:
+        lfn_list = list_files_grid(wb, lfn_arg_list, None, False, '')
+
+
+    else:
+        lfn_list_str = ' '.join(args)
+
+
+
+
+
+
+
+
 
 
 def DO_queryML(args: Union[list, None] = None) -> RET:
@@ -3287,6 +3463,9 @@ def make_func_map_client():
 
     AlienSessionInfo['cmd2func_map_client']['cat'] = DO_cat
     del AlienSessionInfo['cmd2func_map_srv']['cat']
+
+    AlienSessionInfo['cmd2func_map_client']['toXml2'] = DO_2xml
+    # del AlienSessionInfo['cmd2func_map_srv']['toXml']
 
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
