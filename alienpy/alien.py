@@ -1553,6 +1553,25 @@ def extract_glob_pattern(path_arg: str) -> tuple:
     return (base_path, pattern)
 
 
+def check_path(wb, path_arg: str, check_path: bool = False) -> tuple:
+    """Check if path exists and what kind; returns the resolved path and the location"""
+    location = filepath = ''
+    if lfn_prefix_re.match(path_arg):  # if any prefix is present
+        if path_arg.startswith('file:'): location = 'local'
+        if path_arg.startswith('alien:'): location = 'grid'
+        path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
+    filepath = path_arg
+    if check_path:
+        location = filepath = ''  # reset the values
+        filepath = expand_path_local(path_arg, check_path = True)
+        if filepath:
+            location = 'local'
+        else:
+            filepath = expand_path_grid(wb, path_arg, check_path = True)
+            if filepath: location = 'grid'
+    return (filepath, location)
+
+
 def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
@@ -1587,27 +1606,17 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
-    if lfn_prefix_re.match(arg_src) or lfn_prefix_re.match(arg_dst):  # if any prefix is present
-        isSrcLocal = (arg_src.startswith('file:') or arg_dst.startswith('alien:')) and not (arg_src.startswith('alien:') or arg_dst.startswith('file:'))
-        arg_src = lfn_prefix_re.sub('', arg_src)  # lets remove any prefixes
-        arg_dst = lfn_prefix_re.sub('', arg_dst)
-
-    src = None
-    if isSrcLocal or isSrcLocal is None:      # there were no prefixes or isSrcLocal so we must resolve src
-        src = expand_path_local(arg_src, check_path = True)  # src must always be present
-        if src: isSrcLocal = True
-    if not isSrcLocal or isSrcLocal is None:  # isSrcLocal still not qualified, so lets resolve src from grid
-        src = expand_path_grid(wb, arg_src, check_path = True)
-        if src: isSrcLocal = False
+    src, src_type = check_path(wb, arg_src, check_path = True)  # src must be always valid
+    dst, dst_type = check_path(wb, arg_dst, check_path = False)  # do not check path, it can be missing and then auto-created
+    isSrcLocal = True if src_type == 'local' else False
     if not src: return RET(2, '', f'{arg_src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
 
     isDstDir = isSrcDir = src.endswith("/")  # the checkin procedure will append / if src is directory; is src is dir, so dst must be
     isDownload = isDstLocal = not isSrcLocal
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
-    dst = None
     if isDownload:
-        dst = expand_path_local(arg_dst)
+        dst = expand_path_local(dst)
         try:  # we can try anyway, this is like mkdir -p
             mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
             mk_path.mkdir(parents=True, exist_ok=True)
@@ -1616,7 +1625,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {_DEBUG_FILE}"
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
     else:  # this is upload to GRID
-        dst = expand_path_grid(wb, arg_dst)
+        dst = expand_path_grid(wb, dst)
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
         ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
         retf_print(ret_obj, opts = 'noprint err')
@@ -2393,20 +2402,17 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     lfn_list = []
     find_arg_list = None
     lfn_arg_list = None
-    if do_find:
-        find_arg_list = args  # the rest of remaining arguments are find options
-    else:
-        lfn_arg_list = args  # the rest of arguments are lfns
 
     if lfn_filelist:
+        # if lfn_filelist.startswith('alien:')
+
         lfn_list = file2list(lfn_filelist)
-        if not lfn_arg_list: return RET(1, '', f'Input file {lfn_filelist} not found or empty')
 
     elif do_find:
+        find_arg_list = args  # the rest of remaining arguments are find options
         lfn_list = list_files_grid(wb, lfn_arg_list, None, False, '')
-
-
     else:
+        lfn_arg_list = args  # the rest of arguments are lfns
         lfn_list_str = ' '.join(args)
 
 
