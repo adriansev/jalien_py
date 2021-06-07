@@ -3198,21 +3198,24 @@ def get_ca_path() -> str:
 
 def get_token_filenames() -> tuple:
     """Get the token filenames, including the temporary ones used as env variables"""
+    global AlienSessionInfo
     tokencert, tokenkey = get_token_names()
-    if not os.path.isfile(tokencert) and 'BEGIN CERTIFICATE' in tokencert:  # and is not a file
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}.pem', delete = False)
+    random_str = None
+    if not os.path.isfile(tokencert) and ' BEGIN CERTIFICATE-----' in tokencert:  # and is not a file
+        random_str = str(uuid.uuid4())
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-    if not os.path.isfile(tokenkey) and 'PRIVATE KEY' in tokenkey:  # and is not a file
-        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}.pem', delete = False)
+        AlienSessionInfo['templist'].append(tokencert)
+    if not os.path.isfile(tokenkey) and ' PRIVATE KEY-----' in tokenkey:  # and is not a file
+        if random_str is None: random_str = str(uuid.uuid4())
+        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
-    if IsValidCert(tokencert) and os.path.isfile(tokenkey):
-        return tokencert, tokenkey
-    else:
-        return None, None
+        AlienSessionInfo['templist'].append(tokenkey)
+    return (tokencert, tokenkey) if (IsValidCert(tokencert) and os.path.isfile(tokenkey)) else (None, None)
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
