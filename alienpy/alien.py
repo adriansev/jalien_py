@@ -1827,6 +1827,11 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         rate = int(rate_arg)
         XRD_EnvPut('XRateThreshold', rate)
 
+    retry_arg = get_arg_value(xrd_copy_command, '-retry')
+    if rate_arg:
+        retry = int(retry_arg)
+        XRD_EnvPut('ConnectionRetry', retry)
+
     # options for envelope request
     strictspec = get_arg(xrd_copy_command, '-strictspec')
     httpurl = get_arg(xrd_copy_command, '-http')
