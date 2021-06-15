@@ -1976,10 +1976,7 @@ if _HAS_XROOTD:
             self.jobs = int(total)
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
-            if self.debug:
-                msg = "CopyProgressHandler.src: {0}\nCopyProgressHandler.dst: {1}\n".format(source, target)
-                print_out(f'{msg}\n')
-                logging.debug(msg)
+            if self.debug: logging.debug(f"CopyProgressHandler.src: {source}\nCopyProgressHandler.dst: {target}\n")
 
         def end(self, jobId, results):
             if results['status'].ok:
@@ -2000,6 +1997,7 @@ if _HAS_XROOTD:
                     subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
                 else:
                     os.remove(meta_path)  # remove the created metalink
+
             if results['status'].ok:
                 speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
                 speed_str = f'{GetHumanReadable(speed)}/s'
@@ -2028,14 +2026,20 @@ if _HAS_XROOTD:
                             if os.path.isfile(zip_name): os.remove(zip_name)
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
-                    print_out("jobID: {0}/{1} >>> ERRNO/CODE/XRDSTAT {2}/{3}/{4} >>> STATUS {5} >>> SPEED {6} MESSAGE: {7}".format(jobId, self.jobs, results['status'].errno, results['status'].code, results['status'].status, status, speed_str, results['status'].message))
+                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} >>> SPEED {speed_str}")
             else:
+                if self.debug:
+                    codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
+                    xrd_resp_msg = results['status'].message
+                    logging.debug(f"\n{codes_info}\n{xrd_resp_msg}")
                 if xrdjob.isUpload:
                     self.copy_failed_list.append(xrdjob.token_request)
-                    print_out(f"Failed upload ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}: {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, from {xrdjob.token_request['nSEs']} total replicas")
+                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas")
+                    if self.debug: logging.debug(f"{xrdjob.token_request['file']}\n")
                 else:
                     self.copy_failed_list.append(xrdjob.lfn)
-                    print_out(f"Failed download ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}: {xrdjob.lfn}")
+                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} : {xrdjob.lfn}")
+                    if self.debug: logging.debug(f"{xrdjob.lfn}\n")
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
