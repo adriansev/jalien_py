@@ -1140,7 +1140,6 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
     rate = xrd_cp_args.rate
 
     cmdline = f'{copy_job.src} {copy_job.dst}'
-    print(cmdline)
     return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
 
@@ -1166,8 +1165,7 @@ def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = ''
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
-        print(copy_job)
-
+        if _DEBUG: print(copy_job)
     return []
 
 
@@ -1346,7 +1344,6 @@ def format_dst_fn(src_dir, src_file, dst, parent):
 
     dst_file = f'{dst}/{file_relative_name}' if dst.endswith('/') else dst
     dst_file = re.sub(r"\/{2,}", "/", dst_file)
-    print(dst_file)
     return dst_file
 
 
@@ -1726,7 +1723,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 print_err(f"Could not create the download metafile for {cpfile.src}")
                 continue
             if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
-            if _DEBUG: print_out(metafile)
+            if not cpfile.isUpload and _DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
@@ -1991,30 +1988,22 @@ if _HAS_XROOTD:
                 status = f'{PrintColor(COLORS.BIRed)}FATAL{PrintColor(COLORS.ColorReset)}'
             else:
                 status = f'{PrintColor(COLORS.BIRed)}UNKNOWN{PrintColor(COLORS.ColorReset)}'
+            job_info = self.job_list[jobId - 1]
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
-            deltaT = datetime.datetime.now().timestamp() - float(self.job_list[jobId - 1]['start'])
+            replica_dict = xrdjob.token_request
+
+            deltaT = datetime.datetime.now().timestamp() - float(job_info['start'])
             if os.getenv('XRD_LOGLEVEL'): logging.debug(f'XRD copy job time:: {xrdjob.lfn} -> {deltaT}')
 
-            if not xrdjob.isUpload:
-                meta_path, sep, url_opts = str(xrdjob.src).partition("?")
-                if os.getenv('ALIENPY_KEEP_META'):
-                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
-                else:
-                    os.remove(meta_path)  # remove the created metalink
-
             if results['status'].ok:
-                speed = float(self.job_list[jobId - 1]['bytes_total'])/deltaT
+                speed = float(job_info['bytes_total'])/deltaT
                 speed_str = f'{GetHumanReadable(speed)}/s'
                 if xrdjob.isUpload:  # isUpload
-                    xrd_dst_url = str(self.job_list[jobId - 1]['tgt'])
-                    link = urlparse(xrd_dst_url)
-                    urltoken = next((param for param in str.split(link.query, '&') if 'authz=' in param), None).replace('authz=', '')  # extract the token from url
-                    copyjob = next(job for job in self.xrdjob_list if job.token_request.get('url') in xrd_dst_url)
-                    replica_dict = copyjob.token_request
                     perm = '644'
-                    expire = '0'
-                    ret_obj = commit(self.wb, urltoken, replica_dict['size'], copyjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
-                    if self.debug: retf_print(ret_obj, 'debug')
+                    ret_obj = commit(self.wb, replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, '0', replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
+                    if self.debug:
+                        print('MyCopyProgressHandler::commit result: ', end = '', flush = True)
+                        retf_print(ret_obj, 'debug')
                 else:  # isDownload
                     if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
                         if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -2044,6 +2033,13 @@ if _HAS_XROOTD:
                     self.copy_failed_list.append(xrdjob.lfn)
                     print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} : {xrdjob.lfn}")
                     if self.debug: logging.debug(f"{xrdjob.lfn}\n")
+
+            if not xrdjob.isUpload:
+                meta_path, sep, url_opts = str(job_info.src).partition("?")
+                if os.getenv('ALIENPY_KEEP_META'):
+                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
+                else:
+                    os.remove(meta_path)  # remove the created metalink
 
         def update(self, jobId, processed, total):
             self.job_list[jobId - 1]['bytes_processed'] = processed
