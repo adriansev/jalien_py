@@ -442,6 +442,8 @@ async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _DEBUG:
+        logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
     try:
         pong_waiter = await wb.ping()
         await pong_waiter
@@ -474,7 +476,9 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     await wb.send(jsonmsg)
+    # logging.info("calling recv", exc_info=True)
     result = await wb.recv()
+    # logging.info("recv returned", exc_info=True)
     if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     return result
 
