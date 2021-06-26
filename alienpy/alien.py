@@ -2111,13 +2111,14 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         if has_cksum:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
+                            force = overwrite, posc = posc, mkdir = makedir,
                             chunksize = chunksize, parallelchunks = chunks,
                             checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
         else:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
+                            force = overwrite, posc = posc, mkdir = makedir,
                             chunksize = chunksize, parallelchunks = chunks)
-
     process.prepare()
     process.run(handler)
     return handler.copy_failed_list  # for upload jobs we must return the list of token for succesful uploads
