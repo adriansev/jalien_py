@@ -311,9 +311,31 @@ def print_out(msg: str): print(msg, flush = True)
 def print_err(msg: str): print(msg, file=sys.stderr, flush = True)
 
 
+def isfloat(arg: Union[str, float, None]) -> bool:
+    if not arg: return False
+    return str(arg).replace('.', '', 1).isdigit()
+
+
 def time_unix2simple(time_arg: Union[str, int, None]) -> str:
     if not time_arg: return ''
     return datetime.datetime.fromtimestamp(time_arg).replace(microsecond=0).isoformat().replace('T', ' ')
+
+
+def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
+    if not time_arg:
+        return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+    time_arg = str(time_arg)
+    if (time_arg.isdigit() or isfloat(time_arg)) and (len(time_arg) != 10 or len(time_arg) != 13): return int(-1)
+    if isfloat(time_arg) and len(time_arg) == 10:
+        return int(float(time_arg) * 1000)
+    if time_arg.isdigit() and len(time_arg) == 13:
+        return int(time_arg)
+    # asume that this is a strptime arguments in the form of: time_str, format_str
+    try:
+        time_obj = eval(f"datetime.datetime.strptime({time_arg})")
+        return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+    except Exception as e:
+        return int(-1)
 
 
 def io_q_proc():
@@ -1430,10 +1452,12 @@ def name2regex(pattern_regex: str = '') -> str:
     return translated_pattern_regex
 
 
-def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
-    """Return a list of files(lfn/grid files) that match pattern found in dir"""
-    if not dir: return []
+def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
+    """Return a list of files(lfn/grid files) that match pattern found in dir
+    Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args"""
+    if not dir: return RET(-1, "", "No search directory specified")
     # lets process the pattern: extract it from src if is in the path globbing form
+    is_single_file = False  # dir actually point to a file
     if '*' in dir:  # we have globbing in src path
         is_regex = False
         src_arr = dir.split("/")
@@ -1447,18 +1471,26 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
         pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
     else:  # pattern is specified by argument
-        if pattern is None: pattern = '*'  # prefer globbing as default
-        if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        if pattern is None:
+            if not dir.endswith('/'):  # this is a single file
+                is_single_file = True
+            else:
+                pattern = '*'  # prefer globbing as default
+        elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
         if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
             if valid_regex(pattern) is None:
                 logging.error(f"list_files_grid:: {pattern} failed to re.compile")
-                return []
+                return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
 
-    # remove either default or not useful (-f API flag) from additional args
+    # remove default from additional args
     min_depth = max_depth = None
+    min_size = max_size = None
+    min_ctime = max_ctime = None
+    jobid = None
+    user = group = None
     find_args_list = None
     if find_args:
         find_args_list = find_args.split()
@@ -1468,42 +1500,88 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         get_arg(find_args_list, '-d')
         get_arg(find_args_list, '-w')
         get_arg(find_args_list, '-wh')
-        min_depth = get_arg_value(find_args_list, '-mindepth')
-        max_depth = get_arg_value(find_args_list, '-maxdepth')
+        min_depth = get_arg_value(find_args_list, '-min_depth')
+        max_depth = get_arg_value(find_args_list, '-max_depth')
+        min_size = get_arg_value(find_args_list, '-min_size')
+        max_size = get_arg_value(find_args_list, '-max_size')
+        min_ctime = get_arg_value(find_args_list, '-min_ctime')
+        max_ctime = get_arg_value(find_args_list, '-max_ctime')
+        jobid = get_arg_value(find_args_list, '-jobid')
+        user = get_arg_value(find_args_list, '-user')
+        group = get_arg_value(find_args_list, '-group')
 
-    find_args_default = ['-a', '-s']
-    if is_regex: find_args_default.insert(0, '-r')
-    if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
-    # TODO this is the place for processing custom arguments
-    if not dir.endswith('/'): dir = f'{dir}/'
-    find_args_default.append(dir)
-    find_args_default.append(pattern)
-    send_opts = 'nomsg' if not _DEBUG else ''
-    ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
-    if ret_obj.exitcode != 0:
-        print_err(f"find '{find_args}' --> error: {ret_obj.err}\nEnable debug with ALIENPY_DEBUG=1 and check {_DEBUG_FILE} for detailed logging")
-        return []
-    if 'results' not in ret_obj.ansdict: return []
-    lfn_list = [item['lfn'] for item in ret_obj.ansdict['results']]
-    if min_depth or max_depth:
-        if min_depth:
-            min_depth = int(min_depth)
-            if min_depth < 0: min_depth = 0
-            min_depth = min_depth + 1  # the actual file component we ignore, so 0 is a file in source directory
-        if max_depth:
-            max_depth = int(max_depth)
-            if max_depth < 0: max_depth = 999999
-            max_depth = max_depth + 1
-        relative_lfns = [item.replace(dir, '') for item in lfn_list]
-        if min_depth:
-            relative_lfns[:] = [x for x in relative_lfns if len(x.split('/')) >= min_depth]
-        if max_depth:
-            relative_lfns[:] = [x for x in relative_lfns if len(x.split('/')) <= max_depth]
-        lfn_list.clear()
-        for sub_lfn in relative_lfns:
-            lfn_list.append(f'{dir}{sub_lfn}')
-    # TODO process the list taking into accound custom (client-side) arguments
-    return lfn_list
+    # create and return the list object just for a single file
+    if is_single_file:
+        send_opts = 'nomsg' if not _DEBUG else ''
+        ret_obj = SendMsg(wb, 'stat', [dir], opts = send_opts)
+    else:
+        find_args_default = ['-f', '-a', '-s']
+        if is_regex: find_args_default.insert(0, '-r')
+        if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
+        # TODO this is the place for processing custom arguments
+        find_args_default.append(dir)
+        find_args_default.append(pattern)
+        send_opts = 'nomsg' if not _DEBUG else ''
+        ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
+
+    if ret_obj.exitcode != "0":
+        logging.error(f"list_files_grid error:: {dir} {pattern} {is_regex} {find_args}")
+        return ret_obj
+    if 'results' not in ret_obj.ansdict:
+        logging.error(f"list_files_grid exitcode==0 but no results(!!!):: {dir} {pattern} {is_regex} {find_args}")
+        return ret_obj
+
+    exitcode = ret_obj.exitcode
+    stderr = ret_obj.err
+    results_list = ret_obj.ansdict["results"]
+    results_list_filtered = []
+
+    # items that pass the conditions are the actual/final results
+    for found_lfn_dict in results_list:  # parse results to apply filters
+        if min_depth or max_depth:
+            relative_lfn = found_lfn_dict["lfn"].replace(dir, '')  # it will have N directories + 1 file components
+
+            if min_depth:
+                min_depth = abs(int(min_depth)) + 1  # add +1 for the always present file component of relative_lfn
+                if len(relative_lfn.split('/')) < int(min_depth): continue
+
+            if max_depth:
+                max_depth = abs(int(max_depth)) + 1  # add +1 for the always present file component of relative_lfn
+                if len(relative_lfn.split('/')) > int(max_depth): continue
+
+        if min_size:
+            if int(found_lfn_dict["size"]) < abs(int(min_size)): continue
+
+        if max_size:
+            if int(found_lfn_dict["size"]) > abs(int(max_size)): continue
+
+        # the argument can be a string with a form like: '20.12.2016 09:38:42,76','%d.%m.%Y %H:%M:%S,%f'
+        # see: https://docs.python.org/3.6/library/datetime.html#strftime-strptime-behavior
+        if min_ctime:
+            min_ctime = time_str2unixmili(min_ctime)
+            if int(found_lfn_dict["ctime"]) < min_ctime: continue
+
+        if max_ctime:
+            max_ctime = time_str2unixmili(max_ctime)
+            if int(found_lfn_dict["ctime"]) > max_ctime: continue
+
+        if jobid:
+            if "jobid" not in found_lfn_dict: continue
+            if found_lfn_dict["jobid"] != jobid: continue
+
+        if user:
+            if found_lfn_dict["owner"] != user: continue
+
+        if group:
+            if found_lfn_dict["gowner"] != group: continue
+
+        # at this point all filters were passed
+        results_list_filtered.append(found_lfn_dict)
+
+    ansdict = {"results": results_list_filtered}
+    lfn_list = [x['lfn'] for x in results_list_filtered]
+    stdout = '\n'.join(lfn_list)
+    return RET(exitcode, stdout, stderr, ansdict)
 
 
 def list_files_local(start_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> list:
@@ -1515,6 +1593,24 @@ def list_files_local(start_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, st
         if regex is None:
             logging.error(f"list_files_local:: {pattern} failed to re.compile")
             return []
+
+    min_depth = max_depth = None
+    min_size = max_size = None
+    min_ctime = max_ctime = None
+    jobid = None
+    user = group = None
+    find_args_list = None
+    if find_args:
+        find_args_list = find_args.split()
+        min_depth = get_arg_value(find_args_list, '-min_depth')
+        max_depth = get_arg_value(find_args_list, '-max_depth')
+        min_size = get_arg_value(find_args_list, '-min_size')
+        max_size = get_arg_value(find_args_list, '-max_size')
+        min_ctime = get_arg_value(find_args_list, '-min_ctime')
+        max_ctime = get_arg_value(find_args_list, '-max_ctime')
+        jobid = get_arg_value(find_args_list, '-jobid')
+        user = get_arg_value(find_args_list, '-user')
+        group = get_arg_value(find_args_list, '-group')
 
     directory = None  # resolve start_dir to an absolute_path
     try:
@@ -1578,7 +1674,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
         return RET(22, '', 'The operands cannot have the same type and if missing they will be determined from the type of source.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
 
-    isSrcDir = isDstDir = isSrcLocal = isDstLocal = isDownload = specs = None  # make sure we set these to valid values later
+    isSrcDir = isDstDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
 
     # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
     src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
@@ -1595,7 +1691,6 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         src_glob = True
         arg_src, pattern = extract_glob_pattern(arg_src)
     else:  # pattern is specified by argument
-        if pattern is None: pattern = '*'  # prefer globbing as default
         if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
@@ -1607,17 +1702,34 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
-    src, src_type = check_path(wb, arg_src, check_path = True)  # src must be always valid
+    # N.B.!!! the check will be wrong when the same relative path is present local and on grid
+    # first let's check only prefixes
+    src, src_type = check_path(wb, arg_src, check_path = False)
     dst, dst_type = check_path(wb, arg_dst, check_path = False)  # do not check path, it can be missing and then auto-created
-    isSrcLocal = True if src_type == 'local' else False
+
+    is_src_resolved = False
+    if not src_type and not dst_type:
+        is_src_resolved = True
+        src, src_type = check_path(wb, arg_src, check_path = True)  # src must be always valid
+    if src_type == dst_type:
+        return RET(1, '', 'Location of src,dst cannot be determined! use at least one prefix -> file: or alien:')
+    isSrcLocal = True if (src_type == 'local' or dst_type == 'grid' or (src_type == 'local' and dst_type == 'grid')) else False
+
+    if isSrcLocal:
+        if not is_src_resolved: src = expand_path_local(src, check_path = True)
+        dst = expand_path_grid(wb, dst, check_path = False)
+    else:
+        if not is_src_resolved: src = expand_path_grid(wb, src, check_path = True)
+        dst = expand_path_local(dst, check_path = False)
+
+    if slashend_src and not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
     if not src: return RET(2, '', f'{arg_src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
 
-    isDstDir = isSrcDir = src.endswith("/")  # the checkin procedure will append / if src is directory; is src is dir, so dst must be
-    isDownload = isDstLocal = not isSrcLocal
+    isDstDir = isSrcDir = src.endswith('/')  # the checkin procedure will append / if src is directory; is src is dir, so dst must be
+    isDownload = not isSrcLocal
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
     if isDownload:
-        dst = expand_path_local(dst)
         try:  # we can try anyway, this is like mkdir -p
             mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
             mk_path.mkdir(parents=True, exist_ok=True)
@@ -1626,7 +1738,6 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {_DEBUG_FILE}"
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
     else:  # this is upload to GRID
-        dst = expand_path_grid(wb, dst)
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
         ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
         retf_print(ret_obj, opts = 'noprint err')
@@ -1643,28 +1754,26 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     error_msg = ''  # container which accumulates the error messages
     isWrite = bool(False)
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
-        lfn_list = []  # list of lfns to be downloaded
-        if isSrcDir:  # recursive download
-            lfn_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
-            if len(lfn_list) < 1:
-                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-        else:  # single file download
-            lfn_list.append(src)
+        results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
+        if len(results_list) < 1:
+            msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
+            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
 
-        for lfn in lfn_list:  # make CopyFile objs for each lfn
-            dst_filename = format_dst_fn(src, lfn, dst, parent)
-            if os.path.isfile(dst_filename) and not overwrite:
-                print_out(f'{dst_filename} exists, skipping..')
-                continue
+        for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
+            dst_filename = format_dst_fn(src, lfn_obj["lfn"], dst, parent)
+            if os.path.isfile(dst_filename):
+                if not overwrite:
+                    print_out(f'{dst_filename} exists, skipping..')
+                    continue
+                # -f (force) was used
+                file_size = lfn_obj['size']
+                file_md5 = lfn_obj['md5']
+                if retf_print(fileIsValid(dst_filename, file_size, file_md5)) == 0:
+                    continue  # destination exists and is valid, no point to re-download
 
-            tokens = getEnvelope_lfn(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
+            tokens = getEnvelope_lfn(wb, lfn2file(lfn_obj["lfn"], dst_filename), specs_list, isWrite, strictspec, httpurl)
             if not tokens or 'answer' not in tokens: continue
-            file_size = tokens['answer']['results'][0]['size']
-            file_md5 = tokens['answer']['results'][0]['md5']
-            if os.path.isfile(dst_filename):  # -f (force) was used, we checked for it above
-                if retf_print(fileIsValid(dst_filename, file_size, file_md5)) == 0: continue  # destination exists and is valid, no point to re-download
-            copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
+            copy_list.append(CopyFile(lfn_obj["lfn"], dst_filename, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         isWrite = True
         file_list = []
@@ -1868,17 +1977,14 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     offset = get_arg_value(xrd_copy_command, '-o')
     if offset: find_args.extend(['-o', offset])
 
-    pattern = '*'
-    pattern_regex = None
     use_regex = False
     filtering_enabled = False
-
-    glob_arg = get_arg_value(xrd_copy_command, '-glob')
-    if glob_arg:
-        pattern = glob_arg
+    pattern = get_arg_value(xrd_copy_command, '-glob')
+    if pattern:
         use_regex = False
         filtering_enabled = True
 
+    pattern_regex = None
     select_arg = get_arg_value(xrd_copy_command, '-select')
     if select_arg:
         if filtering_enabled:
