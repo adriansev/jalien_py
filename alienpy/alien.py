@@ -1990,7 +1990,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if filtering_enabled:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
-        pattern_regex_arg = select_arg
+        pattern_regex = select_arg
         use_regex = True
         filtering_enabled = True
 
@@ -1999,17 +1999,16 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if filtering_enabled:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
-        pattern_regex_arg = name_arg
         use_regex = True
         filtering_enabled = True
-
-        pattern_regex = name2regex(pattern_regex_arg)
+        pattern_regex = name2regex(name_arg)
         if use_regex and not pattern_regex:
-            msg = ("No selection verbs were recognized!"
+            msg = ("-name :: No selection verbs were recognized!"
                    "usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
                    f"The invalid pattern was: {pattern_regex_arg}")
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
+    if use_regex: pattern = pattern_regex
     copy_lfnlist = []  # list of lfn copy tasks
     input_file = ''  # input file with <source, destination> pairs
 
