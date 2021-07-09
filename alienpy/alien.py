@@ -1246,7 +1246,7 @@ def getEnvelope(wb, input_lfn_list: list, specs: Union[None, list] = None, isWri
     return access_list
 
 
-def expand_path_local(path_input: str, check_path: bool = False) -> str:
+def expand_path_local(path_input: str, check_path: bool = False, check_writable: bool = False) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = None
     try:
@@ -1254,23 +1254,43 @@ def expand_path_local(path_input: str, check_path: bool = False) -> str:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
-    is_dir = os.path.isdir(exp_path)
-    is_file = os.path.isfile(exp_path)
-    if check_path and not (is_dir or is_file): return ''
-    if path_input.endswith("/") or is_dir: exp_path = f'{exp_path}/'
+    if check_path:
+        if not os.path.exists(exp_path): return ''
+        is_dir = os.path.isdir(exp_path)
+        is_file = os.path.isfile(exp_path)
+        if is_dir:
+            exp_path = f'{exp_path}/'
+            if check_writable and not os.access(exp_path, os.W_OK): return ''  # checking for writable dir
+    else:
+        if path_input.endswith('/'): exp_path = f'{exp_path}/'
     return exp_path
 
 
-def expand_path_grid(wb, path_input: str, check_path: bool = False) -> str:
+def expand_path_grid(wb, path_input: str, check_path: bool = False, check_writable: bool = False) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
-    if not exp_path.startswith('/') and not exp_path.startswith('~'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
+    if exp_path.startswith('~/'): exp_path = exp_path.replace('~', AlienSessionInfo['alienHome'], 1)  # replace ~ for the usual meaning
+    if not exp_path.startswith('/'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
-    path_type = pathtype_grid(wb, exp_path)
-    if check_path and not path_type: return ''
-    if path_input.endswith("/") or path_type == 'd': exp_path = f'{exp_path}/'
+    if check_path:
+        ret_obj = SendMsg(wb, 'stat', [exp_path], opts = 'nomsg log')
+        if ret_obj.exitcode != "0": return ''
+        exp_path = ret_obj.ansdict["results"][0]["file"]
+        path_type = ret_obj.ansdict["results"][0]["type"]
+        if check_writable and path_type == "d":
+            writable_user = writable_group = writable_others = False
+            perms = ret_obj.ansdict["results"][0]["perm"]
+            p_user = int(perms[0])
+            p_group = int(perms[1])
+            p_others = int(perms[2])
+            path_owner = ret_obj.ansdict["results"][0]["owner"]
+            path_gowner = ret_obj.ansdict["results"][0]["gowner"]
+            if AlienSessionInfo['user'] == path_owner and p_user == 6 or p_user == 7: writable_user = True
+            if AlienSessionInfo['user'] == path_gowner and p_group == 6 or p_group == 7: writable_group = True
+            if p_others == 6 or p_others == 7: writable_others = True
+            if not (p_user or p_group or p_others): return ''
     return exp_path
 
 
@@ -2580,7 +2600,7 @@ def mk_xml_local(filepath_list: list):
         f = ET.SubElement(e, 'file', attrib=file2xml_el(item)._asdict())
     oxml = ET.tostring(xml_root, encoding = 'ascii')
     dom = xml.dom.minidom.parseString(oxml)
-    print(dom.toprettyxml())
+    return dom.toprettyxml()
 
 
 def DO_2xml(wb, args: Union[list, None] = None) -> RET:
@@ -2594,6 +2614,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
         msg = f'{central_help_msg}{msg_local}'
         return RET(0, msg)
 
+    is_local = get_arg(args, '-local')
     ignore_missing = get_arg(args, '-i')
     do_append = get_arg(args, '-a')
     output_file = get_arg_value(args, '-x')
@@ -2609,10 +2630,22 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     lfn_arg_list = None
 
     if lfn_filelist:
-        # if lfn_filelist.startswith('alien:')
-
-        lfn_list = file2list(lfn_filelist)
-
+        filelist, filelist_type = check_path(wb, lfn_filelist, check_path = True)
+        if not filelist: return RET(1, '', 'filelist could not be found!!')
+        if filelist_type == 'grid':
+            grid_args = []
+            if ignore_missing: grid_args.append('-i')
+            if do_append: grid_args.append('-a')
+            if output_file: grid_args.extend(['-x', output_file])
+            if lfn_filelist: grid_args.extend(['-l', lfn_filelist])
+            return SendMsg(wb, 'toXml', grid_args)
+        if filelist_type == 'local':
+            filelist_content_list = file2list(lfn_filelist)
+            xml_coll = mk_xml_local(filelist_content_list)
+            if output_file:
+                with open(output_file, 'w') as f: f.write(xml_coll)
+            else:
+                print_out(xml_coll)
     elif do_find:
         find_arg_list = args  # the rest of remaining arguments are find options
         lfn_list = list_files_grid(wb, lfn_arg_list, None, False, '')
