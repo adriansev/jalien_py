@@ -32,7 +32,9 @@ import grp
 import OpenSSL
 import async_stagger
 import websockets
-from websockets.extensions import permessage_deflate
+from websockets.client import connect as _wb_connect
+from websockets.client import unix_connect as _wb_unix_connect
+from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
@@ -519,19 +521,21 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if _DEBUG or _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
-    if _DEBUG:
-        logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
-        logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
-    if '{"command":' in cmdline and '"options":' in cmdline:
+
+    if '{"command":' in cmdline and '"options":' in cmdline:  # seems as json input
         jsonmsg = cmdline
     else:
         jsonmsg = CreateJsonCommand(cmdline, args, opts)  # nomsg/nokeys will be passed to CreateJsonCommand
-    if _DEBUG: logging.info(f"We send this json: {jsonmsg}")
 
     if not jsonmsg:
-        logging.info("SendMsg:: json message is empty or invalid")
-        return '' if 'rawstr' in opts else RET(1, '', "SendMsg:: json message is empty or invalid")
-    if _DEBUG: logging.debug(f"SEND COMMAND: {jsonmsg}")
+        logging.info("SendMsg:: json message is empty!")
+        return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")
+
+    if _DEBUG:
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
+        # logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
+        logging.debug(f"SEND COMMAND:: {jsonmsg}")
+
     nr_tries = int(0)
     result = None
     while result is None:
@@ -565,32 +569,74 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
                     break
         if result is None: time.sleep(0.1)
 
-    if time_begin: logging.debug(f"SendMsg::Result received: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
     if not result: return RET(1, '', 'SendMsg:: Empty result received from server')
     if 'rawstr' in opts: return result
-    ret_obj = GetDict(result)
-    if time_begin: logging.debug(f"SendMsg::Result decoded: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    ret_obj = retf_result2ret(result)
+    if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
     return ret_obj
 
 
-def GetDict(result: Union[str, dict]) -> RET:
-    """Convert server reply string to dict, update all relevant globals"""
-    if not result: return RET(1, '', 'GetDict:: empty argument')
+def retf_result2ret(result: Union[str, dict, None]) -> Union[None, RET]:
+    """Convert AliEn answer dictionary to RET object"""
+    global AlienSessionInfo
+    if not result: return RET()
     out_dict = None
     if isinstance(result, str):
         try:
             out_dict = json.loads(result)
         except Exception as e:
-            return RET(1, '', 'GetDict:: Could not load argument as json!\n{0}'.format(e))
+            msg = 'retf_result2ret:: Could not load argument as json!\n{0}'.format(e)
+            logging.error(msg)
+            return RET(1, '', msg)
     else:
-        out_dict = result  # result.copy()
-    if 'metadata' not in out_dict or 'results' not in out_dict:
-        return RET(1, '', 'GetDict:: Input dictionary not of AliEn format')
+        out_dict = result.copy()
 
-    ret_obj = retf_result2ret(out_dict)  # convert server answer to RET object
-    retf_session_update(ret_obj)  # update global session: exitcode, stdout, stderr
-    Update_meta2session(ret_obj.ansdict)
-    return ret_obj
+    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
+        msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
+        try:  # reset global result output
+            AlienSessionInfo['exitcode'] = '-1'
+            AlienSessionInfo['stdout'] = ''
+            AlienSessionInfo['error'] = ''
+        except Exception:
+            pass
+        logging.error(msg)
+        return RET(1, '', msg)
+
+    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
+    output = '\n'.join(message_list)
+
+    try:  # update global state of session
+        AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
+        AlienSessionInfo['stdout'] = output
+        AlienSessionInfo['error'] = out_dict["metadata"]["error"]
+
+        current_dir = out_dict["metadata"]["currentdir"]
+        if not AlienSessionInfo['alienHome']:
+            AlienSessionInfo['alienHome'] = current_dir  # if this is first connection, current dir is alien home
+
+        prev_dir = AlienSessionInfo['currentdir']  # last known current dir
+        if prev_dir != current_dir:
+            AlienSessionInfo['currentdir'] = current_dir
+            AlienSessionInfo['prevdir'] = prev_dir
+        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
+        short_current_dir = short_current_dir[:-1]  # remove the last /
+        if AlienSessionInfo['pathq']:
+            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
+        else:
+            push2stack(short_current_dir)
+    except Exception:
+        pass
+
+    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
+
+
+def retf_session_update(ret_info: RET):
+    """Update global result state"""
+    global AlienSessionInfo
+    AlienSessionInfo['exitcode'] = int(ret_info.exitcode)
+    AlienSessionInfo['stdout'] = ret_info.out
+    AlienSessionInfo['error'] = ret_info.err
 
 
 def PrintDict(in_arg: Union[str, dict, list]):
@@ -601,27 +647,6 @@ def PrintDict(in_arg: Union[str, dict, list]):
         except Exception as e:
             print_err('PrintDict:: Could not load argument as json!\n{0}'.format(e))
     print_out(json.dumps(in_arg, sort_keys = True, indent = 4))
-
-
-def Update_meta2session(message: dict = None):
-    """Export session information from a AliEn reply to global session info: cur/prev dir, user, home, dir stack"""
-    if not message or 'metadata' not in message: return
-    global AlienSessionInfo
-    AlienSessionInfo['user'] = message["metadata"]["user"]
-
-    current_dir = message["metadata"]["currentdir"]
-    if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir  # if this is first connection, current dir is alien home
-
-    prev_dir = AlienSessionInfo['currentdir']  # last known current dir
-    if prev_dir != current_dir:
-        AlienSessionInfo['currentdir'] = current_dir
-        AlienSessionInfo['prevdir'] = prev_dir
-    short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
-    short_current_dir = short_current_dir[:-1]  # remove the last /
-    if AlienSessionInfo['pathq']:
-        if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
-    else:
-        push2stack(short_current_dir)
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '') -> str:
@@ -696,6 +721,24 @@ def cleanup_temp():
 def now_str() -> str: return str(datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
 
 
+def deltat_ms(t0: Union[str, float, None] = None) -> str:
+    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    if not t0:
+        return f"{datetime.datetime.now().timestamp() * 1000:.3f}"
+    else:
+        t0 = float(t0)
+        return f"{(datetime.datetime.now().timestamp() - t0) * 1000:.3f}"
+
+
+def deltat_us(t0: Union[str, float, None] = None) -> str:
+    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    if not t0:
+        return f"{datetime.datetime.now().timestamp() * 1000000:.3f}"
+    else:
+        t0 = float(t0)
+        return f"{(datetime.datetime.now().timestamp() - t0) * 1000000:.3f}"
+
+
 def is_help(args: Union[str, list]) -> bool:
     if not args: return False
     if isinstance(args, str): args = args.split()
@@ -703,40 +746,9 @@ def is_help(args: Union[str, list]) -> bool:
     return any(opt in args for opt in help_opts)
 
 
-def retf_session_update(ret_info: RET):
-    global AlienSessionInfo
-    AlienSessionInfo['exitcode'] = int(ret_info.exitcode)
-    AlienSessionInfo['stdout'] = ret_info.out
-    AlienSessionInfo['error'] = ret_info.err
-
-
 def retf_global_get() -> RET:
     global AlienSessionInfo
     return RET(AlienSessionInfo['exitcode'], AlienSessionInfo['stdout'], AlienSessionInfo['error'])
-
-
-def retf_result2ret(result: Union[dict, str]) -> Union[None, RET]:
-    """Convert AliEn answer dictionary to RET object"""
-    if not result: return RET()
-    out_dict = None
-    if isinstance(result, str):
-        try:
-            out_dict = json.loads(result)
-        except Exception as e:
-            msg = 'retf_dict2ret:: Could not load argument as json!\n{0}'.format(e)
-            logging.error(msg)
-            return RET(1, '', msg)
-    else:
-        out_dict = result.copy()
-
-    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
-        msg = 'retf_dict2ret:: Dictionary does not have AliEn answer format'
-        logging.error(msg)
-        return RET(1, '', msg)
-
-    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
-    output = '\n'.join(message_list)
-    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
 
 def retf_print(ret_obj: RET, opts: str = '') -> int:
@@ -812,6 +824,14 @@ def import_aliases():
 
 def os_release() -> dict:
     return read_conf_file('/etc/os-release')
+
+
+def get_lfn_key(lfn_obj: dict) -> str:
+    """get either lfn key or file key from a file description"""
+    if not lfn_obj or not isinstance(lfn_obj, dict): return ''
+    if "lfn" in lfn_obj: return lfn_obj["lfn"]
+    if "file" in lfn_obj: return lfn_obj["file"]
+    return ''
 
 
 def pid_uid(pid: int) -> int:
@@ -1254,14 +1274,14 @@ def expand_path_local(path_input: str, check_path: bool = False, check_writable:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
-    if check_path:
-        if not os.path.exists(exp_path): return ''
+    if os.path.exists(exp_path):
         is_dir = os.path.isdir(exp_path)
         is_file = os.path.isfile(exp_path)
         if is_dir:
             exp_path = f'{exp_path}/'
             if check_writable and not os.access(exp_path, os.W_OK): return ''  # checking for writable dir
     else:
+        if check_path: return ''
         if path_input.endswith('/'): exp_path = f'{exp_path}/'
     return exp_path
 
@@ -1276,17 +1296,21 @@ def expand_path_grid(wb, path_input: str, check_path: bool = False, check_writab
     exp_path = os.path.normpath(exp_path)
     if check_path:
         ret_obj = SendMsg(wb, 'stat', [exp_path], opts = 'nomsg log')
-        if ret_obj.exitcode != "0": return ''
-        exp_path = ret_obj.ansdict["results"][0]["file"]
-        path_type = ret_obj.ansdict["results"][0]["type"]
+        if ret_obj.exitcode != 0: return ''
+        file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
+        exp_path = get_lfn_key(file_stat)
+        if not exp_path:
+            logging.error("expand_path_grid:: {exp_path} stat have no lfn nor file key!!")
+            return ''
+        path_type = file_stat["type"]
         if check_writable and path_type == "d":
             writable_user = writable_group = writable_others = False
-            perms = ret_obj.ansdict["results"][0]["perm"]
+            perms = file_stat["perm"]
             p_user = int(perms[0])
             p_group = int(perms[1])
             p_others = int(perms[2])
-            path_owner = ret_obj.ansdict["results"][0]["owner"]
-            path_gowner = ret_obj.ansdict["results"][0]["gowner"]
+            path_owner = file_stat["owner"]
+            path_gowner = file_stat["gowner"]
             if AlienSessionInfo['user'] == path_owner and p_user == 6 or p_user == 7: writable_user = True
             if AlienSessionInfo['user'] == path_gowner and p_group == 6 or p_group == 7: writable_group = True
             if p_others == 6 or p_others == 7: writable_others = True
@@ -1551,7 +1575,7 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
         return False
 
     if min_depth or max_depth:
-        lfn = f_obj.get("lfn", f_obj["file"])
+        lfn = get_lfn_key(f_obj)
         relative_lfn = lfn.replace(base_dir, '')  # it will have N directories + 1 file components
 
         if min_depth:
@@ -1643,7 +1667,7 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         send_opts = 'nomsg' if not _DEBUG else ''
         ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
 
-    if ret_obj.exitcode != "0":
+    if ret_obj.exitcode != 0:
         logging.error(f"list_files_grid error:: {dir} {pattern} {find_args}")
         return ret_obj
     if 'results' not in ret_obj.ansdict or not ret_obj.ansdict["results"]:
@@ -1664,7 +1688,7 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         return RET(2, "", f"No files passed the filters :: {dir} /pattern: {pattern} /find_args: {find_args}")
 
     ansdict = {"results": results_list_filtered}
-    lfn_list = [x.get("lfn", x["file"]) for x in results_list_filtered]
+    lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in results_list_filtered]
     stdout = '\n'.join(lfn_list)
     return RET(exitcode, stdout, stderr, ansdict)
 
@@ -1739,7 +1763,7 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
         return RET(2, "", f"No files passed the filters :: {str} /pattern: {pattern} /find_args: {find_args}")
 
     ansdict = {"results": results_list_filtered}
-    lfn_list = [x.get("lfn", x["file"]) for x in results_list_filtered]
+    lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in results_list_filtered]
     stdout = '\n'.join(file_list)
     return RET(exitcode, stdout, '', ansdict)
 
@@ -1820,25 +1844,30 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     src, src_type = check_path(wb, arg_src, check_path = False)
     dst, dst_type = check_path(wb, arg_dst, check_path = False)  # do not check path, it can be missing and then auto-created
 
-    is_src_resolved = False
     if not src_type and not dst_type:
-        is_src_resolved = True
         src, src_type = check_path(wb, arg_src, check_path = True)  # src must be always valid
+    if not dst_type:
+        if src_type == 'grid': dst_type = 'local'
+        if src_type == 'local': dst_type = 'grid'
+    if not src_type:
+        if dst_type == 'grid': src_type = 'local'
+        if dst_type == 'local': src_type = 'grid'
+
     if src_type == dst_type:
         return RET(1, '', 'Location of src,dst cannot be determined! use at least one prefix -> file: or alien:')
-    isSrcLocal = True if (src_type == 'local' or dst_type == 'grid' or (src_type == 'local' and dst_type == 'grid')) else False
+    isSrcLocal = True if (src_type == 'local' or dst_type == 'grid') else False
 
     if isSrcLocal:
-        if not is_src_resolved: src = expand_path_local(src, check_path = True)
+        src = expand_path_local(src, check_path = True)
         dst = expand_path_grid(wb, dst, check_path = False)
     else:
-        if not is_src_resolved: src = expand_path_grid(wb, src, check_path = True)
+        src = expand_path_grid(wb, src, check_path = True)
         dst = expand_path_local(dst, check_path = False)
+    if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
 
     if slashend_src and not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
-    if not src: return RET(2, '', f'{arg_src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
-
-    isDstDir = isSrcDir = src.endswith('/')  # the checkin procedure will append / if src is directory; is src is dir, so dst must be
+    if src.endswith('/') and not dst.endswith('/'): dst = f"{dst}/"
+    isDstDir = isSrcDir = src.endswith('/')  # is src is dir, so dst must be
     isDownload = not isSrcLocal
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
@@ -1873,7 +1902,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
 
         for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
-            lfn = lfn_obj["lfn"] if "lfn" in lfn_obj else lfn_obj["file"]
+            lfn = get_lfn_key(lfn_obj)
             dst_filename = format_dst_fn(src, lfn, dst, parent)
             if os.path.isfile(dst_filename):
                 if not overwrite:
@@ -1895,7 +1924,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
 
         for file in results_list.ansdict["results"]:
-            file_path = file["lfn"] if "lfn" in file else file["file"]
+            file_path = get_lfn_key(file)
             lfn = format_dst_fn(src, file_path, dst, parent)
             if pathtype_grid(wb, lfn) == 'f':  # lfn exists
                 if not overwrite:
@@ -3515,7 +3544,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
 
     wb = None
     ctx = None
-    deflateFact = permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
+    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
     headers_list = []
     headers_list.append(('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}'))
     if localConnect:
@@ -3523,14 +3552,14 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         logging.info(f"Request connection to : {fHostWSUrl}")
         socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
-            wb = await websockets.client.unix_connect(socket_filename, fHostWSUrl,
-                                                      max_queue=QUEUE_SIZE,
-                                                      max_size=MSG_SIZE,
-                                                      ping_interval=PING_INTERVAL,
-                                                      ping_timeout=PING_TIMEOUT,
-                                                      close_timeout=CLOSE_TIMEOUT,
-                                                      extra_headers=headers_list
-                                                      )
+            wb = await _wb_unix_connect(socket_filename, fHostWSUrl,
+                                        max_queue=QUEUE_SIZE,
+                                        max_size=MSG_SIZE,
+                                        ping_interval=PING_INTERVAL,
+                                        ping_timeout=PING_TIMEOUT,
+                                        close_timeout=CLOSE_TIMEOUT,
+                                        extra_headers=headers_list
+                                        )
         except Exception as e:
             msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
             logging.error(msg)
@@ -3567,15 +3596,15 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
                 if _DEBUG: init_begin = datetime.datetime.now().timestamp()
-                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
-                                              extensions=[deflateFact, ],
-                                              max_queue=QUEUE_SIZE,
-                                              max_size=MSG_SIZE,
-                                              ping_interval=PING_INTERVAL,
-                                              ping_timeout=PING_TIMEOUT,
-                                              close_timeout=CLOSE_TIMEOUT,
-                                              extra_headers=headers_list
-                                              )
+                wb = await _wb_connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
+                                       extensions=[deflateFact, ],
+                                       max_queue=QUEUE_SIZE,
+                                       max_size=MSG_SIZE,
+                                       ping_interval=PING_INTERVAL,
+                                       ping_timeout=PING_TIMEOUT,
+                                       close_timeout=CLOSE_TIMEOUT,
+                                       extra_headers=headers_list
+                                       )
                 if _DEBUG:
                     init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
                     logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
@@ -3953,7 +3982,15 @@ def setup_logging():
     logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('websockets').setLevel(MSG_LVL)
-    # concurrent concurrent.futures asyncio async_stagger websockets websockets.protocol websockets.client websockets.server
+    # logging.getLogger('websockets.protocol').setLevel(MSG_LVL)
+    # logging.getLogger('websockets.client').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_CONCURENT'):
+        logging.getLogger('concurrent').setLevel(MSG_LVL)
+        logging.getLogger('concurrent.futures').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_ASYNCIO'):
+        logging.getLogger('asyncio').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_STAGGER'):
+        logging.getLogger('async_stagger').setLevel(MSG_LVL)
 
 
 def main():
