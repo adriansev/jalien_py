@@ -960,7 +960,7 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
 
 
 def get_arg(target: list, item) -> bool:
-    """Remove inplace all instances of item from list"""
+    """Remove inplace all instances of item from list and return True if found"""
     len_begin = len(target)
     target[:] = [x for x in target if x != item]
     len_end = len(target)
@@ -968,13 +968,24 @@ def get_arg(target: list, item) -> bool:
 
 
 def get_arg_value(target: list, item):
-    """Remove inplace all instances of item and item+1 from list"""
+    """Remove inplace all instances of item and item+1 from list and return item+1"""
     val = None
     for x in target:
         if x == item:
             val = target.pop(target.index(x) + 1)
             target.pop(target.index(x))
     return val
+
+
+def get_arg_2values(target: list, item):
+    """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
+    val = None
+    for x in target:
+        if x == item:
+            val2 = target.pop(target.index(x) + 2)
+            val1 = target.pop(target.index(x) + 1)
+            target.pop(target.index(x))
+    return (val1, val2)
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1796,13 +1807,18 @@ def check_path(wb, path_arg: str, check_path: bool = False) -> tuple:
         path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     filepath = path_arg
     if check_path:
-        location = filepath = ''  # reset the values
-        filepath = expand_path_local(path_arg, check_path = True)
-        if filepath:
-            location = 'local'
+        if location:
+            if location == 'local':
+                filepath = expand_path_local(path_arg, check_path = True)
+            if location == 'grid':
+                filepath = expand_path_grid(wb, path_arg, check_path = True)
         else:
-            filepath = expand_path_grid(wb, path_arg, check_path = True)
-            if filepath: location = 'grid'
+            filepath = expand_path_local(path_arg, check_path = True)
+            if filepath:
+                location = 'local'
+            else:
+                filepath = expand_path_grid(wb, path_arg, check_path = True)
+                if filepath: location = 'grid'
     return (filepath, location)
 
 
@@ -2626,7 +2642,7 @@ def mk_xml_local(filepath_list: list):
     collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
     for idx, item in enumerate(filepath_list, start = 1):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
-        f = ET.SubElement(e, 'file', attrib=file2xml_el(item)._asdict())
+        f = ET.SubElement(e, 'file', attrib=file2xml_el(lfn_prefix_re.sub('', item))._asdict())
     oxml = ET.tostring(xml_root, encoding = 'ascii')
     dom = xml.dom.minidom.parseString(oxml)
     return dom.toprettyxml()
@@ -2658,37 +2674,105 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     find_arg_list = None
     lfn_arg_list = None
 
-    if lfn_filelist:
+    if lfn_filelist:  # a given file with list of files/lfns was provided
         filelist, filelist_type = check_path(wb, lfn_filelist, check_path = True)
-        if not filelist: return RET(1, '', 'filelist could not be found!!')
+        if not filelist or not filelist_type: return RET(1, '', 'filelist {lfn_filelist} could not be found!!')
         if filelist_type == 'grid':
             grid_args = []
             if ignore_missing: grid_args.append('-i')
             if do_append: grid_args.append('-a')
-            if output_file: grid_args.extend(['-x', output_file])
             if lfn_filelist: grid_args.extend(['-l', lfn_filelist])
-            return SendMsg(wb, 'toXml', grid_args)
+            if output_file and not output_file.startswith("file:"): grid_args.extend(['-x', lfn_prefix_re.sub('', output_file)])
+            ret_obj = SendMsg(wb, 'toXml', grid_args)
+            if output_file and output_file.startswith("file:"):
+                output_file = lfn_prefix_re.sub('', output_file)
+                try:
+                    with open(output_file, 'w') as f: f.write(ret_obj.out)
+                    return RET(0)
+                except Exception as e:
+                    logging.exception(e)
+                    return RET(1, '', f'Error writing {output_file}')
+            return ret_obj
+
         if filelist_type == 'local':
             filelist_content_list = file2list(lfn_filelist)
+            if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')
+            if filelist_content_list[0].startswith('alien:'):
+                return RET(1, '', 'Local filelists should contain only local files (not alien: lfns)')
             xml_coll = mk_xml_local(filelist_content_list)
             if output_file:
-                with open(output_file, 'w') as f: f.write(xml_coll)
+                try:
+                    with open(output_file, 'w') as f: f.write(xml_coll)
+                    return RET(0)
+                except Exception as e:
+                    logging.exception(e)
+                    return RET(1, '', f'Error writing {output_file}')
             else:
-                print_out(xml_coll)
+                return RET(0, xml_coll)
+        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact developer!')
+
     elif do_find:
-        find_arg_list = args  # the rest of remaining arguments are find options
-        lfn_list = list_files_grid(wb, lfn_arg_list, None, False, '')
+        find_arg_list = args.copy()  # the rest of remaining arguments are find options, hopefully
+        if is_local:
+            lfn_list_obj_list = list_files_local(find_arg_list, None, False, '')
+            if not lfn_list_obj_list: return RET(1, '', f'No files found with args: {find_arg_list}')
+            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list.ansdict["results"]]
+            xml_coll = mk_xml_local(lfn_list)
+            if output_file:
+                with open(output_file, 'w') as f: f.write(xml_coll)
+                return RET(0)
+            else:
+                return RET(0, xml_coll)
+        else:
+            lfn_list_obj_list = list_files_grid(wb, find_arg_list, None, False, '')
+            if not lfn_list_obj_list: return RET(1, '', f'No files found with args: {find_arg_list}')
+            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list.ansdict["results"]]
+            grid_args = []
+            if ignore_missing: grid_args.append('-i')
+            if do_append: grid_args.append('-a')
+            if output_file and not output_file.startswith("file:"): grid_args.extend(['-x', lfn_prefix_re.sub('', output_file)])
+            grid_args.extend(lfn_list)
+            ret_obj = SendMsg(wb, 'toXml', grid_args)
+            if output_file and output_file.startswith("file:"):
+                output_file = lfn_prefix_re.sub('', output_file)
+                try:
+                    with open(output_file, 'w') as f: f.write(ret_obj.out)
+                    return RET(0)
+                except Exception as e:
+                    logging.exception(e)
+                    return RET(1, '', f'Error writing {output_file}')
+            return ret_obj
+        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact developer!')
+
     else:
-        lfn_arg_list = args  # the rest of arguments are lfns
-        lfn_list_str = ' '.join(args)
-
-
-
-
-
-
-
-
+        lfn_arg_list = args.copy()  # the rest of arguments are lfns
+        if is_local:
+            lfn_list_obj_list = [file2file_dict(filepath) for filepath in lfn_arg_list]
+            if not lfn_list_obj_list: return RET(1, '', f'Invalid list of files: {lfn_arg_list}')
+            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list]
+            xml_coll = mk_xml_local(lfn_list)
+            if output_file:
+                with open(output_file, 'w') as f: f.write(xml_coll)
+                return RET(0)
+            else:
+                return RET(0, xml_coll)
+        else:
+            grid_args = []
+            if ignore_missing: grid_args.append('-i')
+            if do_append: grid_args.append('-a')
+            if output_file and not output_file.startswith("file:"): grid_args.extend(['-x', lfn_prefix_re.sub('', output_file)])
+            grid_args.extend(lfn_arg_list)
+            ret_obj = SendMsg(wb, 'toXml', grid_args)
+            if output_file and output_file.startswith("file:"):
+                output_file = lfn_prefix_re.sub('', output_file)
+                try:
+                    with open(output_file, 'w') as f: f.write(ret_obj.out)
+                    return RET(0)
+                except Exception as e:
+                    logging.exception(e)
+                    return RET(1, '', f'Error writing {output_file}')
+            return ret_obj
+        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact developer!')
 
 
 def DO_queryML(args: Union[list, None] = None) -> RET:
