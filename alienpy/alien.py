@@ -258,7 +258,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     __call__ = print
 
     def __bool__(self):
-        return True if self.exitcode == 1 else False
+        return True if self.exitcode == 0 else False
 
 
 class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
