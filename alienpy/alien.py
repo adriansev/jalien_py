@@ -234,6 +234,32 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     err: str = ''
     ansdict: dict = {}
 
+    def print(self, opts = ''):
+        if 'json' in opts:
+            if self.ansdict:
+                json_out = json.dumps(self.ansdict, sort_keys = True, indent = 4)
+                print_out(json_out)
+                if _DEBUG: logging.debug(json_out)
+            else:
+                print_err('This command did not return a json dictionary')
+            return
+
+        if self.exitcode != 0:
+            if 'info' in opts: logging.info(self.err)
+            if 'warn' in opts: logging.warning(self.err)
+            if 'err' in opts: logging.error(self.err)
+            if 'debug' in opts: logging.debug(self.err)
+            if self.err and not ('noerr' in opts or 'noprint' in opts):
+                print_err(f'{self.err.strip()}')
+        else:
+            if self.out and not ('noout' in opts or 'noprint' in opts):
+                print_out(f'{self.out.strip()}')
+
+    __call__ = print
+
+    def __bool__(self):
+        return True if self.exitcode == 1 else False
+
 
 class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     """AliEn style xml collection element strucure"""
@@ -256,6 +282,37 @@ class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     size: str = ''
     turl: str = ''
     type: str = ''
+
+
+class Msg:
+    """Class to create json messages to be sent to server"""
+    __slots__ = ('cmd', 'args', 'opts')
+
+    def __init__(self, cmd = '', args = None, opts = ''):
+        self.cmd = cmd
+        self.opts = opts
+        if not args:
+            self.args = []
+        elif isinstance(args, str):
+            self.args = shlex.split(args)
+        elif isinstance(args, list):
+            self.args = args.copy()
+
+    def add_arg(self, arg):
+        if isinstance(arg, str): self.args.append(arg)
+        if isinstance(arg, list): self.args.extend(arg)
+
+    def dict(self):
+        return CreateJsonCommand(self.cmd, self.args, self.opts, True)
+
+    def str(self):
+        return CreateJsonCommand(self.cmd, self.args, self.opts)
+
+    def __call__(self):
+        return (self.cmd, self.args, self.opts)
+
+    def __bool__(self):
+        return True if self.cmd else False
 
 
 class AliEn:
@@ -510,6 +567,26 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     return result
 
 
+@syncify
+async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
+    """The low level async function for send/receive multiple messages once"""
+    if not jsonmsg_list: return []
+    time_begin = None
+    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    for msg in jsonmsg_list:
+        await wb.send(msg)
+
+    # logging.info("calling recv", exc_info=True)
+    result_list = []
+    for i in range(len(jsonmsg_list)):
+        result = await wb.recv()
+        result_list.append(result)
+
+    # logging.info("recv returned", exc_info=True)
+    if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    return result_list
+
+
 def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
@@ -577,7 +654,72 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     return ret_obj
 
 
-def retf_result2ret(result: Union[str, dict, None]) -> Union[None, RET]:
+def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
+    """Send a json message to the specified websocket; it will return the server answer"""
+    if not wb:
+        msg = "SendMsg:: websocket not initialized"
+        logging.info(msg)
+        return '' if 'rawstr' in opts else RET(1, '', msg)
+    if not cmds_list: return []
+    time_begin = None
+    if _DEBUG or _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
+        opts = opts.replace('nokeys', '').replace('nomsg', '')
+
+    json_cmd_list = []
+    for cmd_str in cmds_list:
+        if '{"command":' in cmd_str and '"options":' in cmd_str:  # seems as json input
+            jsonmsg = cmd_str
+        else:
+            jsonmsg = CreateJsonCommand(cmd_str, [], opts)  # nomsg/nokeys will be passed to CreateJsonCommand
+        json_cmd_list.append(jsonmsg)
+
+    if _DEBUG:
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
+        logging.debug(f"SEND COMMAND LIST:: {chr(32).join(json_cmd_list)}")
+
+    nr_tries = int(0)
+    result_list = None
+    while result_list is None:
+        if nr_tries > 3:
+            msg = f"SendMsg:: {nr_tries - 1} communication errors!\nSent command: {chr(32).join(json_cmd_list)}"
+            print_err(msg)
+            logging.error(msg)
+            break
+        try:
+            nr_tries += 1
+            result_list = __sendmsg_multi(wb, json_cmd_list)
+        except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
+            logging.exception(e)
+            try:
+                wb = InitConnection()
+            except Exception as e:
+                logging.exception(e)
+                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}'
+                logging.error(msg)
+                print_err(msg)
+        except Exception as e:
+            logging.exception(e)
+            if not IsWbConnected(wb):
+                try:
+                    wb = InitConnection()
+                except Exception as e:
+                    logging.exception(e)
+                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {_DEBUG_FILE}'
+                    logging.error(msg)
+                    print_err(msg)
+                    break
+        if result_list is None: time.sleep(0.1)
+
+    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
+    if not result_list: return []
+    if 'rawstr' in opts: return result_list
+    ret_obj_list = [retf_result2ret(result) for result in result_list]
+    if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
+    return ret_obj_list
+
+
+def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Union[None, RET]:
     """Convert AliEn answer dictionary to RET object"""
     global AlienSessionInfo
     if not result: return RET()
@@ -594,22 +736,25 @@ def retf_result2ret(result: Union[str, dict, None]) -> Union[None, RET]:
 
     if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
         msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
-        try:  # reset global result output
-            AlienSessionInfo['exitcode'] = '-1'
-            AlienSessionInfo['stdout'] = ''
-            AlienSessionInfo['error'] = ''
-        except Exception:
-            pass
+        if not internal_cmd:
+            try:  # reset global result output
+                AlienSessionInfo['exitcode'] = '-1'
+                AlienSessionInfo['stdout'] = ''
+                AlienSessionInfo['error'] = ''
+            except Exception:
+                pass
         logging.error(msg)
         return RET(1, '', msg)
 
     message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
     output = '\n'.join(message_list)
+    ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
     try:  # update global state of session
-        AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
-        AlienSessionInfo['stdout'] = output
-        AlienSessionInfo['error'] = out_dict["metadata"]["error"]
+        if not internal_cmd:
+            AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
+            AlienSessionInfo['stdout'] = output.strip()
+            AlienSessionInfo['error'] = out_dict["metadata"]["error"]
 
         current_dir = out_dict["metadata"]["currentdir"]
         if not AlienSessionInfo['alienHome']:
@@ -627,8 +772,7 @@ def retf_result2ret(result: Union[str, dict, None]) -> Union[None, RET]:
             push2stack(short_current_dir)
     except Exception:
         pass
-
-    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
+    return ret_obj
 
 
 def retf_session_update(ret_info: RET):
@@ -649,7 +793,7 @@ def PrintDict(in_arg: Union[str, dict, list]):
     print_out(json.dumps(in_arg, sort_keys = True, indent = 4))
 
 
-def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '') -> str:
+def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
     """Return a json with command and argument list"""
     if args is None: args = []
     if isinstance(cmdline, dict):
@@ -658,17 +802,17 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
         if 'showkeys' in opts: opts = opts.replace('nokeys', '')
         if 'nomsg' in opts: out_dict["options"].insert(0, '-nomsg')
         if 'nokeys' in opts: out_dict["options"].insert(0, '-nokeys')
-        return json.dumps(out_dict)
+        return out_dict if get_dict else json.dumps(out_dict)
 
     if not args:
-        args = cmdline.split()
-        cmd = args.pop(0)
+        args = shlex.split(cmdline)
+        cmd = args.pop(0) if args else ''
     else:
         cmd = cmdline
     if 'nomsg' in opts: args.insert(0, '-nomsg')
     if 'nokeys' in opts: args.insert(0, '-nokeys')
     jsoncmd = {"command": cmd, "options": args}
-    return json.dumps(jsoncmd)
+    return jsoncmd if get_dict else json.dumps(jsoncmd)
 
 
 def GetMeta(result: dict, meta: str = '') -> list:
@@ -3987,7 +4131,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             print_out("AliEn command before the | token was not found")
             continue
 
-        args = input_alien.strip().split()
+        args = shlex.split(input_alien.strip())
         cmd = args.pop(0)
 
         _JSON_OUT = _JSON_OUT_GLOBAL  # if globally enabled then enable per command
