@@ -4231,6 +4231,11 @@ def main():
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv[0])
     exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
+    arg_list_expanded = []
+    for arg in sys.argv:
+        for item in shlex.split(arg):
+            arg_list_expanded.append(item)
+    sys.argv = arg_list_expanded
 
     if get_arg(sys.argv, '-json'):
         _JSON_OUT = True
