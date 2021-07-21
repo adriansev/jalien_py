@@ -3430,8 +3430,8 @@ def DO_prompt(args: Union[list, None] = None) -> RET:
 def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
     """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
     key = 'path' if fullpath else 'name'
-    ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-F', lfn])
-    return list(os.path.normpath(item[key]) for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
+    ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-a', '-F', os.path.normpath(lfn)])
+    return list(item[key] for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
 
 
 def lfn_list(wb, lfn: str = ''):
@@ -3440,7 +3440,7 @@ def lfn_list(wb, lfn: str = ''):
     if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
     list_lfns = []
     lfn_path = Path(lfn)
-    base_dir = lfn_path.parent.as_posix() if lfn_path.parent.as_posix() == '/' else f'{lfn_path.parent.as_posix()}/'
+    base_dir = '/' if lfn_path.parent.as_posix() == '/' else f'{lfn_path.parent.as_posix()}/'
     name = f'{lfn_path.name}/' if lfn.endswith('/') else lfn_path.name
 
     def item_format(base_dir, name, item):
