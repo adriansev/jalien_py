@@ -1690,47 +1690,47 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
     if not find_opts: return True
     opts = find_opts.split() if isinstance(find_opts, str) else find_opts.copy()
     min_depth = get_arg_value(opts, '-min_depth')
-    if min_depth.startswith("-"):
+    if min_depth and min_depth.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     max_depth = get_arg_value(opts, '-max_depth')
-    if max_depth.startswith("-"):
+    if max_depth and max_depth.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     min_size = get_arg_value(opts, '-min_size')
-    if min_size.startswith("-"):
+    if min_size and min_size.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     max_size = get_arg_value(opts, '-max_size')
-    if max_size.startswith("-"):
+    if max_size and max_size.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     min_ctime = get_arg_value(opts, '-min_ctime')
-    if min_ctime.startswith("-"):
+    if min_ctime and min_ctime.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     max_ctime = get_arg_value(opts, '-max_ctime')
-    if max_ctime.startswith("-"):
+    if max_ctime and max_ctime.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     jobid = get_arg_value(opts, '-jobid')
-    if jobid.startswith("-"):
+    if jobid and jobid.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     user = get_arg_value(opts, '-user')
-    if user.startswith("-"):
+    if user and user.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
     group = get_arg_value(opts, '-group')
-    if group.startswith("-"):
+    if group and group.startswith("-"):
         print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
         return False
 
@@ -1774,6 +1774,13 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
     if not dir: return RET(-1, "", "No search directory specified")
     # lets process the pattern: extract it from src if is in the path globbing form
     is_single_file = False  # dir actually point to a file
+
+    dir_arg_list = dir.split()
+    if len(dir_arg_list) > 1:  # dir is actually a list of arguments
+        if not pattern: pattern = dir_arg_list.pop(-1)
+        dir = dir_arg_list.pop(-1)
+        if dir_arg_list: find_args = ' '.join(dir_arg_list)
+
     if '*' in dir:  # we have globbing in src path
         is_regex = False
         src_arr = dir.split("/")
@@ -1803,7 +1810,7 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
 
     # remove default from additional args
     find_args_list = None
-    filter_args_list = None
+    filter_args_list = []
     if find_args:
         find_args_list = find_args.split()
         get_arg(find_args_list, '-a')
@@ -1812,7 +1819,51 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         get_arg(find_args_list, '-d')
         get_arg(find_args_list, '-w')
         get_arg(find_args_list, '-wh')
-        filter_args_list = find_args_list.copy()
+
+        min_depth = get_arg_value(find_args_list, '-min_depth')
+        if min_depth:
+            if min_depth.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-min_depth', min_depth])
+
+        max_depth = get_arg_value(find_args_list, '-max_depth')
+        if max_depth:
+            if max_depth.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-max_depth', max_depth])
+
+        min_size = get_arg_value(find_args_list, '-min_size')
+        if min_size:
+            if min_size.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-min_size', min_size])
+
+        max_size = get_arg_value(find_args_list, '-max_size')
+        if max_size:
+            if max_size.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-max_size', max_size])
+
+        min_ctime = get_arg_value(find_args_list, '-min_ctime')
+        if min_ctime:
+            if min_ctime.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-min_ctime', min_ctime])
+
+        max_ctime = get_arg_value(find_args_list, '-max_ctime')
+        if max_ctime:
+            if max_ctime.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-max_ctime', max_ctime])
+
+        jobid = get_arg_value(find_args_list, '-jobid')
+        if jobid:
+            if jobid.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-jobid', jobid])
+
+        user = get_arg_value(find_args_list, '-user')
+        if user:
+            if user.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-user', user])
+
+        group = get_arg_value(find_args_list, '-group')
+        if group:
+            if group.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
+            filter_args_list.extend(['-group', group])
 
     # create and return the list object just for a single file
     if is_single_file:
@@ -2818,41 +2869,23 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     if do_append and output_file is None: return RET(1, '', 'Append operation need -x argument for specification of target file')
 
     lfn_filelist = get_arg_value(args, '-l')
-    do_find = get_arg(args, '-find')
-    if lfn_filelist and do_find:
-        return RET(1, '', 'Incompatible inputs! either specify lfn file list with -l, specify -find, or just a list of lfns')
-
+ 
     lfn_list = []
     find_arg_list = None
     lfn_arg_list = None
 
     if lfn_filelist:  # a given file with list of files/lfns was provided
-        filelist, filelist_type = check_path(wb, lfn_filelist, check_path = True)
-        if not filelist or not filelist_type: return RET(1, '', 'filelist {lfn_filelist} could not be found!!')
-        if filelist_type == 'grid':
-            grid_args = []
-            if ignore_missing: grid_args.append('-i')
-            if do_append: grid_args.append('-a')
-            if lfn_filelist: grid_args.extend(['-l', lfn_filelist])
-            if output_file and not output_file.startswith("file:"): grid_args.extend(['-x', lfn_prefix_re.sub('', output_file)])
-            ret_obj = SendMsg(wb, 'toXml', grid_args)
-            if output_file and output_file.startswith("file:"):
-                output_file = lfn_prefix_re.sub('', output_file)
-                try:
-                    with open(output_file, 'w') as f: f.write(ret_obj.out)
-                    return RET(0)
-                except Exception as e:
-                    logging.exception(e)
-                    return RET(1, '', f'Error writing {output_file}')
-            return ret_obj
-
-        if filelist_type == 'local':
+        if is_local:
+            if not os.path.exists(lfn_filelist): return RET(1, '', 'filelist {lfn_filelist} could not be found!!')
             filelist_content_list = file2list(lfn_filelist)
             if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')
             if filelist_content_list[0].startswith('alien:'):
                 return RET(1, '', 'Local filelists should contain only local files (not alien: lfns)')
             xml_coll = mk_xml_local(filelist_content_list)
             if output_file:
+                if output_file.startswith('alien:'):
+                    return RET(1, '', 'For the moment upload the resulting file by hand in grid')
+                output_file = lfn_prefix_re.sub('', output_file)
                 try:
                     with open(output_file, 'w') as f: f.write(xml_coll)
                     return RET(0)
@@ -2861,29 +2894,12 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                     return RET(1, '', f'Error writing {output_file}')
             else:
                 return RET(0, xml_coll)
-        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact developer!')
-
-    elif do_find:
-        find_arg_list = args.copy()  # the rest of remaining arguments are find options, hopefully
-        if is_local:
-            lfn_list_obj_list = list_files_local(find_arg_list, None, False, '')
-            if not lfn_list_obj_list: return RET(1, '', f'No files found with args: {find_arg_list}')
-            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list.ansdict["results"]]
-            xml_coll = mk_xml_local(lfn_list)
-            if output_file:
-                with open(output_file, 'w') as f: f.write(xml_coll)
-                return RET(0)
-            else:
-                return RET(0, xml_coll)
         else:
-            lfn_list_obj_list = list_files_grid(wb, find_arg_list, None, False, '')
-            if not lfn_list_obj_list: return RET(1, '', f'No files found with args: {find_arg_list}')
-            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list.ansdict["results"]]
             grid_args = []
             if ignore_missing: grid_args.append('-i')
             if do_append: grid_args.append('-a')
+            if lfn_filelist: grid_args.extend(['-l', lfn_filelist])
             if output_file and not output_file.startswith("file:"): grid_args.extend(['-x', lfn_prefix_re.sub('', output_file)])
-            grid_args.extend(lfn_list)
             ret_obj = SendMsg(wb, 'toXml', grid_args)
             if output_file and output_file.startswith("file:"):
                 output_file = lfn_prefix_re.sub('', output_file)
@@ -2904,6 +2920,9 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
             lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list]
             xml_coll = mk_xml_local(lfn_list)
             if output_file:
+                if output_file.startswith('alien:'):
+                    return RET(1, '', 'For the moment upload the resulting file by hand in grid')
+                output_file = lfn_prefix_re.sub('', output_file)
                 with open(output_file, 'w') as f: f.write(xml_coll)
                 return RET(0)
             else:
