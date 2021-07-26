@@ -2798,7 +2798,10 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
         central_help = SendMsg(wb, 'toXml', ['-h'], opts = 'nokeys')
         central_help_msg = central_help.out
         msg_local = (f'\nAdditionally the client implements these options:'
-                     'other options to be added'
+                     '\n-local: specify that the target lfns are local files'
+                     '\n-find: use find the gather the lfns for collection'
+                     '\nfor -x (output file) and -l (file with lfns) the file:/alien: represent the location of file'
+                     '\nthe inferred defaults are that the target files and the output files are of the same type'
                      )
         msg = f'{central_help_msg}{msg_local}'
         return RET(0, msg)
