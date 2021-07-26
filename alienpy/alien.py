@@ -2855,7 +2855,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
         central_help_msg = central_help.out
         msg_local = (f'\nAdditionally the client implements these options:'
                      '\n-local: specify that the target lfns are local files'
-                     '\nfor -x (output file) and -l (file with lfns) the file:/alien: represent the location of file'
+                     '\nfor -x (output file) and -l (file with lfns) the file: and alien: represent the location of file'
                      '\nthe inferred defaults are that the target files and the output files are of the same type'
                      )
         msg = f'{central_help_msg}{msg_local}'
@@ -3994,8 +3994,8 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['cat'] = DO_cat
     del AlienSessionInfo['cmd2func_map_srv']['cat']
 
-    AlienSessionInfo['cmd2func_map_client']['toXml2'] = DO_2xml
-    # del AlienSessionInfo['cmd2func_map_srv']['toXml']
+    AlienSessionInfo['cmd2func_map_client']['toXml'] = DO_2xml
+    del AlienSessionInfo['cmd2func_map_srv']['toXml']
 
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
