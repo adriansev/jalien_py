@@ -2855,7 +2855,6 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
         central_help_msg = central_help.out
         msg_local = (f'\nAdditionally the client implements these options:'
                      '\n-local: specify that the target lfns are local files'
-                     '\n-find: use find the gather the lfns for collection'
                      '\nfor -x (output file) and -l (file with lfns) the file:/alien: represent the location of file'
                      '\nthe inferred defaults are that the target files and the output files are of the same type'
                      )
@@ -2869,7 +2868,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     if do_append and output_file is None: return RET(1, '', 'Append operation need -x argument for specification of target file')
 
     lfn_filelist = get_arg_value(args, '-l')
- 
+
     lfn_list = []
     find_arg_list = None
     lfn_arg_list = None
