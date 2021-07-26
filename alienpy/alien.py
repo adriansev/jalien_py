@@ -1446,9 +1446,14 @@ def expand_path_grid(wb, path_input: str, check_path: bool = False, check_writab
     exp_path = path_input
     exp_path = lfn_prefix_re.sub('', exp_path)
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
+    if exp_path == '.': exp_path = AlienSessionInfo['currentdir']
+    if exp_path == '~': exp_path = AlienSessionInfo['alienHome']
+    if exp_path.startswith('./'): exp_path = exp_path.replace('.', AlienSessionInfo['currentdir'], 1)
     if exp_path.startswith('~/'): exp_path = exp_path.replace('~', AlienSessionInfo['alienHome'], 1)  # replace ~ for the usual meaning
     if not exp_path.startswith('/'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
+    is_dir = exp_path.endswith('/')
     exp_path = os.path.normpath(exp_path)
+    if is_dir: exp_path = f'{exp_path}/'
     if check_path:
         ret_obj = SendMsg(wb, 'stat', [exp_path], opts = 'nomsg log')
         if ret_obj.exitcode != 0: return ''
