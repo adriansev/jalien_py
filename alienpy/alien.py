@@ -4267,6 +4267,10 @@ def main():
         _JSON_OUT = True
         _JSON_OUT_GLOBAL = True
 
+    if _DEBUG:
+        ret_obj = DO_version()
+        logging.debug(f'{ret_obj.out}\n')
+
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
         term = code.InteractiveConsole(locals = globals())
