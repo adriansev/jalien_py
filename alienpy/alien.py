@@ -3050,7 +3050,7 @@ def token(wb, args: Union[None, list] = None) -> int:
     if not wb: return 1
     if not args: args = []
     global AlienSessionInfo
-    tokencert, tokenkey = get_token_names()
+    tokencert, tokenkey = get_token_names(True)
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
     if ret_obj.exitcode != 0: return retf_print(ret_obj)
@@ -3526,8 +3526,11 @@ def get_files_cert() -> list:
     return (os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem'))
 
 
-def get_token_names() -> tuple:
-    return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+def get_token_names(files: bool = False) -> tuple:
+    if files:
+        return (f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+    else:
+        return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
@@ -3722,14 +3725,14 @@ def get_token_filenames() -> tuple:
     global AlienSessionInfo
     tokencert, tokenkey = get_token_names()
     random_str = None
-    if not os.path.isfile(tokencert) and ' BEGIN CERTIFICATE-----' in tokencert:  # and is not a file
+    if not os.path.isfile(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         AlienSessionInfo['templist'].append(tokencert)
-    if not os.path.isfile(tokenkey) and ' PRIVATE KEY-----' in tokenkey:  # and is not a file
+    if not os.path.isfile(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
