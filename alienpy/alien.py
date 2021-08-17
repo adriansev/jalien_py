@@ -1660,8 +1660,7 @@ def name2regex(pattern_regex: str = '') -> str:
 
 def gid2name(gid: Union[str, int]) -> str:
     """From the list of all groups return the name of gid"""
-    name_list = [gr.gr_name for gr in grp.getgrall() if gr.gr_gid == int(gid)]
-    return str(name_list[0])
+    return str(grp.getgrgid(int(gid)).gr_name)
 
 
 def file2file_dict(fn: str) -> dict:
