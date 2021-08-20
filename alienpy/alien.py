@@ -2465,13 +2465,15 @@ if _HAS_XROOTD:
                 else:  # isDownload
                     if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
                         if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
-                            file_name = os.path.basename(xrdjob.dst)
-                            file_path = os.path.dirname(xrdjob.dst)
+                            src_file_name = os.path.basename(xrdjob.lfn)
+                            dst_file_name = os.path.basename(xrdjob.dst)
+                            dst_file_path = os.path.dirname(xrdjob.dst)
                             zip_name = f'{xrdjob.dst}_{uuid.uuid4()}.zip'
                             os.replace(xrdjob.dst, zip_name)
                             with zipfile.ZipFile(zip_name) as myzip:
-                                if file_name in myzip.namelist():
-                                    myzip.extract(file_name, path = file_path)
+                                if src_file_name in myzip.namelist():
+                                    out_path = myzip.extract(src_file_name, path = dst_file_path)
+                                    if out_path and (src_file_name != dst_file_name): os.replace(src_file_name, dst_file_name)
                                 else:  # the downloaded file is actually a zip file
                                     os.replace(zip_name, xrdjob.dst)
                             if os.path.isfile(zip_name): os.remove(zip_name)
