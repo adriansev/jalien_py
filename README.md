@@ -2,19 +2,17 @@
 
 ## alien.py - Python interface to websocket endpoint of [ALICE](https://alice-collaboration.web.cern.ch) Grid Services  
 
-Quick containerized testing:
-`singularity run library://adriansev/default/alienpy:latest [cmd]`
-or
-`singularity run oras://registry.cern.ch/asevcenc/alienpy:latest [cmd]`
+Quick containerized testing:   
+`singularity run library://adriansev/default/alienpy:latest [cmd]`   
+or   
+`singularity run oras://registry.cern.ch/asevcenc/alienpy:latest [cmd]`   
 
-`latest` _usually_ would point to master but not always.(if desired and needed, request by email a new latest tag)
-see here what tags are available and their dates of creation:
-https://cloud.sylabs.io/library/_container/6124dbd7d63fe43757facc7e
+`latest` _usually_ would point to master but not always.(if desired and needed, request by email a new latest tag)   
+see [here](https://cloud.sylabs.io/library/_container/6124dbd7d63fe43757facc7e) what tags are available and their dates of creation.   
 
-The docker image can be found here:
-https://hub.docker.com/r/adriansevcenco/alienpy.dock/tags
-but it's usage in docker is cumbersome
-
+The docker images can be found @[DockerHub](https://hub.docker.com/r/adriansevcenco/alienpy.dock/tags)   
+but it's usage in docker is cumbersome   
+   
 ### Basic usage
 Can be used as command mode and interactive mode :  
 1. Command mode :  
@@ -44,29 +42,31 @@ AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >
 ### Environment steering
 
 There are a few environment variables that influence the mechanics of the script :  
-* JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults, full path certificate,key token files OR their respective contents  
-* If set these X509 locations will be used:   
-   X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR or X509_CERT_FILE  
+* JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults; they are either full path certificate,key token files OR their respective contents  
+* If set the following will be honored: X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR or X509_CERT_FILE  
 * ALIENPY_TIMEOUT will change the interval for keep-alive mechanics.
 * ALIENPY_CONNECT_TRIES - default = 3 : number of connect trials
 * ALIENPY_CONNECT_TRIES_INTERVAL - default = 0.5 : seconds between connection trials
 
+---
 For debugging purposes there are a few environment toggles :  
 * ALIENPY_JSON - print the unprocessed json message from the server   
 * ALIENPY_JSONRAW - print the unprocessed byte stream message from the server   
-
+---
 * ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options   
 * ALIENPY_NO_STAGGER - disable staggered parallel host resolution and socket creation (see [RFC8305](https://tools.ietf.org/html/rfc8305))
+---
+* ALIENPY_DEBUG - detailed debug meesages will be found in ALIENPY_DEBUG_FILE
+* ALIENPY_DEBUG_FILE - set the location of log file
+* ALIENPY_DEBUG_APPEND - is set the output will be appended to the present log file. if not the file will be overwritten.
+* ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`
+* ALIENPY_TIMING - report detailed operation timing in the log file.
 
-* ALIENPY_DEBUG - if set, the raw json content will be printed and all debug meesages will be found in $HOME/alien_py.log   
-* ALIENPY_DEBUG_FILE - set the location of log file   
-* ALIENPY_DEBUG_APPEND - is set the output will be appended to the present log file. if not the file will be overwritten.   
-* ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`   
-* ALIENPY_TIMING - report detailed operation timing in the log file.   
-
+---
 DEBUG file copy operations:
 * ALIENPY_KEEP_META - keep the metafile generated for download operations. Can be directly used with xrdcp.
-
+* XRD_LOGLEVEL='Dump'
+* XRD_LOGFILE=xrdlog.txt
    
 See also the native XRootD environment toggles: [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")   
 
@@ -156,20 +156,25 @@ AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >prompt pwd
 AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ local:/home.hdd/adrian/work-GRID/jalien_py >
 ```
 
-#### CWD persistence
+---
+##### CWD persistence
 Default behaviour is to save (and then restore) the last used CWD.   
 This bevahiour can be disabled with the env var ALIENPY_NO_CWD_RESTORE   
 
-#### `ls` aliases
+---
+##### `ls` aliases
 `ll`, `la`, `lla` are aliases to `ls -l`, `ls -a`, `ls -la`
 
-#### Custom aliases   
+---
+##### Custom aliases   
 A fixed file `${HOME}/.alienpy_aliases` can be used to define alias=string pairs that will be used(translated) in the usage of alien.py. One can do `myalias=cmd1;cmd2;cmd3` and the `myalias` string will be replaced by it's value when used.   
 
-####
+---
+##### Python shell
 `term` command will open an _Python_ shell within the context of alien.py and with a session object loaded
 
-####
-API usage: see examples directory
+---
+##### API usage
+see examples directory
 
 
