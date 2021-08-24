@@ -2,6 +2,19 @@
 
 ## alien.py - Python interface to websocket endpoint of [ALICE](https://alice-collaboration.web.cern.ch) Grid Services  
 
+Quick containerized testing:
+`singularity run library://adriansev/default/alienpy:latest [cmd]`
+or
+`singularity run oras://registry.cern.ch/asevcenc/alienpy:latest [cmd]`
+
+`latest` _usually_ would point to master but not always.(if desired and needed, request by email a new latest tag)
+see here what tags are available and their dates of creation:
+https://cloud.sylabs.io/library/_container/6124dbd7d63fe43757facc7e
+
+The docker image can be found here:
+https://hub.docker.com/r/adriansevcenco/alienpy.dock/tags
+but it's usage in docker is cumbersome
+
 ### Basic usage
 Can be used as command mode and interactive mode :  
 1. Command mode :  
@@ -31,22 +44,31 @@ AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >
 ### Environment steering
 
 There are a few environment variables that influence the mechanics of the script :  
-* JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults, full path certificate,key token files  
+* JALIEN_TOKEN_CERT, JALIEN_TOKEN_KEY - will overwrite the defaults, full path certificate,key token files OR their respective contents  
 * If set these X509 locations will be used:   
    X509_USER_CERT, X509_USER_KEY, X509_CERT_DIR or X509_CERT_FILE  
 * ALIENPY_TIMEOUT will change the interval for keep-alive mechanics.
+* ALIENPY_CONNECT_TRIES - default = 3 : number of connect trials
+* ALIENPY_CONNECT_TRIES_INTERVAL - default = 0.5 : seconds between connection trials
 
 For debugging purposes there are a few environment toggles :  
-* ALIENPY_DEBUG - if set, the raw json content will be printed and all debug meesages will be found in $HOME/alien_py.log   
-* ALIENPY_DEBUG_FILE - set the location of log file   
-**N.B.** the logfile is per session! It will be overwritten by a new session and mangled by parallel sessions (to be addressed) 
-* ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`     
-* ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options   
-* ALIENPY_NO_STAGGER - disable staggered parallel host resolution and socket creation (see [RFC8305](https://tools.ietf.org/html/rfc8305))
 * ALIENPY_JSON - print the unprocessed json message from the server   
 * ALIENPY_JSONRAW - print the unprocessed byte stream message from the server   
+
+* ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options   
+* ALIENPY_NO_STAGGER - disable staggered parallel host resolution and socket creation (see [RFC8305](https://tools.ietf.org/html/rfc8305))
+
+* ALIENPY_DEBUG - if set, the raw json content will be printed and all debug meesages will be found in $HOME/alien_py.log   
+* ALIENPY_DEBUG_FILE - set the location of log file   
+* ALIENPY_DEBUG_APPEND - is set the output will be appended to the present log file. if not the file will be overwritten.   
+* ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`   
+* ALIENPY_TIMING - report detailed operation timing in the log file.   
+
+DEBUG file copy operations:
+* ALIENPY_KEEP_META - keep the metafile generated for download operations. Can be directly used with xrdcp.
+
    
-For XRootD operations the native XRootD environment toggles are used, see [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")   
+See also the native XRootD environment toggles: [docs](https://xrootd.slac.stanford.edu/doc/man/xrdcp.1.html#ENVIRONMENT "XRootD xrdcopy documentation")   
 
 ## Authentication
 The authentication process needs the presence of a X509 certificate (enrolled into ALICE VO, see [here](https://alien.web.cern.ch/content/vo/alice/userregistration))
@@ -73,26 +95,40 @@ The target file upload can support grid specifiers like those described in `cp` 
 cp can take as arguments both files and directories and have the following options:  
 ```
 alien.py cp -h
-at least 2 arguments are needed : src dst
-the command is of the form of (with the strict order of arguments):
-cp args src dst
-where src|dst are local files if prefixed with file:// or just file: and grid files otherwise; alien:// are allowed but ignored.
+Command format is of the form of (with the strict order of arguments):
+cp <options> src dst
+or
+cp <options> -input input_file
+
+location prefixes are: file: | file:// | alien: | alien://
+if one prefix is specified the other operator is considered of the other kind (no local -> local, or grid->grid operations allowed)
+if no prefix is specified, the src will be _first_ checked if local and then if remote.
+
+-input argument is a file with >src dst< pairs
+
 after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
 where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
-args are the following :
+options are the following :
 -h : print help
--f : replace any existing output file
+-f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
--y <nr_sources> : use up to the number of sources specified in parallel
--S <aditional TPC streams> : uses num additional parallel streams to do the transfer. The maximum value is 15. The default is 0 (i.e., use only the main stream).
+-cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified;
+for uploads (for xrootd client > 4.12.0) a hash type will be negociated with remote and transfer will be validated
+-y <nr_sources> : use up to the number of sources specified in parallel (N.B. Ignored as it breaks download of files stored in archives)
+-S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
--T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy)
+-T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-noxrdzip: circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
+N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
+If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
 
 for the recursive copy of directories the following options (of the find command) can be used:
--select <pattern> : select only these files to be copied; N.B. this is a REGEX applied to full path!!! defaults to all ".*"
--name <pattern> : select only these files to be copied; N.B. this is a REGEX applied to a directory or file name!!! defaults to all ".*"
--name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
+-glob <globbing pattern> : this is the usual AliEn globbing format; N.B. this is NOT a REGEX!!! defaults to all "*"
+-select <pattern> : select only these files to be copied; N.B. this is a REGEX applied to full path!!!
+-name <pattern> : select only these files to be copied; N.B. this is a REGEX applied to a directory or file name!!!
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
+verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 N.B. the text to be filtered cannont have underline <_> within!!!
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
@@ -120,13 +156,20 @@ AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ >prompt pwd
 AliEn[asevcenc]:/alice/cern.ch/user/a/asevcenc/ local:/home.hdd/adrian/work-GRID/jalien_py >
 ```
 
+#### CWD persistence
+Default behaviour is to save (and then restore) the last used CWD.   
+This bevahiour can be disabled with the env var ALIENPY_NO_CWD_RESTORE   
+
 #### `ls` aliases
 `ll`, `la`, `lla` are aliases to `ls -l`, `ls -a`, `ls -la`
 
-#### CWD persistence
-By default, the shell mode will remember the location of the last directory and a new session will use the previous cwd   
-This bevahiour can be disabled with the env var ALIENPY_NO_CWD_RESTORE   
-
 #### Custom aliases   
 A fixed file `${HOME}/.alienpy_aliases` can be used to define alias=string pairs that will be used(translated) in the usage of alien.py. One can do `myalias=cmd1;cmd2;cmd3` and the `myalias` string will be replaced by it's value when used.   
+
+####
+`term` command will open an _Python_ shell within the context of alien.py and with a session object loaded
+
+####
+API usage: see examples directory
+
 
