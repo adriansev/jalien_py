@@ -2495,7 +2495,7 @@ if _HAS_XROOTD:
                     if self.debug: logging.debug(f"{xrdjob.lfn}\n")
 
             if not xrdjob.isUpload:
-                meta_path, sep, url_opts = str(job_info.src).partition("?")
+                meta_path, sep, url_opts = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
                     subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
                 else:
