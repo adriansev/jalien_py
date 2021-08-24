@@ -11,8 +11,20 @@ or
 see [here](https://cloud.sylabs.io/library/_container/6124dbd7d63fe43757facc7e) what tags are available and their dates of creation.   
 
 The docker images can be found @[DockerHub](https://hub.docker.com/r/adriansevcenco/alienpy.dock/tags)   
-but it's usage in docker is cumbersome   
-   
+```
+docker run -it \
+--user $(id -u):$(id -g) \
+--workdir="/home/$USER" \
+--env TMPDIR="${TMPDIR:-/tmp}" \
+--volume="/etc/group:/etc/group:ro" \
+--volume="/etc/passwd:/etc/passwd:ro" \
+--volume="/etc/shadow:/etc/shadow:ro" \
+--volume="/home:/home" \
+adriansevcenco/alienpy.dock:latest [cmd]
+```
+
+if no cmd is passed, the shell form will start
+
 ### Basic usage
 Can be used as command mode and interactive mode :  
 1. Command mode :  
