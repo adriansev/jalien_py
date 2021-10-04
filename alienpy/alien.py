@@ -47,7 +47,7 @@ ALIENPY_EXECUTABLE = ''
 
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This script requires a minimum of Python version 3.6", flush = True)
+    print("This script requires a minimum of Python version 3.6", file=sys.stderr, flush = True)
     sys.exit(1)
 
 _HAS_READLINE = False
@@ -367,10 +367,18 @@ def run_function(function_name: str, *args, **kwargs):
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
 
 
-def print_out(msg: str): print(msg, flush = True)
+def print_out(msg: str):
+    if _HAS_TTY:
+        print(msg, flush = True)
+    else:
+        logging.log(90, msg)
 
 
-def print_err(msg: str): print(msg, file=sys.stderr, flush = True)
+def print_err(msg: str):
+    if _HAS_TTY:
+        print(msg, file=sys.stderr, flush = True)
+    else:
+        logging.log(95, msg)
 
 
 def isfloat(arg: Union[str, float, None]) -> bool:
@@ -4234,6 +4242,8 @@ def JAlien(commands: str = '') -> int:
 
 
 def setup_logging():
+    logging.addLevelName(90, 'STDOUT')
+    logging.addLevelName(95, 'STDERR')
     MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
