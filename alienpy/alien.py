@@ -1373,7 +1373,7 @@ def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = ''
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
-        if _DEBUG: print(copy_job)
+        if _DEBUG: print_out(copy_job)
     return []
 
 
@@ -2113,7 +2113,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
     if strictspec: print_out("Strict specifications were enabled!! Command may fail!!")
     if httpurl and isSrcLocal:
-        print("httpurl option is ignored for uploads")
+        print_out("httpurl option is ignored for uploads")
         httpurl = False
 
     error_msg = ''  # container which accumulates the error messages
@@ -2468,7 +2468,7 @@ if _HAS_XROOTD:
                     perm = '644'
                     ret_obj = commit(self.wb, replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, '0', replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
                     if self.debug:
-                        print('MyCopyProgressHandler::commit result: ', end = '', flush = True)
+                        print_out('MyCopyProgressHandler::commit result: ', end = '', flush = True)
                         retf_print(ret_obj, 'debug')
                 else:  # isDownload
                     if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
@@ -3479,7 +3479,7 @@ def lfn_list(wb, lfn: str = ''):
     name = f'{lfn_path.name}/' if lfn.endswith('/') else lfn_path.name
 
     def item_format(base_dir, name, item):
-        # print(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
+        # print_out(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
         if name.endswith('/') and name != '/':
             return f'{name}{item}' if base_dir == './' else f'{base_dir}{name}{item}'
         return item if base_dir == './' else f'{base_dir}{item}'
@@ -3490,7 +3490,7 @@ def lfn_list(wb, lfn: str = ''):
     else:
         listing = get_list_entries(wb, base_dir)
         list_lfns = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
-    # print(f'\n{list_lfns}\n')
+    # print_out(f'\n{list_lfns}\n')
     return list_lfns
 
 
@@ -4335,8 +4335,8 @@ def cmd_token_destroy(): _cmd('token-destroy')
 
 
 def cmd_token_init():
-    print('INFO: JAliEn client automatically creates tokens, '
-          'alien-token-init is deprecated')
+    print_out('INFO: JAliEn client automatically creates tokens, '
+              'alien-token-init is deprecated')
     _cmd('token-init')
 
 
