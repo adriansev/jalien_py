@@ -3423,12 +3423,18 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
 def DO_checkAddr(args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if is_help(args):
-        msg = ('checkAddr fqdn/ip port'
-               'defaults are: alice-jcentral.cern.ch 8097')
+        msg = ('checkAddr [reference] fqdn/ip port\n'
+               'defaults are: alice-jcentral.cern.ch 8097\n'
+               'reference arg will check connection to google dns and www.cern.ch')
         return RET(0, msg)
+    result_list = []
+    if get_arg(args, 'reference'):
+        result_list.extend(check_port('8.8.8.8', 53))
+        result_list.extend(check_port('2001:4860:4860::8888', 53))
+        result_list.extend(check_port('www.cern.ch', 80))
     addr = args[0] if args else 'alice-jcentral.cern.ch'
     port = args[1] if (args and len(args) > 1) else 8097
-    result_list = check_port(addr, port)
+    result_list.extend(check_port(addr, port))
     stdout = ''
     for res in result_list:
         stdout += f'{res[0]}:{res[1]}        {PrintColor(COLORS.BIGreen) + "OK" if res[2] else PrintColor(COLORS.BIRed) + "FAIL"}{PrintColor(COLORS.ColorReset)}\n'
