@@ -3392,17 +3392,47 @@ Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
     return RET(0, msg)
 
 
-def check_port(address: str, port: Union[str, int]) -> bool:
-    """Check TCP connection to address:port"""
+def check_ip_port(addr_port: tuple) -> bool:
+    """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
+    if not addr_port: return False
     s = socket.socket()  # Create a TCP socket
+    s.settimeout(2)  # timeout 2s
     is_open = False
     try:
-        s.connect((address, int(port)))
+        s.connect(addr_port)
         is_open = True
     except Exception:
         pass
     s.close()
     return is_open
+
+
+def check_port(address: str, port: Union[str, int]) -> list:
+    """Check TCP connection to fqdn:port"""
+    ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
+    return [(*ip_port[-1], check_ip_port(ip_port[-1])) for ip_port in ip_list]
+
+
+def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] = 8097) -> bool:
+    result_list = check_port(address, port)
+    for ip in result_list:
+        if ip[-1]: return True
+    return False
+
+
+def DO_checkAddr(args: Union[list, None] = None) -> RET:
+    global AlienSessionInfo
+    if is_help(args):
+        msg = ('checkAddr fqdn/ip port'
+               'defaults are: alice-jcentral.cern.ch 8097')
+        return RET(0, msg)
+    addr = args[0] if args else 'alice-jcentral.cern.ch'
+    port = args[1] if (args and len(args) > 1) else 8097
+    result_list = check_port(addr, port)
+    stdout = ''
+    for res in result_list:
+        stdout += f'{res[0]}:{res[1]}        {PrintColor(COLORS.BIGreen) + "OK" if res[2] else PrintColor(COLORS.BIRed) + "FAIL"}{PrintColor(COLORS.ColorReset)}\n'
+    return RET(0, stdout)
 
 
 def get_help(wb, cmd: str = '') -> RET:
@@ -3932,7 +3962,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             # lets check JBOX availability
             jalien_info = read_conf_file(jclient_env)
             if jalien_info:
-                if is_my_pid(jalien_info['JALIEN_PID']) and check_port(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
+                if is_my_pid(jalien_info['JALIEN_PID']) and isReachable(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
                     jalien_server, jalien_websocket_port = jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']
 
         wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
@@ -3974,6 +4004,7 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['exit'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
+    AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
 
 
 def make_func_map_client():
