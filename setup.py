@@ -18,7 +18,7 @@ with open("README.md", "r") as fh:
 
 standard_requirements = [
         'async-stagger',
-        'websockets < 10.0.0',
+        'websockets',
         'pyOpenSSL',
         'xrootd',
     ]
