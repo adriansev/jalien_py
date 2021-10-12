@@ -4279,12 +4279,23 @@ def JAlien(commands: str = '') -> int:
 
 
 def setup_logging():
+    global _DEBUG_FILE
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
     MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
-    logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    try:
+        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    except Exception:
+        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to /tmp')
+        _DEBUG_FILE = f'/tmp/{os.path.basename(_DEBUG_FILE)}'
+        pass
+    try:
+        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    except Exception:
+        print_err(f'Could not write the log file {_DEBUG_FILE}')
+
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('websockets').setLevel(MSG_LVL)
     # logging.getLogger('websockets.protocol').setLevel(MSG_LVL)
