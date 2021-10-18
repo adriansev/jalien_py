@@ -367,18 +367,18 @@ def run_function(function_name: str, *args, **kwargs):
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
 
 
-def print_out(msg: str):
-    if _HAS_TTY:
-        print(msg, flush = True)
-    else:
+def print_out(msg: str, toLog: bool = False):
+    if toLog:
         logging.log(90, msg)
-
-
-def print_err(msg: str):
-    if _HAS_TTY:
-        print(msg, file=sys.stderr, flush = True)
     else:
+        print(msg, flush = True)
+
+
+def print_err(msg: str, toLog: bool = False):
+    if toLog:
         logging.log(95, msg)
+    else:
+        print(msg, file=sys.stderr, flush = True)
 
 
 def isfloat(arg: Union[str, float, None]) -> bool:
