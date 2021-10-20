@@ -1111,10 +1111,14 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     return val
 
 
+def list_remove_item(target_list: list, item_list):
+    target_list[:] = [el for el in target_list if el != item_list]
+
+
 def get_arg(target: list, item) -> bool:
     """Remove inplace all instances of item from list and return True if found"""
     len_begin = len(target)
-    target[:] = [x for x in target if x != item]
+    list_remove_item(target, item)
     len_end = len(target)
     return len_begin != len_end
 
@@ -4021,30 +4025,39 @@ def make_func_map_client():
     # client side function (overrides) with signature : (wb, args, opts)
     AlienSessionInfo['cmd2func_map_client']['cd'] = cd
     del AlienSessionInfo['cmd2func_map_srv']['cd']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cd')
 
     AlienSessionInfo['cmd2func_map_client']['cp'] = DO_XrootdCp
     del AlienSessionInfo['cmd2func_map_srv']['cp']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cp')
 
     AlienSessionInfo['cmd2func_map_client']['ping'] = DO_ping
     del AlienSessionInfo['cmd2func_map_srv']['ping']
+    list_remove_item(AlienSessionInfo['commandlist'], 'ping')
 
     AlienSessionInfo['cmd2func_map_client']['ps'] = DO_ps
     del AlienSessionInfo['cmd2func_map_srv']['ps']
+    list_remove_item(AlienSessionInfo['commandlist'], 'ps')
 
     AlienSessionInfo['cmd2func_map_client']['submit'] = DO_submit
     del AlienSessionInfo['cmd2func_map_srv']['submit']
+    list_remove_item(AlienSessionInfo['commandlist'], 'submit')
 
     AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
     del AlienSessionInfo['cmd2func_map_srv']['token']
+    list_remove_item(AlienSessionInfo['commandlist'], 'token')
 
     AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
     del AlienSessionInfo['cmd2func_map_srv']['user']
+    list_remove_item(AlienSessionInfo['commandlist'], 'user')
 
     AlienSessionInfo['cmd2func_map_client']['cat'] = DO_cat
     del AlienSessionInfo['cmd2func_map_srv']['cat']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cat')
 
     AlienSessionInfo['cmd2func_map_client']['toXml'] = DO_2xml
     del AlienSessionInfo['cmd2func_map_srv']['toXml']
+    list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
 
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
@@ -4073,7 +4086,7 @@ def getSessionVars(wb):
     """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
     if not wb: return
     global AlienSessionInfo
-    if not AlienSessionInfo['commandlist']:  # get the command list jsut once per session connection (a reconnection will skip this)
+    if not AlienSessionInfo['commandlist']:  # get the command list just once per session connection (a reconnection will skip this)
         ret_obj = SendMsg(wb, 'commandlist', [])
         # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
         cmd_list = ret_obj.ansdict["results"][0]['message'].split()
