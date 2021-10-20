@@ -21,6 +21,7 @@ standard_requirements = [
         'websockets',
         'pyOpenSSL',
         'xrootd',
+        'rich',
     ]
 
 if "ALIBUILD" not in os.environ.keys():
