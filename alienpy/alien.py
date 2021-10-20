@@ -568,9 +568,7 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
     await wb.send(jsonmsg)
-    # logging.info("calling recv", exc_info=True)
     result = await wb.recv()
-    # logging.info("recv returned", exc_info=True)
     if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     return result
 
@@ -581,16 +579,13 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
     if not jsonmsg_list: return []
     time_begin = None
     if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
-    for msg in jsonmsg_list:
-        await wb.send(msg)
+    for msg in jsonmsg_list: await wb.send(msg)
 
-    # logging.info("calling recv", exc_info=True)
     result_list = []
     for i in range(len(jsonmsg_list)):
         result = await wb.recv()
         result_list.append(result)
 
-    # logging.info("recv returned", exc_info=True)
     if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
     return result_list
 
@@ -643,15 +638,10 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
                 print_err(msg)
         except Exception as e:
             logging.exception(e)
-            if not IsWbConnected(wb):
-                try:
-                    wb = InitConnection()
-                except Exception as e:
-                    logging.exception(e)
-                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {_DEBUG_FILE}'
-                    logging.error(msg)
-                    print_err(msg)
-                    break
+            msg = f'SendMsg:: Non-connection related exception!! Check {_DEBUG_FILE}\n{str(e)}'
+            logging.error(msg)
+            print_err(msg)
+            break
         if result is None: time.sleep(0.1)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
@@ -3840,8 +3830,8 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
-    QUEUE_SIZE = int(2)  # maximum length of the queue that holds incoming messages
-    MSG_SIZE = int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
+    QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
+    MSG_SIZE = None  # int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
     PING_INTERVAL = PING_TIMEOUT  # Ping frame is sent every ping_interval seconds
     CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
