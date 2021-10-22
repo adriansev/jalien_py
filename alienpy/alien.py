@@ -602,6 +602,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
+    jsonmsg = None
     if '{"command":' in cmdline and '"options":' in cmdline:  # seems as json input
         jsonmsg = cmdline
     else:
@@ -612,45 +613,54 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")
 
     if _DEBUG:
-        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
-        # logging.info(f"With argumens: cmdline: {cmdline} ; args: {args}")
-        logging.debug(f"SEND COMMAND:: {jsonmsg}")
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
 
-    nr_tries = int(0)
+    nr_tries = int(1)
     result = None
+    non_connection_exception = False
+    connection_exception = False
     while result is None:
+        if non_connection_exception: break
         if nr_tries > 3:
-            msg = f"SendMsg:: {nr_tries - 1} communication errors!\nSent command: {jsonmsg}"
-            print_err(msg)
-            logging.error(msg)
+            connection_exception = True
             break
         try:
             nr_tries += 1
             result = __sendmsg(wb, jsonmsg)
         except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
+            if e.__cause__:
+                logging.exception(e.__cause__)
+                print_err(f'SendMsg:: failure because of {e.__cause__}')
+                non_connection_exception = True
+                break
             logging.exception(e)
             try:
                 wb = InitConnection()
             except Exception as e:
+                logging.error(f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}')
                 logging.exception(e)
-                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}'
-                logging.error(msg)
-                print_err(msg)
         except Exception as e:
             logging.exception(e)
-            msg = f'SendMsg:: Non-connection related exception!! Check {_DEBUG_FILE}\n{str(e)}'
-            logging.error(msg)
-            print_err(msg)
-            break
-        if result is None: time.sleep(0.1)
+            non_connection_exception = True
+        if result is None and not non_connection_exception: time.sleep(0.1)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
-    if not result: return RET(1, '', 'SendMsg:: Empty result received from server')
+    if not result:
+        if connection_exception:
+            msg = f"SendMsg:: communication error!\nSent command: {jsonmsg}"
+            print_err(msg)
+            logging.error(msg)
+        if non_connection_exception:
+            msg = f'SendMsg:: Non-connection related exception!! Check {_DEBUG_FILE}'
+            print_err(msg)
+            logging.error(msg)
+        return RET(1, '', 'SendMsg:: Empty result received from server')
+
     if 'rawstr' in opts: return result
     ret_obj = retf_result2ret(result)
     if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
     return ret_obj
-
+    
 
 def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     """Send a json message to the specified websocket; it will return the server answer"""
