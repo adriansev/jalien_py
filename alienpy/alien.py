@@ -38,6 +38,7 @@ from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
+from rich.pretty import pprint
 
 deque = collections.deque
 
@@ -660,7 +661,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     ret_obj = retf_result2ret(result)
     if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
     return ret_obj
-    
+
 
 def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     """Send a json message to the specified websocket; it will return the server answer"""
@@ -1381,17 +1382,19 @@ def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = ''
     return []
 
 
-def getEnvelope_lfn(wb, arg_lfn2file: lfn2file, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
+def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
     """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
     if not wb: return {}
-    if not arg_lfn2file: return {}
-    lfn = arg_lfn2file.lfn
-    file = arg_lfn2file.file
+    if not lfn: return {}
     if not specs: specs = []
+    if specs and isinstance(specs, str): specs = specs_split.split(specs)
     if isWrite:
+        if not local_file or not os.path.exists(local_file):
+            print_err(f'lfnAccessUrl/write token:: invalid local file: {local_file}')
+            return {}
         access_type = 'write'
-        size = int(os.stat(file).st_size)
-        md5sum = md5(file)
+        size = int(os.stat(local_file).st_size)
+        md5sum = md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576:  # we have a special lfn
             if not specs: specs.append('disk:4')  # if no specs defined then default to disk:4
@@ -1405,11 +1408,68 @@ def getEnvelope_lfn(wb, arg_lfn2file: lfn2file, specs: Union[None, list] = None,
     if httpurl: get_envelope_arg_list.insert(0, '-u')
     if strictspec: get_envelope_arg_list.insert(0, '-f')
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
-    if ret_obj.exitcode != 0:
-        ret_obj = ret_obj._replace(err = f'No token for {lfn} :: {ret_obj.err}')
+    if ret_obj.exitcode != 0 or 'results' not in ret_obj.ansdict:
+        ret_obj = ret_obj._replace(err = f'No token for {lfn} :: errno {ret_obj.exitcode} -> {ret_obj.err}')
         retf_print(ret_obj, opts = 'err noprint')
         return {}
-    result = ret_obj.ansdict
+    return ret_obj.ansdict
+
+
+def lfn2uri(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> str:
+    if isWrite:
+        if not local_file or not os.path.exists(local_file):
+            print_err(f'lfn2uri/write token:: invalid local file: {local_file}')
+            return ''
+    result = lfnAccessUrl(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
+    if not result: return ''
+    output_list = []
+    for replica in result['results']:
+        output_list.append(repr(f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}"))
+    output = '\n'.join(output_list)
+    return output
+
+
+def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> str:
+    if isWrite:
+        print_err('Metafile creation possible only for download')
+        return ''
+    result = lfnAccessUrl(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
+    if not result: return ''
+    # pprint(result)
+    size_4meta = result['results'][0]['size']  # size SHOULD be the same for all replicas
+    md5_4meta = result['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+    file_in_zip = None
+    url_list_4meta = []
+    for replica in result['results']:
+        url_components = replica['url'].rsplit('#', maxsplit = 1)
+        if len(url_components) > 1: file_in_zip = url_components[1]
+        # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
+        url_list_4meta.append(f'{url_components[0]}?xrd.wantprot=unix&authz={replica["envelope"]}')
+
+    # Create the metafile as a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
+    metafile = create_metafile(make_tmp_fn(lfn, '.meta4', uuid5 = True), lfn, local_file, size_4meta, md5_4meta, url_list_4meta)
+    if not metafile:
+        print_err(f"Could not create the download metafile for {lfn}")
+        return ''
+    subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'))  # keep it in local directory
+    metafile = os.path.realpath(os.path.basename(metafile))
+    if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ:
+        return f'{metafile}?xrdcl.unzip={file_in_zip}'
+    else:
+        return f'{metafile}'
+
+
+def lfn2fileTokens(wb, arg_lfn2file: lfn2file, specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
+    """Query central services for the access envelope of a lfn, it will return a lfn:server answer with envelope pairs"""
+    if not wb: return {}
+    if not arg_lfn2file: return {}
+    lfn = arg_lfn2file.lfn
+    file = arg_lfn2file.file
+    if not specs: specs = []
+    if specs and isinstance(specs, str): specs = specs_split.split(specs)
+    result = lfnAccessUrl(wb, lfn, file, specs, isWrite, strictspec, httpurl)
+    if not result:
+        return {"lfn": lfn, "answer": {}}
     qos_tags = [el for el in specs if 'ALICE::' not in el]  # for element in specs, if not ALICE:: then is qos tag
     SEs_list_specs = [el for el in specs if 'ALICE::' in el]  # explicit requests of SEs
     SEs_list_total = [replica["se"] for replica in result["results"]]
@@ -1423,13 +1483,13 @@ def getEnvelope_lfn(wb, arg_lfn2file: lfn2file, specs: Union[None, list] = None,
     return {"lfn": lfn, "answer": result}
 
 
-def getEnvelope(wb, input_lfn_list: list, specs: Union[None, list] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> list:
+def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> list:
     """Query central services for the access envelope of the list of lfns, it will return a list of lfn:server answer with envelope pairs"""
     if not wb: return []
     access_list = []
     if not input_lfn_list: return access_list
     if specs is None: specs = []
-    for l2f in input_lfn_list: access_list.append(getEnvelope_lfn(wb, l2f, specs, isWrite, strictspec, httpurl))
+    for l2f in input_lfn_list: access_list.append(lfn2fileTokens(wb, l2f, specs, isWrite, strictspec, httpurl))
     return access_list
 
 
@@ -2141,7 +2201,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 if retf_print(fileIsValid(dst_filename, file_size, file_md5)) == 0:
                     continue  # destination exists and is valid, no point to re-download
 
-            tokens = getEnvelope_lfn(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
+            tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
             if not tokens or 'answer' not in tokens: continue
             copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
@@ -2160,7 +2220,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 print_out(f'{lfn} exists, deleting..')  # we want to overwrite so clear up the destination lfn
                 ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
 
-            tokens = getEnvelope_lfn(wb, lfn2file(lfn, file_path), specs_list, isWrite)
+            tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite)
             if not tokens or 'answer' not in tokens: continue
             copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], ''))
     return RET(1, '', error_msg) if error_msg else RET(0)
@@ -2197,7 +2257,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 print_err(f"Could not create the download metafile for {cpfile.src}")
                 continue
             if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
-            if not cpfile.isUpload and _DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
+            if _DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
@@ -2792,7 +2852,7 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     ret_obj = SendMsg(wb, 'mv', [lfn, lfn_backup])  # let's create a backup of old lfn
     retf_print(ret_obj, 'debug')
     if retf_print(ret_obj) != 0: return ''
-    tokens = getEnvelope_lfn(wb, lfn2file(lfn, temp_file_name), [upload_specs], isWrite = True)
+    tokens = lfn2fileTokens(wb, lfn2file(lfn, temp_file_name), [upload_specs], isWrite = True)
     access_request = tokens['answer']
     replicas = access_request["results"][0]["nSEs"]
     if "disk:" not in upload_specs: upload_specs = f'disk:{replicas}'
