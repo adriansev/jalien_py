@@ -347,7 +347,7 @@ class AliEn:
 
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
-    print_out(f'\nCought signal {sig.name}, let\'s exit')
+    print_out(f'\nCought signal {sig}, let\'s exit')
     exit_message(int(AlienSessionInfo['exitcode']))
 
 
@@ -4089,6 +4089,9 @@ def getSessionVars(wb):
     if not AlienSessionInfo['commandlist']:  # get the command list just once per session connection (a reconnection will skip this)
         ret_obj = SendMsg(wb, 'commandlist', [])
         # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+        if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
+            print_err('Start session:: could not get command list, let\'s exit.')
+            sys.exit(1)
         cmd_list = ret_obj.ansdict["results"][0]['message'].split()
         regex = re.compile(r'.*_csd$')
         AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
