@@ -632,8 +632,8 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
             if e.__cause__:
                 logging.exception(e.__cause__)
                 print_err(f'SendMsg:: failure because of {e.__cause__}')
-                non_connection_exception = True
-                break
+                # non_connection_exception = True
+                # break
             logging.exception(e)
             try:
                 wb = InitConnection()
@@ -1416,20 +1416,17 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
 
 
 def lfn2uri(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> str:
-    if isWrite:
-        if not local_file or not os.path.exists(local_file):
-            print_err(f'lfn2uri/write token:: invalid local file: {local_file}')
-            return ''
+    """Return the list of access URIs for all replica of an ALICE lfn - can be used directly with xrdcp"""
     result = lfnAccessUrl(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
     if not result: return ''
     output_list = []
     for replica in result['results']:
         output_list.append(repr(f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}"))
-    output = '\n'.join(output_list)
-    return output
+    return '\n'.join(output_list)
 
 
 def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> str:
+    """Create metafile for download of an ALICE lfn and return it's location - can be used directly with xrdcp"""
     if isWrite:
         print_err('Metafile creation possible only for download')
         return ''
@@ -3118,6 +3115,44 @@ def DO_pfn(wb, args: Union[list, None] = None) -> RET:
     return ret_obj._replace(out = msg)
 
 
+def DO_lfn2uri(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if is_help(args):
+        msg = '''Command format : lfn2uri <lfn> <local_file?> [meta] [write|upload] [strict] [http]
+It will print the URIs for lfn replicas
+local_file : required only for write|upload URIs
+meta : will write in current directory the metafile and will return the string to be used with xrdcp
+write|upload : request tokens for writing/upload; incompatible with <meta> argument
+strict : lfn specifications will be considered to be strict
+http : URIs will be for http end-points of enabled SEs
+'''
+        return RET(0, msg)
+    write_meta = get_arg(args, 'meta')
+    strictspec = get_arg(args, 'strict')
+    httpurl = get_arg(args, 'http')
+    isWrite = get_arg(args, 'upload')
+    if not isWrite: isWrite = get_arg(args, 'write')
+    if isWrite and write_meta:
+        return RET(1, '', 'meta argument is incompatible with uploading')
+    if isWrite and len(args) < 2: return RET(1, '', 'for upload URIs two elements are required: lfn local_file')
+    if len(args) < 1: return RET(1, '', 'at least one argument is neeeded: lfn')
+    local_file = ''
+    if len(args) > 1: local_file = args[1]
+    lfn = args[0]
+    lfn_components = specs_split.split(lfn, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
+    lfn = lfn_components[0]  # first item is the file path, let's remove it; it remains disk specifications
+    if not isWrite: lfn = expand_path_grid(wb, lfn)
+    specs = ''
+    if len(lfn_components) > 1: specs = lfn_components[1]
+    if write_meta:
+        out = lfn2meta(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
+    else:
+        out = lfn2uri(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
+    if not out:
+        return RET(1, '', f'Could not not create URIs for: {lfn}')
+    return RET(0, out)
+
+
 def token(wb, args: Union[None, list] = None) -> int:
     """(Re)create the tokencert and tokenkey files"""
     if not wb: return 1
@@ -3999,7 +4034,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         except Exception as e:
             logging.error('{0}'.format(e))
         if not wb:
-            if nr_tries + 1 > connect_tries:
+            if nr_tries >= connect_tries:
                 logging.error(f"We tried on {host}:{port}{path} {nr_tries} times")
                 break
             time.sleep(connect_tries_interval)
@@ -4078,7 +4113,7 @@ def make_func_map_nowb():
 
 
 def make_func_map_client():
-    '''client side functions (new commands) that do not require connection to jcentral'''
+    '''client side functions (new commands) that DO require connection to jcentral'''
     global AlienSessionInfo
     if AlienSessionInfo['cmd2func_map_client']: return
 
@@ -4140,6 +4175,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['SEqos'] = DO_SEqos
     AlienSessionInfo['cmd2func_map_client']['less'] = DO_less
     AlienSessionInfo['cmd2func_map_client']['more'] = DO_more
+    AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
 
 
 def getSessionVars(wb):
