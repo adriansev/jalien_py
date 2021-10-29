@@ -3913,10 +3913,10 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
 
     if _DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    try:
-        ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
-    except ssl.SSLError:
-        pass
+    # try:
+    #    ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
+    # except ssl.SSLError:
+    #    pass
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
