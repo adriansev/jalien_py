@@ -906,16 +906,12 @@ def retf_global_get() -> RET:
 
 def retf_print(ret_obj: RET, opts: str = '') -> int:
     """Process the return struture of function"""
-    if ret_obj.exitcode == -1:
-        print_err('Default RET object used, invalid return')
-        return ret_obj.exitcode
-
     retf_session_update(ret_obj)
     if 'json' in opts:
         if ret_obj.ansdict:
-            json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 4)
-            print_out(json_out)
+            json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)
             if _DEBUG: logging.debug(json_out)
+            print_out(json_out)
         else:
             print_err('This command did not return a json dictionary')
         return ret_obj.exitcode
@@ -2166,8 +2162,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     else:  # this is upload to GRID
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
         ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
-        retf_print(ret_obj, opts = 'noprint err')
-        if ret_obj.exitcode != 0: return ret_obj  # just return the mkdir result
+        if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result
 
     specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
     specs_list = specs_split.split(specs) if specs else []
@@ -2444,7 +2439,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                 print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
                 continue
             retobj = makelist_lfn(wb, cp_line_items[0], cp_line_items[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
-            if retobj.exitcode != 0: retf_print(retobj, "err")  # print error and continue with the other files
+            retf_print(retobj, "noout err")  # print error and continue with the other files
     else:
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
@@ -2847,8 +2842,7 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     if not dated_backup:
         ret_obj = SendMsg(wb, 'rm', ['-f', lfn_backup])  # remove already present old backup; useless to pre-check
     ret_obj = SendMsg(wb, 'mv', [lfn, lfn_backup])  # let's create a backup of old lfn
-    retf_print(ret_obj, 'debug')
-    if retf_print(ret_obj) != 0: return ''
+    if retf_print(ret_obj, 'debug') != 0: return ''
     tokens = lfn2fileTokens(wb, lfn2file(lfn, temp_file_name), [upload_specs], isWrite = True)
     access_request = tokens['answer']
     replicas = access_request["results"][0]["nSEs"]
@@ -3246,7 +3240,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
         ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
-        if ret_obj.exitcode != 0: return retf_print(ret_obj)
+        if ret_obj.exitcode != 0: return ret_obj
         md5_end = md5(tmp)
         if md5_begin != md5_end:
             uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
@@ -4308,7 +4302,6 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
                 cmdline = cmdline.replace(' -noout', '')
                 capture_out = False
             ret_obj = runShellCMD(cmdline, capture_out)
-            retf_session_update(ret_obj)  # Update the globals exitcode, out, err
             retf_print(ret_obj, 'debug')
             continue
 
@@ -4333,7 +4326,6 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             args.insert(0, '-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
-        retf_session_update(ret_obj)  # Update the globals exitcode, out, err
         retf_print(ret_obj, print_opts)
         if cmd == 'cd': SessionSave()
         _JSON_OUT = _JSON_OUT_GLOBAL  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
