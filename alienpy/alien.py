@@ -1295,13 +1295,15 @@ options are the following :
 -h : print help
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
--cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified;
-         for uploads (for xrootd client > 4.12.0) a hash type will be negociated with remote and transfer will be validated
+-cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified
 -y <nr_sources> : use up to the number of sources specified in parallel (N.B. Ignored as it breaks download of files stored in archives)
 -S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-timeout <seconds> : the job will fail if did not finish in this nr of seconds
+-retry <times> : retry N times the copy process if failed
+-ratethreshold <bytes/s> : fail the job if the speed is lower than specified bytes/s
 -noxrdzip: circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
 N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
 If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
