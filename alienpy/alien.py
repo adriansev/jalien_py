@@ -932,13 +932,16 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
 def read_conf_file(file: str) -> dict:
     """Convert a configuration file with key = value format to a dict"""
     DICT_INFO = {}
-    with open(file) as rel_file:
-        for line in rel_file:
-            line = line.partition('#')[0].rstrip()
-            name, var = line.partition("=")[::2]
-            var = re.sub(r"^\"", '', str(var.strip()))
-            var = re.sub(r"\"$", '', var)
-            DICT_INFO[name.strip()] = var
+    try:
+        with open(file) as rel_file:
+            for line in rel_file:
+                line = line.partition('#')[0].rstrip()
+                name, var = line.partition("=")[::2]
+                var = re.sub(r"^\"", '', str(var.strip()))
+                var = re.sub(r"\"$", '', var)
+                DICT_INFO[name.strip()] = var
+    except Exception:
+        pass
     return DICT_INFO
 
 
@@ -1024,12 +1027,13 @@ def SessionSave():
 def SessionRestore(wb):
     if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     global AlienSessionInfo
-    if os.path.exists(GetSessionFilename()):
-        session = read_conf_file(GetSessionFilename())
-        sys_cur_dir = AlienSessionInfo['currentdir']
-        AlienSessionInfo['currentdir'] = session['CWD']
-        AlienSessionInfo['prevdir'] = session['CWDPREV']
-        if AlienSessionInfo['currentdir'] and (sys_cur_dir != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
+    session = read_conf_file(GetSessionFilename())
+    if not session: return
+    sys_cur_dir = AlienSessionInfo['currentdir']
+    if 'CWD' in session: AlienSessionInfo['currentdir'] = session['CWD']
+    if 'CWDPREV' in session: AlienSessionInfo['prevdir'] = session['CWDPREV']
+    if AlienSessionInfo['currentdir'] and (sys_cur_dir != AlienSessionInfo['currentdir']):
+        cd(wb, AlienSessionInfo['currentdir'], opts = 'nocheck')
 
 
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
