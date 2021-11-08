@@ -122,7 +122,7 @@ _TMPDIR = os.getenv('TMPDIR', '/tmp')
 _DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'stdout': '', 'error': '', 'session_started': False,
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
                     'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'alias_cache': {},
                     'q_out': deque([]), 'q_err': deque([]), 'pathq': deque([]),
                     'show_date': False, 'show_lpwd': False}
@@ -625,13 +625,12 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         if nr_tries > 3:
             connection_exception = True
             break
+        nr_tries += 1
         try:
-            nr_tries += 1
             result = __sendmsg(wb, jsonmsg)
         except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
             if e.__cause__:
-                logging.exception(e.__cause__)
-                print_err(f'SendMsg:: failure because of {e.__cause__}')
+                logging.exception(f'SendMsg:: failure because of {e.__cause__}')
                 # non_connection_exception = True
                 # break
             logging.exception(e)
@@ -643,7 +642,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         except Exception as e:
             logging.exception(e)
             non_connection_exception = True
-        if result is None and not non_connection_exception: time.sleep(0.1)
+        if result is None and not non_connection_exception: time.sleep(0.2)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
     if not result:
@@ -745,13 +744,6 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Uni
 
     if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
         msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
-        if not internal_cmd:
-            try:  # reset global result output
-                AlienSessionInfo['exitcode'] = '-1'
-                AlienSessionInfo['stdout'] = ''
-                AlienSessionInfo['error'] = ''
-            except Exception:
-                pass
         logging.error(msg)
         return RET(1, '', msg)
 
@@ -760,11 +752,8 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Uni
     ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
     try:  # update global state of session
-        if not internal_cmd:
-            AlienSessionInfo['exitcode'] = int(out_dict["metadata"]["exitcode"])
-            AlienSessionInfo['stdout'] = output.strip()
-            AlienSessionInfo['error'] = out_dict["metadata"]["error"]
-
+        AlienSessionInfo['exitcode'] = out_dict["metadata"]["exitcode"]
+        AlienSessionInfo['user'] = out_dict["metadata"]["user"]
         current_dir = out_dict["metadata"]["currentdir"]
         if not AlienSessionInfo['alienHome']:
             AlienSessionInfo['alienHome'] = current_dir  # if this is first connection, current dir is alien home
@@ -782,14 +771,6 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Uni
     except Exception:
         pass
     return ret_obj
-
-
-def retf_session_update(ret_info: RET):
-    """Update global result state"""
-    global AlienSessionInfo
-    AlienSessionInfo['exitcode'] = int(ret_info.exitcode)
-    AlienSessionInfo['stdout'] = ret_info.out
-    AlienSessionInfo['error'] = ret_info.err
 
 
 def PrintDict(in_arg: Union[str, dict, list]):
@@ -899,14 +880,8 @@ def is_help(args: Union[str, list]) -> bool:
     return any(opt in args for opt in help_opts)
 
 
-def retf_global_get() -> RET:
-    global AlienSessionInfo
-    return RET(AlienSessionInfo['exitcode'], AlienSessionInfo['stdout'], AlienSessionInfo['error'])
-
-
 def retf_print(ret_obj: RET, opts: str = '') -> int:
     """Process the return struture of function"""
-    retf_session_update(ret_obj)
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)
@@ -1039,11 +1014,6 @@ def SessionRestore(wb):
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')
-
-
-def error(args: Union[list, None] = None):  # pylint: disable=unused-argument
-    """Return the latest global recorded error"""
-    return RET(0, f"{AlienSessionInfo['error']}", '')
 
 
 def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
@@ -4101,8 +4071,6 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['tokenkey-match'] = DO_tokenkeymatch
     AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
-    AlienSessionInfo['cmd2func_map_nowb']['error'] = error
-    AlienSessionInfo['cmd2func_map_nowb']['$?err'] = error
     AlienSessionInfo['cmd2func_map_nowb']['version'] = DO_version
     AlienSessionInfo['cmd2func_map_nowb']['pfn-status'] = DO_pfnstatus
     AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
@@ -4260,7 +4228,6 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
 
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
         ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
-        retf_session_update(ret_obj)
         return ret_obj
 
     opts = ''  # let's proccess special server args
@@ -4373,6 +4340,7 @@ def JAlien(commands: str = '') -> int:
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
+    exit_code = int(-999)
     while True:
         INPUT = None
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -4385,7 +4353,8 @@ def JAlien(commands: str = '') -> int:
             exit_message()
 
         if not INPUT: continue
-        ProcessCommandChain(wb, INPUT)
+        exit_code = ProcessCommandChain(wb, INPUT)
+    return exit_code
 
 
 def setup_logging():
