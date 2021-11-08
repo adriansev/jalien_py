@@ -4057,6 +4057,37 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     return wb
 
 
+def make_func_map_clean_server():
+    """Remove from server list the client-side re-implementations"""
+    global AlienSessionInfo
+    del AlienSessionInfo['cmd2func_map_srv']['cd']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cd')
+
+    del AlienSessionInfo['cmd2func_map_srv']['cp']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cp')
+
+    del AlienSessionInfo['cmd2func_map_srv']['ping']
+    list_remove_item(AlienSessionInfo['commandlist'], 'ping')
+
+    del AlienSessionInfo['cmd2func_map_srv']['ps']
+    list_remove_item(AlienSessionInfo['commandlist'], 'ps')
+
+    del AlienSessionInfo['cmd2func_map_srv']['submit']
+    list_remove_item(AlienSessionInfo['commandlist'], 'submit')
+
+    del AlienSessionInfo['cmd2func_map_srv']['token']
+    list_remove_item(AlienSessionInfo['commandlist'], 'token')
+
+    del AlienSessionInfo['cmd2func_map_srv']['user']
+    list_remove_item(AlienSessionInfo['commandlist'], 'user')
+
+    del AlienSessionInfo['cmd2func_map_srv']['cat']
+    list_remove_item(AlienSessionInfo['commandlist'], 'cat')
+
+    del AlienSessionInfo['cmd2func_map_srv']['toXml']
+    list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
+
+
 def make_func_map_nowb():
     '''client side functions (new commands) that do not require connection to jcentral'''
     global AlienSessionInfo
@@ -4080,6 +4111,9 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
 
 
+make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection implementations
+
+
 def make_func_map_client():
     '''client side functions (new commands) that DO require connection to jcentral'''
     global AlienSessionInfo
@@ -4087,40 +4121,14 @@ def make_func_map_client():
 
     # client side function (overrides) with signature : (wb, args, opts)
     AlienSessionInfo['cmd2func_map_client']['cd'] = cd
-    del AlienSessionInfo['cmd2func_map_srv']['cd']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cd')
-
     AlienSessionInfo['cmd2func_map_client']['cp'] = DO_XrootdCp
-    del AlienSessionInfo['cmd2func_map_srv']['cp']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cp')
-
     AlienSessionInfo['cmd2func_map_client']['ping'] = DO_ping
-    del AlienSessionInfo['cmd2func_map_srv']['ping']
-    list_remove_item(AlienSessionInfo['commandlist'], 'ping')
-
     AlienSessionInfo['cmd2func_map_client']['ps'] = DO_ps
-    del AlienSessionInfo['cmd2func_map_srv']['ps']
-    list_remove_item(AlienSessionInfo['commandlist'], 'ps')
-
     AlienSessionInfo['cmd2func_map_client']['submit'] = DO_submit
-    del AlienSessionInfo['cmd2func_map_srv']['submit']
-    list_remove_item(AlienSessionInfo['commandlist'], 'submit')
-
     AlienSessionInfo['cmd2func_map_client']['token'] = DO_token
-    del AlienSessionInfo['cmd2func_map_srv']['token']
-    list_remove_item(AlienSessionInfo['commandlist'], 'token')
-
     AlienSessionInfo['cmd2func_map_client']['user'] = DO_user
-    del AlienSessionInfo['cmd2func_map_srv']['user']
-    list_remove_item(AlienSessionInfo['commandlist'], 'user')
-
     AlienSessionInfo['cmd2func_map_client']['cat'] = DO_cat
-    del AlienSessionInfo['cmd2func_map_srv']['cat']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cat')
-
     AlienSessionInfo['cmd2func_map_client']['toXml'] = DO_2xml
-    del AlienSessionInfo['cmd2func_map_srv']['toXml']
-    list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
 
     # client side function (new commands) with signature : (wb, args)
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
@@ -4146,33 +4154,37 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
 
 
+make_func_map_client()  # GLOBAL!! add to cmd2func_map_client the list of client-side implementations
+
+
 def getSessionVars(wb):
     """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
-    if not wb: return
     global AlienSessionInfo
-    if not AlienSessionInfo['commandlist']:  # get the command list just once per session connection (a reconnection will skip this)
-        ret_obj = SendMsg(wb, 'commandlist', [])
-        # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
-        if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
-            print_err('Start session:: could not get command list, let\'s exit.')
-            sys.exit(1)
-        cmd_list = ret_obj.ansdict["results"][0]['message'].split()
-        regex = re.compile(r'.*_csd$')
-        AlienSessionInfo['commandlist'] = [i for i in cmd_list if not regex.match(i)]
-        AlienSessionInfo['commandlist'].remove('jquota')
-        AlienSessionInfo['commandlist'].remove('fquota')
+    if AlienSessionInfo['user']: return  # user session variable is already set, then return
+    if not wb: return
+    # get the command list just once per session connection (a reconnection will skip this)
+    ret_obj = SendMsg(wb, 'commandlist', [])
+    # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
+    if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
+        print_err('Start session:: could not get command list, let\'s exit.')
+        sys.exit(1)
+    regex = re.compile(r'.*_csd$')
+    AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not regex.match(cmd["commandlist"])]
+    AlienSessionInfo['commandlist'].remove('jquota')
+    AlienSessionInfo['commandlist'].remove('fquota')
 
-        # server commands, signature is : (wb, command, args, opts)
-        for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
-        make_func_map_client()  # add to cmd2func_map_client the list of client-side implementations
+    # server commands, signature is : (wb, command, args, opts)
+    for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
+    make_func_map_clean_server()
 
-        # these are aliases, or directly interpreted
-        AlienSessionInfo['commandlist'].append('ll')
-        AlienSessionInfo['commandlist'].append('la')
-        AlienSessionInfo['commandlist'].append('lla')
-        AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
-        AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])  # add nowb cmds to list
-        AlienSessionInfo['commandlist'].sort()
+    # these are aliases, or directly interpreted
+    AlienSessionInfo['commandlist'].append('ll')
+    AlienSessionInfo['commandlist'].append('la')
+    AlienSessionInfo['commandlist'].append('lla')
+    AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
+    AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])  # add nowb cmds to list
+    # AlienSessionInfo['commandlist'].sort()
+    AlienSessionInfo['commandlist'] = sorted(set(AlienSessionInfo['commandlist']))
 
     # when starting new session prevdir is empty, if set then this is a reconnection
     if AlienSessionInfo['prevdir'] and (AlienSessionInfo['prevdir'] != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['prevdir'], 'log')
@@ -4186,16 +4198,17 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     wb = AlienConnect(token_args, use_usercert, localConnect)
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        if _DEBUG: logging.debug(f">>>   Time for websocket connection: {init_delta:.3f} ms")
-        if _TIME_CONNECT: print_out(f">>>   Time for websocket connection: {init_delta:.3f} ms")
+        msg = f">>>   Time for websocket connection: {init_delta:.3f} ms"
+        if _DEBUG: logging.debug(msg)
+        if _TIME_CONNECT: print_out(msg)
 
     if wb is not None: AlienSessionInfo['session_started'] = True
-    # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    getSessionVars(wb)
+    getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
     if init_begin:
         init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        if _DEBUG: logging.debug(f">>>   Time for session connection: {init_delta:.3f} ms")
-        if _TIME_CONNECT: print_out(f">>>   Time for session connection: {init_delta:.3f} ms")
+        msg = f">>>   Time for session connection: {init_delta:.3f} ms"
+        if _DEBUG: logging.debug(msg)
+        if _TIME_CONNECT: print_out(msg)
     return wb
 
 
@@ -4310,7 +4323,6 @@ def JAlien(commands: str = '') -> int:
     global AlienSessionInfo, _JSON_OUT
     import_aliases()
     wb = None
-    make_func_map_nowb()  # add to cmd2func_map_nowb the functions that do not need wb session
 
     # Command mode interaction
     if commands: return ProcessCommandChain(wb, commands)
@@ -4340,7 +4352,6 @@ def JAlien(commands: str = '') -> int:
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
-    exit_code = int(-999)
     while True:
         INPUT = None
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -4353,8 +4364,8 @@ def JAlien(commands: str = '') -> int:
             exit_message()
 
         if not INPUT: continue
-        exit_code = ProcessCommandChain(wb, INPUT)
-    return exit_code
+        AlienSessionInfo['exitcode'] = ProcessCommandChain(wb, INPUT)
+    return AlienSessionInfo['exitcode']
 
 
 def setup_logging():
