@@ -3915,7 +3915,8 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
 
     wb = None
     ctx = None
-    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 6},)
+    #  client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
+    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4},)
     headers_list = []
     headers_list.append(('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}'))
     if localConnect:
