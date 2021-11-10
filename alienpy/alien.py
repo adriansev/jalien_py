@@ -3428,17 +3428,22 @@ def DO_quota(wb, args: Union[None, list] = None) -> RET:
     fquota_dict = fquota_out.ansdict
 
     username = jquota_dict['results'][0]["username"]
+
     running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
     running_time_max = float(jquota_dict['results'][0]["maxTotalRunningTime"])/3600
     running_time_perc = (running_time/running_time_max)*100
+
     cpucost = float(jquota_dict['results'][0]["totalCpuCostLast24h"])/3600
     cpucost_max = float(jquota_dict['results'][0]["maxTotalCpuCost"])/3600
     cpucost_perc = (cpucost/cpucost_max)*100
-    pjobs_nominal = int(jquota_dict['results'][0]["nominalparallelJobs"])
-    pjobs_max = int(jquota_dict['results'][0]["maxparallelJobs"])
 
     unfinishedjobs_max = int(jquota_dict['results'][0]["maxUnfinishedJobs"])
     waiting = int(jquota_dict['results'][0]["waiting"])
+    running = int(jquota_dict['results'][0]["running"])
+    unfinishedjobs_perc = ((waiting + running)/unfinishedjobs_max)*100
+
+    pjobs_nominal = int(jquota_dict['results'][0]["nominalparallelJobs"])
+    pjobs_max = int(jquota_dict['results'][0]["maxparallelJobs"])
 
     size = float(fquota_dict['results'][0]["totalSize"])
     size_MiB = size/(1024*1024)
@@ -3451,11 +3456,10 @@ def DO_quota(wb, args: Union[None, list] = None) -> RET:
     files_perc = (files/files_max)*100
 
     msg = (f"""Quota report for user : {username}
-Running time (last 24h) :\t{running_time:.2f}/{running_time_max:.2f}(h) --> {running_time_perc:.2f}% used
-CPU Cost :\t\t\t{cpucost:.2f}/{cpucost_max:.2f}(h) --> {cpucost_perc:.2f}% used
+Unfinished jobs(R + W / Max):\t\t{running} + {waiting} / {unfinishedjobs_max} --> {unfinishedjobs_perc:.2f}% used
+Running time (last 24h) used/max:\t{running_time:.2f}/{running_time_max:.2f}(h) --> {running_time_perc:.2f}% used
+CPU Cost (last 24h) used/max:\t\t{cpucost:.2f}/{cpucost_max:.2f}(h) --> {cpucost_perc:.2f}% used
 ParallelJobs (nominal/max) :\t{pjobs_nominal}/{pjobs_max}
-Unfinished jobs :\t\tMAX={unfinishedjobs_max}
-Waiting :\t\t\t{waiting}
 Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
 Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
     return RET(0, msg)
