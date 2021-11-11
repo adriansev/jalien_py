@@ -2040,25 +2040,14 @@ def extract_glob_pattern(path_arg: str) -> tuple:
 
 def check_path(wb, path_arg: str, check_path: bool = False) -> tuple:
     """Check if path exists and what kind; returns the resolved path and the location"""
-    location = filepath = ''
-    if lfn_prefix_re.match(path_arg):  # if any prefix is present
-        if path_arg.startswith('file:'): location = 'local'
-        if path_arg.startswith('alien:'): location = 'grid'
-        path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
+    location = 'grid'  # default location is grid; MANDATORY specification of file: for local
+    filepath = None
+    if path_arg.startswith('file:'): location = 'local'
+    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     filepath = path_arg
     if check_path:
-        if location:
-            if location == 'local':
-                filepath = expand_path_local(path_arg, check_path = True)
-            if location == 'grid':
-                filepath = expand_path_grid(wb, path_arg, check_path = True)
-        else:
-            filepath = expand_path_local(path_arg, check_path = True)
-            if filepath:
-                location = 'local'
-            else:
-                filepath = expand_path_grid(wb, path_arg, check_path = True)
-                if filepath: location = 'grid'
+        if location == 'local': filepath = expand_path_local(path_arg, check_path = True)
+        if location == 'grid': filepath = expand_path_grid(wb, path_arg, check_path = True)
     return (filepath, location)
 
 
@@ -2100,18 +2089,12 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     src, src_type = check_path(wb, arg_src, check_path = False)
     dst, dst_type = check_path(wb, arg_dst, check_path = False)  # do not check path, it can be missing and then auto-created
 
-    if not src_type and not dst_type:
-        src, src_type = check_path(wb, arg_src, check_path = True)  # src must be always valid
-    if not dst_type:
-        if src_type == 'grid': dst_type = 'local'
-        if src_type == 'local': dst_type = 'grid'
-    if not src_type:
-        if dst_type == 'grid': src_type = 'local'
-        if dst_type == 'local': src_type = 'grid'
+    if src_type == dst_type == 'grid':
+        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: dowload file and upload it; local src,dst should be ALWAYS prefixed with file:')
+    if src_type == dst_type == 'local':
+        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
 
-    if src_type == dst_type:
-        return RET(1, '', 'Location of src,dst cannot be determined! use at least one prefix -> file: or alien:')
-    isSrcLocal = True if (src_type == 'local' or dst_type == 'grid') else False
+    isSrcLocal = (src_type == 'local')
 
     if isSrcLocal:
         src = expand_path_local(src, check_path = True)
@@ -2119,7 +2102,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     else:
         src = expand_path_grid(wb, src, check_path = True)
         dst = expand_path_local(dst, check_path = False)
-    if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) either local or on grid')  # ENOENT /* No such file or directory */
+    if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) on {src_type}')  # ENOENT /* No such file or directory */
 
     if slashend_src and not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
     if src.endswith('/') and not dst.endswith('/'): dst = f"{dst}/"
