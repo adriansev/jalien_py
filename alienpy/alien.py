@@ -237,7 +237,6 @@ class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
     isUpload: bool
     token_request: dict
     lfn: str
-    isSuccess: bool = False
 
 
 class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
@@ -2180,7 +2179,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
             tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
             if not tokens or 'answer' not in tokens: continue
-            copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], ''))
+            copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
     else:  # src is LOCAL, we are UPLOADING from LOCAL directory
         results_list = list_files_local(src, pattern, is_regex, " ".join(find_args))
         if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
@@ -2199,7 +2198,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
             tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite)
             if not tokens or 'answer' not in tokens: continue
-            copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], ''))
+            copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], lfn))
     return RET(1, '', error_msg) if error_msg else RET(0)
 
 
@@ -2470,7 +2469,7 @@ if _HAS_XROOTD:
 
         def __init__(self):
             self.wb = None
-            self.copy_failed_list = []  # record the tokens of succesfully uploaded files. needed for commit to catalogue
+            self.copy_failed_list = []  # record the failed jobs
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
@@ -2498,6 +2497,7 @@ if _HAS_XROOTD:
             job_info = self.job_list[jobId - 1]
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
             replica_dict = xrdjob.token_request
+            job_status_info = f"jobID: {jobId}/{self.jobs} >>> STATUS {status}"
 
             deltaT = datetime.datetime.now().timestamp() - float(job_info['start'])
             if os.getenv('XRD_LOGLEVEL'): logging.debug(f'XRD copy job time:: {xrdjob.lfn} -> {deltaT}')
@@ -2505,12 +2505,11 @@ if _HAS_XROOTD:
             if results['status'].ok:
                 speed = float(job_info['bytes_total'])/deltaT
                 speed_str = f'{GetHumanReadable(speed)}/s'
+
                 if xrdjob.isUpload:  # isUpload
                     perm = '644'
                     ret_obj = commit(self.wb, replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, '0', replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
-                    if self.debug:
-                        print_out('MyCopyProgressHandler::commit result: ', end = '', flush = True)
-                        retf_print(ret_obj, 'debug')
+                    retf_print(ret_obj, 'noout err')
                 else:  # isDownload
                     if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
                         if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -2528,20 +2527,17 @@ if _HAS_XROOTD:
                             if os.path.isfile(zip_name): os.remove(zip_name)
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
-                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} >>> SPEED {speed_str}")
+                    print_out(f"{job_status_info} >>> SPEED {speed_str}")
             else:
-                if self.debug:
-                    codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
-                    xrd_resp_msg = results['status'].message
-                    logging.debug(f"\n{codes_info}\n{xrd_resp_msg}")
+                self.copy_failed_list.append(xrdjob)
                 if xrdjob.isUpload:
-                    self.copy_failed_list.append(xrdjob.token_request)
-                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas")
-                    if self.debug: logging.debug(f"{xrdjob.token_request['file']}\n")
+                    msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas"
                 else:
-                    self.copy_failed_list.append(xrdjob.lfn)
-                    print_out(f"jobID: {jobId}/{self.jobs} >>> STATUS {status} : {xrdjob.lfn}")
-                    if self.debug: logging.debug(f"{xrdjob.lfn}\n")
+                    msg = f"{job_status_info} : {xrdjob.lfn}"
+                codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
+                xrd_resp_msg = results['status'].message
+                logging.error(f"\n{codes_info}\n{xrd_resp_msg}\n{msg}")
+                print_err(msg)
 
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
