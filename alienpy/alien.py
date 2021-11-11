@@ -51,6 +51,11 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 6:
     print("This script requires a minimum of Python version 3.6", file=sys.stderr, flush = True)
     sys.exit(1)
 
+##################################################
+#   GLOBAL POINTER TO WB CONNECTION  #############
+__SESSION_WB = None
+##################################################
+
 _HAS_READLINE = False
 try:
     import readline as rl
@@ -60,7 +65,7 @@ except ImportError:
         import gnureadline as rl
         _HAS_READLINE = True
     except ImportError:
-        _HAS_READLINE = False
+        pass
 
 if _HAS_READLINE:
     def setupHistory():
@@ -73,31 +78,50 @@ if _HAS_READLINE:
         def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
         rl.set_startup_hook(startup_hook)
 
-_XRDVER_MAJOR = None
-_XRDVER_MINOR = None
-# _XRDVER_PATCH = None
-_XRDVER_DATE = None
-_XRDVER_GIT = None  # for cases of git build
+
 _HAS_XROOTD = False
-try:  # let's fail fast if the xrootd python bindings are not present
+try:
     from XRootD import client as xrd_client
     _HAS_XROOTD = True
-
-    xrd_ver_arr = xrd_client.__version__.split(".")
-    if len(xrd_ver_arr) > 1:
-        _XRDVER_MAJOR = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
-        _XRDVER_MINOR = xrd_ver_arr[1]
-    else:  # version is not of x.y.z form
-        xrdver_git = xrd_ver_arr[0].split("-")
-        _XRDVER_DATE = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
-        _XRDVER_GIT = xrdver_git[1]
 except ImportError:
-    _HAS_XROOTD = False
+    pass
 
+_HAS_XROOTD_GETDEFAULT = False
+_XRD_HAVE_CKSUM = False
 if _HAS_XROOTD:
-    os.environ["XRD_APPNAME"] = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'  # Override the application name reported to the xrootd server.
+    def _xrd_ver() -> tuple:
+        if not _HAS_XROOTD: return (None, None)
+        xrd_ver_arr = xrd_client.__version__.split(".")
+        if len(xrd_ver_arr) > 1:
+            _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
+            _XRDVER_2 = xrd_ver_arr[1]
+        else:  # version is not of x.y.z form
+            xrdver_git = xrd_ver_arr[0].split("-")
+            _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
+            _XRDVER_2 = xrdver_git[1]
+        return (_XRDVER_1, _XRDVER_2)
 
-_HAS_XROOTD_GETDEFAULT = True if (_HAS_XROOTD and hasattr(xrd_client, 'EnvGetDefault')) else False
+    # check if xrootd have checksum
+    XRD_V1, XRD_V2 = _xrd_ver()
+    if (XRD_V1 and XRD_V1.isdecimal() and int(XRD_V1) >= 5) \
+            or (XRD_V1 and XRD_V1 == '4' and int(XRD_V2) > 12) \
+            or (XRD_V1 and int(XRD_V1) > 20200408):
+        _XRD_HAVE_CKSUM = True
+
+    def XRD_EnvPut(key, value):
+        """Sets the given key in the xrootd client environment to the given value.
+        Returns false if there is already a shell-imported setting for this key, true otherwise"""
+        if str(value).isdigit():
+            return xrd_client.EnvPutInt(key, value)
+        else:
+            return xrd_client.EnvPutString(key, value)
+
+    # Override the application name reported to the xrootd server.
+    XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
+    # os.environ["XRD_APPNAME"] = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
+
+    _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
+
 
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
@@ -300,7 +324,7 @@ class Msg:
             self.args = args.copy()
 
     def add_arg(self, arg):
-        if isinstance(arg, str): self.args.append(arg)
+        if isinstance(arg, str): self.args.extend(shlex.split(arg))
         if isinstance(arg, list): self.args.extend(arg)
 
     def dict(self):
@@ -727,7 +751,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     return ret_obj_list
 
 
-def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Union[None, RET]:
+def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> RET:
     """Convert AliEn answer dictionary to RET object"""
     global AlienSessionInfo
     if not result: return RET()
@@ -751,25 +775,27 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> Uni
     output = '\n'.join(message_list)
     ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
-    try:  # update global state of session
-        AlienSessionInfo['exitcode'] = out_dict["metadata"]["exitcode"]
-        AlienSessionInfo['user'] = out_dict["metadata"]["user"]
+    if AlienSessionInfo:  # update global state of session
+        AlienSessionInfo['exitcode'] = out_dict["metadata"]["exitcode"]  # keep last exit code
+        AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
         current_dir = out_dict["metadata"]["currentdir"]
-        if not AlienSessionInfo['alienHome']:
-            AlienSessionInfo['alienHome'] = current_dir  # if this is first connection, current dir is alien home
 
+        # if this is first connection, current dir is alien home
+        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
+
+        # update the current current/previous dir status
         prev_dir = AlienSessionInfo['currentdir']  # last known current dir
         if prev_dir != current_dir:
             AlienSessionInfo['currentdir'] = current_dir
             AlienSessionInfo['prevdir'] = prev_dir
+
+        # update directory stack (pushd/popd/dirs)
         short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
         short_current_dir = short_current_dir[:-1]  # remove the last /
         if AlienSessionInfo['pathq']:
             if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
         else:
             push2stack(short_current_dir)
-    except Exception:
-        pass
     return ret_obj
 
 
@@ -2531,14 +2557,6 @@ if _HAS_XROOTD:
         def should_cancel(self, jobId):
             return False
 
-    def XRD_EnvPut(key, value):
-        """Sets the given key in the xrootd client environment to the given value.
-        Returns false if there is already a shell-imported setting for this key, true otherwise"""
-        if str(value).isdigit():
-            return xrd_client.EnvPutInt(key, value)
-        else:
-            return xrd_client.EnvPutString(key, value)
-
 
 def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
@@ -2582,18 +2600,11 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     handler.printout = printout
     if _DEBUG: handler.debug = True
 
-    # get xrootd client version
-    has_cksum = False
-    if (_XRDVER_MAJOR and _XRDVER_MAJOR.isdecimal() and int(_XRDVER_MAJOR) >= 5) \
-            or (_XRDVER_MAJOR and _XRDVER_MAJOR == '4' and int(_XRDVER_MINOR) > 12) \
-            or (_XRDVER_DATE and int(_XRDVER_DATE) > 20200408):
-        has_cksum = True
-
     process = xrd_client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        if has_cksum:
+        if _XRD_HAVE_CKSUM:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                             force = overwrite, posc = posc, mkdir = makedir,
                             chunksize = chunksize, parallelchunks = chunks,
@@ -4041,6 +4052,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         print_err(msg)
         sys.exit(1)
 
+    __SESSION_WB = wb  # Save the connection as a global variable
     if AlienSessionInfo['use_usercert']: token(wb, token_args)  # if we connect with usercert then let get a default token
     return wb
 
