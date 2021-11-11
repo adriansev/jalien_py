@@ -2078,9 +2078,6 @@ def check_path(wb, path_arg: str, check_path: bool = False) -> tuple:
 
 def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
-    if (arg_source.startswith('file:') and arg_target.startswith('file:')) or (arg_source.startswith('alien:') and arg_target.startswith('alien:')):
-        return RET(22, '', 'The operands cannot have the same type and if missing they will be determined from the type of source.\nUse any of "file:" and or "alien:" specifiers for any path arguments')  # EINVAL /* Invalid argument */
-
     isSrcDir = isDstDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
 
     # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
