@@ -2565,8 +2565,9 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
         if streams > 15: streams = 15
         xrd_client.EnvPutInt('SubStreamsPerChannel', streams)
 
-    cksum_mode = 'none'
+    cksum_mode = 'none'  # none | source | target | end2end
     cksum_type = ''
+    cksum_preset = ''
     delete_invalid_chk = False
     if cksum:
         xrd_client.EnvPutInt('ZipMtlnCksum', 1)
@@ -2586,10 +2587,19 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
         if _XRD_HAVE_CKSUM:
+            if copy_job.isUpload:
+                # WIP: checksumming with md5 for uploading breaks, keep it on auto
+                # cksum_type = 'md5'
+                # cksum_preset = copy_job.token_request['md5']
+                pass
+            else:
+                cksum_type, cksum_preset = get_hash_meta(copy_job.src)
+                if not cksum_type: cksum_type = ''
+                if not cksum_preset: cksum_preset = ''
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                             force = overwrite, posc = posc, mkdir = makedir,
                             chunksize = chunksize, parallelchunks = chunks,
-                            checksummode = cksum_mode, checksumtype = cksum_type, rmBadCksum = delete_invalid_chk)
+                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
         else:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                             force = overwrite, posc = posc, mkdir = makedir,
@@ -2745,8 +2755,13 @@ def DO_SEqos(wb, args: list = None) -> RET:
 
 def get_lfn_meta(meta_fn: str) -> str:
     if not os.path.isfile(meta_fn): return ''
-    content = xml.dom.minidom.parse(meta_fn).documentElement
-    return content.getElementsByTagName('lfn')[0].firstChild.nodeValue
+    return xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue
+
+
+def get_hash_meta(meta_fn: str) -> tuple:
+    if not os.path.isfile(meta_fn): return ''
+    content = xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
+    return (content.getAttribute('type'), content.firstChild.nodeValue)
 
 
 def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
