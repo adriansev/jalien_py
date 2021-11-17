@@ -2,6 +2,10 @@
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
 import sys
+if sys.version_info[0] != 3 or sys.version_info[1] < 6:
+    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True)
+    sys.exit(1)
+
 import os
 import atexit
 import re
@@ -29,34 +33,42 @@ import threading
 import asyncio
 import pwd
 import grp
-import OpenSSL
-import async_stagger
-import websockets
-from websockets.client import connect as _wb_connect
-from websockets.client import unix_connect as _wb_unix_connect
-from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
-from rich.pretty import pprint
 
-deque = collections.deque
+if not os.getenv('ALIENPY_NO_STAGGER'):
+    try:
+        import async_stagger
+    except Exception as e:
+        print("async_stagger module could not be load", file=sys.stderr, flush = True)
+        sys.exit(1)
 
-ALIENPY_VERSION_DATE = '20211020_162055'
-ALIENPY_VERSION_STR = '1.3.4'
-ALIENPY_EXECUTABLE = ''
-
-
-if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This script requires a minimum of Python version 3.6", file=sys.stderr, flush = True)
+try:
+    import OpenSSL
+except Exception as e:
+    print("websockets module could not be load", file=sys.stderr, flush = True)
+    sys.exit(1)
+    
+try:
+    import websockets
+    from websockets.extensions import permessage_deflate as _wb_permessage_deflate
+except Exception as e:
+    print("websockets module could not be load", file=sys.stderr, flush = True)
     sys.exit(1)
 
-##################################################
-#   GLOBAL POINTER TO WB CONNECTION  #############
-__SESSION_WB = None
-##################################################
+try:
+    from XRootD import client as xrd_client
+    _HAS_XROOTD = True
+except Exception as e:
+    _HAS_XROOTD = False
 
-_HAS_READLINE = False
+try:
+    import rich
+    from rich.pretty import pprint
+except Exception as e:
+    print("rich module could not be load", file=sys.stderr, flush = True)
+
 try:
     import readline as rl
     _HAS_READLINE = True
@@ -65,7 +77,46 @@ except ImportError:
         import gnureadline as rl
         _HAS_READLINE = True
     except ImportError:
-        pass
+        _HAS_READLINE = False
+
+deque = collections.deque
+
+ALIENPY_VERSION_DATE = '20211020_162055'
+ALIENPY_VERSION_STR = '1.3.4'
+ALIENPY_EXECUTABLE = ''
+
+##################################################
+#   GLOBAL POINTER TO WB CONNECTION  #############
+__SESSION_WB = None
+##################################################
+
+_HAS_TTY = sys.stdout.isatty()
+_HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
+
+_NCPU = mp.cpu_count()
+
+REGEX_PATTERN_TYPE = type(re.compile('.'))
+guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
+cmds_split = re.compile(';|\n')  # regex for spliting chained commands
+specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
+lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
+ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
+emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
+
+# environment debug variable
+_JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
+_JSON_OUT_GLOBAL = _JSON_OUT
+_DEBUG = os.getenv('ALIENPY_DEBUG', '')
+_DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
+_TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
+_TMPDIR = os.getenv('TMPDIR', '/tmp')
+_DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
+
+# global session state;
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
+                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'alias_cache': {},
+                    'pathq': deque([]), 'show_date': False, 'show_lpwd': False}
+
 
 if _HAS_READLINE:
     def setupHistory():
@@ -78,13 +129,6 @@ if _HAS_READLINE:
         def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
         rl.set_startup_hook(startup_hook)
 
-
-_HAS_XROOTD = False
-try:
-    from XRootD import client as xrd_client
-    _HAS_XROOTD = True
-except ImportError:
-    pass
 
 _HAS_XROOTD_GETDEFAULT = False
 _XRD_HAVE_CKSUM = False
@@ -121,35 +165,6 @@ if _HAS_XROOTD:
     # os.environ["XRD_APPNAME"] = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
 
     _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
-
-
-_HAS_TTY = sys.stdout.isatty()
-_HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
-
-_NCPU = mp.cpu_count()
-
-REGEX_PATTERN_TYPE = type(re.compile('.'))
-guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
-cmds_split = re.compile(';|\n')  # regex for spliting chained commands
-specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
-lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
-ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
-emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
-
-# environment debug variable
-_JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
-_JSON_OUT_GLOBAL = _JSON_OUT
-_DEBUG = os.getenv('ALIENPY_DEBUG', '')
-_DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
-_TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
-_TMPDIR = os.getenv('TMPDIR', '/tmp')
-_DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
-
-# global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'alias_cache': {},
-                    'q_out': deque([]), 'q_err': deque([]), 'pathq': deque([]),
-                    'show_date': False, 'show_lpwd': False}
 
 
 class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
@@ -431,66 +446,27 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
     except Exception as e:
         return int(-1)
 
-
-def io_q_proc():
-    """IO queue:: print stdout/stderr and clear queue"""
-    global AlienSessionInfo
-    stderr = "\n". join(AlienSessionInfo['q_err'])
-    AlienSessionInfo['q_err'].clear()
-    stdout = "\n". join(AlienSessionInfo['q_out'])
-    AlienSessionInfo['q_out'].clear()
-    if stdout: print_out(stdout)
-    if stderr: print_err(stderr)
-
-
-def io_q_proc_out():
-    """IO queue:: print stdout and clear queue"""
-    global AlienSessionInfo
-    stdout = "\n". join(AlienSessionInfo['q_out'])
-    AlienSessionInfo['q_out'].clear()
-    if stdout: print_out(stdout)
-
-
-def io_q_get_out() -> str:
-    """IO queue:: get stdout and clear queue"""
-    global AlienSessionInfo
-    stdout = "\n". join(AlienSessionInfo['q_out'])
-    AlienSessionInfo['q_out'].clear()
-    return stdout
-
-
-def io_q_proc_err():
-    """IO queue:: print stderr and clear queue"""
-    global AlienSessionInfo
-    stderr = "\n". join(AlienSessionInfo['q_err'])
-    AlienSessionInfo['q_err'].clear()
-    if stderr: print_err(stderr)
-
-
-def io_q_get_err() -> str:
-    """IO queue:: get stderr and clear queue"""
-    global AlienSessionInfo
-    stderr = "\n". join(AlienSessionInfo['q_err'])
-    AlienSessionInfo['q_err'].clear()
-    return stderr
-
-
-def io_q_push_err(msg: str):
-    """IO queue:: push to stderr queue"""
-    global AlienSessionInfo
-    if msg: AlienSessionInfo['q_err'].append(msg)
-
-
-def io_q_push_out(msg: str):
-    """IO queue:: push to stdout queue"""
-    global AlienSessionInfo
-    if msg: AlienSessionInfo['q_out'].append(msg)
-
-
+#########################
+#   ASYNCIO MECHANICS
+#########################
 def start_asyncio():
     """Initialization of main thread that will keep the asyncio loop"""
     loop = None
     ready = threading.Event()
+
+    def _cancel_all_tasks(loop):
+        if sys.version_info[1] < 8:
+            to_cancel = asyncio.Task.all_tasks(loop)  # pylint: disable=no-member # asyncio.tasks
+        else:
+            to_cancel = asyncio.all_tasks(loop)  # asyncio.tasks
+        if not to_cancel: return
+        for task in to_cancel: task.cancel()
+        loop.run_until_complete(asyncio.tasks.gather(*to_cancel, loop=loop, return_exceptions=True))
+
+        for task in to_cancel:
+            if task.cancelled(): continue
+            if task.exception() is not None:
+                loop.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task, })
 
     def run(mainasync, *, debug=False):
         if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")  # pylint: disable=protected-access
@@ -509,20 +485,6 @@ def start_asyncio():
                 asyncio.events.set_event_loop(None)
                 loop.close()
 
-    def _cancel_all_tasks(loop):
-        if sys.version_info[1] < 8:
-            to_cancel = asyncio.Task.all_tasks(loop)  # pylint: disable=no-member # asyncio.tasks
-        else:
-            to_cancel = asyncio.all_tasks(loop)  # asyncio.tasks
-        if not to_cancel: return
-        for task in to_cancel: task.cancel()
-        loop.run_until_complete(asyncio.tasks.gather(*to_cancel, loop=loop, return_exceptions=True))
-
-        for task in to_cancel:
-            if task.cancelled(): continue
-            if task.exception() is not None:
-                loop.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task, })
-
     async def wait_forever():
         nonlocal loop
         loop = asyncio.get_event_loop()
@@ -535,19 +497,13 @@ def start_asyncio():
 
 
 # GLOBAL STATE ASYNCIO LOOP !!! REQUIRED TO BE GLOBAL !!!
-_loop = start_asyncio()
-
-
-# PREPARATIONS FOR PRINTING THREAD
-# print_io_th = threading.Thread(daemon=True, target=io_q_proc, name = 'PRINT_IO', )
-# print_io_th.start()
-# print_io_th.join()
+_alienpy_global_asyncio_loop = start_asyncio()
 
 def syncify(fn):
     """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
     def syncfn(*args, **kwds):
         # submit the original coroutine to the event loop and wait for the result
-        conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _loop)
+        conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _alienpy_global_asyncio_loop)
         return conc_future.result()
     syncfn.as_async = fn
     return syncfn
@@ -3915,7 +3871,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         logging.info(f"Request connection to : {fHostWSUrl}")
         socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
-            wb = await _wb_unix_connect(socket_filename, fHostWSUrl,
+            wb = await websockets.unix_connect(socket_filename, fHostWSUrl,
                                         max_queue=QUEUE_SIZE,
                                         max_size=MSG_SIZE,
                                         ping_interval=PING_INTERVAL,
@@ -3959,7 +3915,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
                 if _DEBUG: init_begin = datetime.datetime.now().timestamp()
-                wb = await _wb_connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
+                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
                                        extensions=[deflateFact, ],
                                        max_queue=QUEUE_SIZE,
                                        max_size=MSG_SIZE,
