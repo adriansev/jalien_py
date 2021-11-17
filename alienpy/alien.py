@@ -2289,8 +2289,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     cksum = get_arg(xrd_copy_command, '-cksum')
 
     tpc = 'none'
-    tpc_arg = get_arg_value(xrd_copy_command, '-tpc')
-    if tpc_arg: return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
+    if get_arg(xrd_copy_command, '-tpc'): tpc = 'first'
+    if tpc != 'none': return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
 
     y_arg_val = get_arg_value(xrd_copy_command, '-y')
     # sources = int(y_arg_val)
@@ -2598,12 +2598,12 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 if not cksum_preset: cksum_preset = ''
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                             force = overwrite, posc = posc, mkdir = makedir,
-                            chunksize = chunksize, parallelchunks = chunks,
+                            chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc,
                             checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
         else:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                             force = overwrite, posc = posc, mkdir = makedir,
-                            chunksize = chunksize, parallelchunks = chunks)
+                            chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc)
     process.prepare()
     process.run(handler)
     if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
