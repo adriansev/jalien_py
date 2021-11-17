@@ -254,6 +254,19 @@ class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
     lfn: str
 
 
+class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
+    """Structure for commit of succesful xrootd write to file catalogue"""
+    envelope: str
+    size: str
+    lfn: str
+    perm: str
+    expire: str
+    pfn: str
+    se: str
+    guid: str
+    md5: str
+    
+
 class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
     """Map a lfn to file (and reverse)"""
     lfn: str
@@ -582,7 +595,6 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
-    jsonmsg = None
     if '{"command":' in cmdline and '"options":' in cmdline:  # seems as json input
         jsonmsg = cmdline
     else:
@@ -661,42 +673,37 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
             jsonmsg = CreateJsonCommand(cmd_str, [], opts)  # nomsg/nokeys will be passed to CreateJsonCommand
         json_cmd_list.append(jsonmsg)
 
-    if _DEBUG:
-        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
-        logging.debug(f"SEND COMMAND LIST:: {chr(32).join(json_cmd_list)}")
 
-    nr_tries = int(0)
+    if _DEBUG:
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
+
+    nr_tries = int(1)
     result_list = None
+    non_connection_exception = False
+    connection_exception = False
     while result_list is None:
+        if non_connection_exception: break
         if nr_tries > 3:
-            msg = f"SendMsg:: {nr_tries - 1} communication errors!\nSent command: {chr(32).join(json_cmd_list)}"
-            print_err(msg)
-            logging.error(msg)
+            connection_exception = True
             break
+        nr_tries += 1        
         try:
-            nr_tries += 1
             result_list = __sendmsg_multi(wb, json_cmd_list)
         except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
+            if e.__cause__:
+                logging.exception(f'SendMsg:: failure because of {e.__cause__}')
+                # non_connection_exception = True
+                # break
             logging.exception(e)
             try:
                 wb = InitConnection()
             except Exception as e:
+                logging.error(f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}')
                 logging.exception(e)
-                msg = f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}'
-                logging.error(msg)
-                print_err(msg)
         except Exception as e:
             logging.exception(e)
-            if not IsWbConnected(wb):
-                try:
-                    wb = InitConnection()
-                except Exception as e:
-                    logging.exception(e)
-                    msg = f'SendMsg:: Could not recover connection after non-connection related exception!! Check {_DEBUG_FILE}'
-                    logging.error(msg)
-                    print_err(msg)
-                    break
-        if result_list is None: time.sleep(0.1)
+            non_connection_exception = True
+        if result_list is None and not non_connection_exception: time.sleep(0.2)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
     if not result_list: return []
@@ -1610,8 +1617,31 @@ def setDst(file: str = '', parent: int = 0) -> str:
 def commit(wb, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
     """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
     if not wb: return RET()
-    arg_list = [tokenstr, int(size), lfn, perm, expire, pfn, se, guid, md5sum]
-    return SendMsg(wb, 'commit', arg_list, opts = 'log')
+    return SendMsg(wb, 'commit', [tokenstr, int(size), lfn, perm, expire, pfn, se, guid, md5sum], opts = 'log')
+
+
+def commitFile(wb, lfnInfo: CommitInfo) -> RET:
+    """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
+    if not wb or not lfnInfo: return RET()
+    return SendMsg(wb, 'commit', [lfnInfo.envelope, int(lfnInfo.size), lfnInfo.lfn, lfnInfo.perm, lfnInfo.expire, lfnInfo.pfn, lfnInfo.se, lfnInfo.guid, lfnInfo.md5], opts = 'log')
+
+
+def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
+    """Upon succesful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
+    if not wb or not lfnInfo_list: return -1
+    batch_size = 30
+    batches_list = [lfnInfo_list[x:x+batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
+    commit_results = []
+    for batch in batches_list:
+        commit_list = []
+        for file_commit in batch:
+            jsoncmd = CreateJsonCommand('commit', [file_commit.envelope, int(file_commit.size), file_commit.lfn, \
+                                                   file_commit.perm, file_commit.expire, file_commit.pfn, file_commit.se, \
+                                                   file_commit.guid, file_commit.md5], \
+                                        'nokeys')
+            commit_list.append(jsoncmd)
+        commit_results.extend(SendMsgMulti(wb, commit_list, 'log'))
+    return commit_results
 
 
 def file_set_atime(path: str):
@@ -2418,7 +2448,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 if _HAS_XROOTD:
     class MyCopyProgressHandler(xrd_client.utils.CopyProgressHandler):
         """Custom ProgressHandler for XRootD copy process"""
-        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'printout', 'debug')
+        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'succesful_writes', 'printout', 'debug')
 
         def __init__(self):
             self.wb = None
@@ -2426,6 +2456,7 @@ if _HAS_XROOTD:
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
+            self.succesful_writes = []
             self.printout = ''
             self.debug = False
 
@@ -2461,8 +2492,8 @@ if _HAS_XROOTD:
 
                 if xrdjob.isUpload:  # isUpload
                     perm = '644'
-                    ret_obj = commit(self.wb, replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, '0', replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5'])
-                    retf_print(ret_obj, 'noout err')
+                    expire = '0'
+                    self.succesful_writes.append(CommitInfo(replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5']))
                 else:  # isDownload
                     if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
                         if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -2547,6 +2578,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     handler.wb = wb
     handler.xrdjob_list = job_list
     handler.printout = printout
+    handler.succesful_writes = []
     if _DEBUG: handler.debug = True
 
     process = xrd_client.CopyProcess()
@@ -2564,7 +2596,10 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                             chunksize = chunksize, parallelchunks = chunks)
     process.prepare()
     process.run(handler)
-    return handler.copy_failed_list  # for upload jobs we must return the list of token for succesful uploads
+    if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
+        ret_list = commitFileList(wb, handler.succesful_writes)
+        for ret in ret_list: retf_print(ret, 'noout err')
+    return handler.copy_failed_list  # lets see what failed and try to recover
 
 
 def xrd_stat(pfn: str):
