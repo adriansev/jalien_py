@@ -2514,7 +2514,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         msg_list.append(msg_sum)
     msg_all = '\n'.join(x.strip() for x in msg_list if x.strip())
     if 'ALIENPY_NOXRDZIP' in os.environ: os.environ.pop("ALIENPY_NOXRDZIP")
-    return RET(0, msg_all) if copy_jobs_success_nr_total < copy_jobs_nr else RET(1, '', msg_all)
+    return RET(0, msg_all) if copy_jobs_success_nr_total > 0 else RET(1, '', msg_all)
 
 
 if _HAS_XROOTD:
