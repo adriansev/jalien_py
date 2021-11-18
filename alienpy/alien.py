@@ -2179,7 +2179,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
                 print_out(f'{lfn} exists, deleting..')  # we want to overwrite so clear up the destination lfn
                 ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
 
-            tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite)
+            tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite, strictspec)
             if not tokens or 'answer' not in tokens: continue
             copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], lfn))
     return RET(1, '', error_msg) if error_msg else RET(0)
@@ -2421,7 +2421,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
     makelist_xrdjobs(copy_lfnlist, xrdcopy_job_list)
-
+    
     if not xrdcopy_job_list:
         msg = "No XRootD operations in list! enable the DEBUG mode for more info"
         logging.info(msg)
@@ -2431,18 +2431,90 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         logging.debug("XRootD copy jobs:")
         for file in xrdcopy_job_list: logging.debug(file)
 
+    msg1 = msg2 = msg3 = msg_sum = ''
+    copy_jobs_nr = copy_jobs_nr1 = copy_jobs_nr2 = 0
+    copy_jobs_failed_nr = copy_jobs_failed_nr1 = copy_jobs_failed_nr2 = 0
+    copy_jobs_success_nr = copy_jobs_success_nr1 = copy_jobs_success_nr2 = 0
+
     my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, tpc, posc, hashtype, streams, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(wb, xrdcopy_job_list, my_cp_args, printout)
-
-    # hard to return a single exitcode for a copy process optionally spanning multiple files
-    # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
     copy_jobs_nr = len(xrdcopy_job_list)
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
-    msg = f"Succesful copy jobs: {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+    msg1 = f"Succesful jobs (1st try): {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+
+    copy_failed_list2 = []
+    if copy_failed_list:
+        to_recover_list_try1 = []
+        failed_lfns = set([copy_job.lfn for copy_job in copy_failed_list if copy_job.isUpload])  # get which lfns had problems only for uploads
+        for lfn in failed_lfns:  # process failed transfers per lfn
+            failed_lfn_copy_jobs = [x for x in copy_failed_list if x.lfn == lfn]  # gather all failed copy jobs for one lfn
+            failed_replica_nr = len(failed_lfn_copy_jobs)
+            excluded_SEs_list = []
+            for job in failed_lfn_copy_jobs:
+                for se in job.token_request["SElist"]:
+                    excluded_SEs_list.append(f'!{se}')
+            excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
+            specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
+            
+            job_file = failed_lfn_copy_jobs[0].token_request['file']
+            job_lfn = failed_lfn_copy_jobs[0].token_request['lfn']
+            job_isWrite = failed_lfn_copy_jobs[0].isUpload
+            tokens_retry1 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
+            if not tokens_retry1 or 'answer' not in tokens_retry1: continue
+            to_recover_list_try1.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry1['answer'], job_lfn))
+
+        xrdcopy_job_list_2 = []
+        makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
+        copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)
+        copy_jobs_nr1 = len(xrdcopy_job_list_2)
+        copy_jobs_failed_nr1 = len(copy_failed_list2)
+        copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
+        msg2 = f"Succesful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
+
+    copy_failed_list3 = []
+    if copy_failed_list2:
+        to_recover_list_try2 = []
+        failed_lfns2 = set([copy_job.lfn for copy_job in copy_failed_list2 if copy_job.isUpload])  # get which lfns had problems only for uploads
+        for lfn in failed_lfns2:  # process failed transfers per lfn
+            failed_lfn_copy_jobs2 = [x for x in copy_failed_list2 if x.lfn == lfn]  # gather all failed copy jobs for one lfn
+            failed_replica_nr = len(failed_lfn_copy_jobs2)
+            excluded_SEs_list = []
+            for job in failed_lfn_copy_jobs2:
+                for se in job.token_request["SElist"]:
+                    excluded_SEs_list.append(f'!{se}')
+            excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
+            specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
+            
+            job_file = failed_lfn_copy_jobs2[0].token_request['file']
+            job_lfn = failed_lfn_copy_jobs2[0].token_request['lfn']
+            job_isWrite = failed_lfn_copy_jobs2[0].isUpload
+            tokens_retry2 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
+            if not tokens_retry2 or 'answer' not in tokens_retry1: continue
+            to_recover_list_try2.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry2['answer'], job_lfn))
+
+        xrdcopy_job_list_3 = []
+        makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
+        copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)
+        copy_jobs_nr2 = len(xrdcopy_job_list_3)
+        copy_jobs_failed_nr2 = len(copy_failed_list3)
+        copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
+        msg3 = f"Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}" if not ('quiet' in printout or 'silent' in printout) else ''
+
+
+    copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
+    copy_jobs_nr_total = copy_jobs_nr + copy_jobs_nr1 + copy_jobs_nr2
+    copy_jobs_success_nr_total = copy_jobs_success_nr + copy_jobs_success_nr1 + copy_jobs_success_nr2
+    # hard to return a single exitcode for a copy process optionally spanning multiple files
+    # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
+    msg_list = [msg1, msg2, msg3]
+    if msg2 or msg3:
+        msg_sum = f"Succesful jobs (total): {copy_jobs_success_nr_total}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+        msg_list.append(msg_sum)
+    msg_all = '\n'.join(x.strip() for x in msg_list if x.strip())
     if 'ALIENPY_NOXRDZIP' in os.environ: os.environ.pop("ALIENPY_NOXRDZIP")
-    return RET(0, msg) if copy_jobs_failed_nr < copy_jobs_nr else RET(1, '', msg)
+    return RET(0, msg_all) if copy_jobs_success_nr_total < copy_jobs_nr else RET(1, '', msg_all)
 
 
 if _HAS_XROOTD:
