@@ -130,28 +130,23 @@ if _HAS_READLINE:
         rl.set_startup_hook(startup_hook)
 
 
+def _is_valid_xrootd() -> bool:
+    if not _HAS_XROOTD: return False
+    xrd_ver_arr = xrd_client.__version__.split(".")
+    if len(xrd_ver_arr) > 1:
+        _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
+        _XRDVER_2 = xrd_ver_arr[1]
+        return True if int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2 else False
+    else:  # version is not of x.y.z form, this is git based form
+        xrdver_git = xrd_ver_arr[0].split("-")
+        _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
+        _XRDVER_2 = xrdver_git[1]
+        return True if int(_XRDVER_1) > 20211113 else False
+
+# use only 5.3 versions and up - reference point
+_HAS_XROOTD = _is_valid_xrootd()
 _HAS_XROOTD_GETDEFAULT = False
-_XRD_HAVE_CKSUM = False
 if _HAS_XROOTD:
-    def _xrd_ver() -> tuple:
-        if not _HAS_XROOTD: return (None, None)
-        xrd_ver_arr = xrd_client.__version__.split(".")
-        if len(xrd_ver_arr) > 1:
-            _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
-            _XRDVER_2 = xrd_ver_arr[1]
-        else:  # version is not of x.y.z form
-            xrdver_git = xrd_ver_arr[0].split("-")
-            _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
-            _XRDVER_2 = xrdver_git[1]
-        return (_XRDVER_1, _XRDVER_2)
-
-    # check if xrootd have checksum
-    XRD_V1, XRD_V2 = _xrd_ver()
-    if (XRD_V1 and XRD_V1.isdecimal() and int(XRD_V1) >= 5) \
-            or (XRD_V1 and XRD_V1 == '4' and int(XRD_V2) > 12) \
-            or (XRD_V1 and int(XRD_V1) > 20200408):
-        _XRD_HAVE_CKSUM = True
-
     def XRD_EnvPut(key, value):
         """Sets the given key in the xrootd client environment to the given value.
         Returns false if there is already a shell-imported setting for this key, true otherwise"""
@@ -162,7 +157,6 @@ if _HAS_XROOTD:
 
     # Override the application name reported to the xrootd server.
     XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
-    # os.environ["XRD_APPNAME"] = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
 
     _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
@@ -1319,7 +1313,7 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
 def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
-        print_err("XRootD not found")
+        print_err("XRootD not found or lower version thant 5.3.3")
         return []
     if not xrd_cp_args:
         print_err("cp arguments are not set, XrdCpArgs tuple missing")
@@ -2222,7 +2216,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
 
 def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
-    if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module cannot be found, the copy process cannot continue')
+    if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
     if xrd_copy_command is None: xrd_copy_command = []
     global AlienSessionInfo
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
@@ -2613,7 +2607,7 @@ if _HAS_XROOTD:
 def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
-        print_err("XRootD not found")
+        print_err("XRootD not found or lower than 5.3.3")
         return []
     if not xrd_cp_args:
         print_err("cp arguments are not set, XrdCpArgs tuple missing")
@@ -2658,24 +2652,20 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     process.parallel(int(batch))
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        if _XRD_HAVE_CKSUM:
-            if copy_job.isUpload:
-                # WIP: checksumming with md5 for uploading breaks, keep it on auto
-                # cksum_type = 'md5'
-                # cksum_preset = copy_job.token_request['md5']
-                pass
-            else:
-                cksum_type, cksum_preset = get_hash_meta(copy_job.src)
-                if not cksum_type: cksum_type = ''
-                if not cksum_preset: cksum_preset = ''
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
-                            force = overwrite, posc = posc, mkdir = makedir,
-                            chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc,
-                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
+        if copy_job.isUpload:
+            # WIP: checksumming with md5 for uploading breaks, keep it on auto
+            # cksum_type = 'md5'
+            # cksum_preset = copy_job.token_request['md5']
+            pass
         else:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
-                            force = overwrite, posc = posc, mkdir = makedir,
-                            chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc)
+            cksum_type, cksum_preset = get_hash_meta(copy_job.src)
+            if not cksum_type: cksum_type = ''
+            if not cksum_preset: cksum_preset = ''
+        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
+                        force = overwrite, posc = posc, mkdir = makedir,
+                        chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc,
+                        checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
+
     process.prepare()
     process.run(handler)
     if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
@@ -2686,7 +2676,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 
 def xrd_stat(pfn: str):
     if not _HAS_XROOTD:
-        print_err('python XRootD module cannot be found, the copy process cannot continue')
+        print_err('python XRootD module not found')
         return None
     url_components = urlparse(pfn)
     endpoint = xrd_client.FileSystem(url_components.netloc)
