@@ -81,8 +81,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_DATE = '20211118_145437'
-ALIENPY_VERSION_STR = '1.3.5'
+ALIENPY_VERSION_DATE = '20211122_172428'
+ALIENPY_VERSION_STR = '1.3.6'
 ALIENPY_EXECUTABLE = ''
 
 ##################################################
