@@ -2459,13 +2459,15 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             if not tokens_retry1 or 'answer' not in tokens_retry1: continue
             to_recover_list_try1.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry1['answer'], job_lfn))
 
-        xrdcopy_job_list_2 = []
-        makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
-        copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)
-        copy_jobs_nr1 = len(xrdcopy_job_list_2)
-        copy_jobs_failed_nr1 = len(copy_failed_list2)
-        copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
-        msg2 = f"Succesful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
+        if to_recover_list_try1:
+            xrdcopy_job_list_2 = []
+            makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
+            copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)
+            copy_jobs_nr1 = len(xrdcopy_job_list_2)
+            copy_jobs_failed_nr1 = len(copy_failed_list2)
+            copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
+            msg2 = f"Succesful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
+
 
     copy_failed_list3 = []
     if copy_failed_list2:
@@ -2488,13 +2490,14 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             if not tokens_retry2 or 'answer' not in tokens_retry1: continue
             to_recover_list_try2.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry2['answer'], job_lfn))
 
-        xrdcopy_job_list_3 = []
-        makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
-        copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)
-        copy_jobs_nr2 = len(xrdcopy_job_list_3)
-        copy_jobs_failed_nr2 = len(copy_failed_list3)
-        copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
-        msg3 = f"Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}" if not ('quiet' in printout or 'silent' in printout) else ''
+        if to_recover_list_try2:
+            xrdcopy_job_list_3 = []
+            makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
+            copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)
+            copy_jobs_nr2 = len(xrdcopy_job_list_3)
+            copy_jobs_failed_nr2 = len(copy_failed_list3)
+            copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
+            msg3 = f"Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}" if not ('quiet' in printout or 'silent' in printout) else ''
 
 
     copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
@@ -2635,7 +2638,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     cksum_type = ''
     cksum_preset = ''
     delete_invalid_chk = False
-    if cksum:
+    if cksum:  # checksumming defaults good enough also for uploads
         xrd_client.EnvPutInt('ZipMtlnCksum', 1)
         cksum_mode = 'end2end'
         cksum_type = 'auto'
@@ -2652,15 +2655,18 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     process.parallel(int(batch))
     for copy_job in job_list:
         if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
-        if copy_job.isUpload:
-            # WIP: checksumming with md5 for uploading breaks, keep it on auto
-            # cksum_type = 'md5'
-            # cksum_preset = copy_job.token_request['md5']
-            pass
-        else:
-            cksum_type, cksum_preset = get_hash_meta(copy_job.src)
-            if not cksum_type: cksum_type = ''
-            if not cksum_preset: cksum_preset = ''
+        if cksum:
+            if copy_job.isUpload:
+                # WIP: checksumming with md5 for uploading breaks, keep it on auto
+                # cksum_type = 'md5'
+                # cksum_preset = copy_job.token_request['md5']
+                pass
+            else:  # for downloads we already have the md5 value, lets use that
+                cksum_type, cksum_preset = get_hash_meta(copy_job.src)
+                if not cksum_type or not cksum_preset:
+                    cksum_type = ''
+                    cksum_preset = ''
+                    cksum_mode = 'none'
         process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
                         force = overwrite, posc = posc, mkdir = makedir,
                         chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc,
@@ -2821,7 +2827,8 @@ def get_lfn_meta(meta_fn: str) -> str:
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
-    if not os.path.isfile(meta_fn): return ''
+    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
+    if not os.path.isfile(meta_fn): return ('','')
     content = xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
