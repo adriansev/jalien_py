@@ -863,7 +863,13 @@ def is_help(args: Union[str, list]) -> bool:
 
 
 def retf_print(ret_obj: RET, opts: str = '') -> int:
-    """Process the return struture of function"""
+    """Process a RET object; it will return the exitcode
+    opts content will steer the logging and message printing:
+     - noprint : silence all stdout/stderr printing
+     - noerr/noout : silence the respective messages
+     - info/warn/err/debug : will log the stderr to that facility
+     - json : will print just the json (if present)
+    """
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)
