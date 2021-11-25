@@ -4399,7 +4399,9 @@ def JAlien(commands: str = '') -> int:
     wb = None
 
     # Command mode interaction
-    if commands: return ProcessCommandChain(wb, commands)
+    if commands:
+        AlienSessionInfo['exitcode'] = ProcessCommandChain(wb, commands)
+        return AlienSessionInfo['exitcode']
 
     # Start interactive mode
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
@@ -4481,17 +4483,13 @@ def main():
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
-    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv[0])
-    exec_name = Path(sys.argv.pop(0)).name  # remove the name of the script(alien.py)
+    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0)) # remove the name of the script
+    _JSON_OUT_GLOBAL = _JSON_OUT = get_arg(sys.argv, '-json')
     arg_list_expanded = []
     for arg in sys.argv:
         for item in shlex.split(arg):
             arg_list_expanded.append(item)
     sys.argv = arg_list_expanded
-
-    if get_arg(sys.argv, '-json'):
-        _JSON_OUT = True
-        _JSON_OUT_GLOBAL = True
 
     if _DEBUG:
         ret_obj = DO_version()
@@ -4504,8 +4502,9 @@ def main():
         banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
         exitmsg = 'Exiting..'
         term.interact(banner, exitmsg)
-        os._exit(int(AlienSessionInfo['exitcode']))  # pylint: disable=protected-access
+        sys.exit(int(AlienSessionInfo['exitcode']))  # pylint: disable=protected-access
 
+    exec_name = Path(ALIENPY_EXECUTABLE).name
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
     if verb: sys.argv.insert(0, verb)
 
@@ -4517,10 +4516,10 @@ def main():
         cmd_string = ' '.join(sys.argv)
 
     try:
-        JAlien(cmd_string)
+        sys.exit(JAlien(cmd_string))
     except KeyboardInterrupt as e:
         print_out("Received keyboard intrerupt, exiting..")
-        sys.exit(int(AlienSessionInfo['exitcode']))
+        sys.exit(1)
     except Exception as e:
         logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
         logging.error("\n\n")
@@ -4529,7 +4528,6 @@ Please report the error and send the log file and "alien.py version" output to A
 If the exception is reproductible including on lxplus, please create a detailed debug report this way:
 ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
         sys.exit(1)
-    sys.exit(int(AlienSessionInfo['exitcode']))
 
 
 def _cmd(what):
