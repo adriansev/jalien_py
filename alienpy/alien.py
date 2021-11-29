@@ -3250,7 +3250,7 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args):
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
-        return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'usage: token-init'))
+        return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
     wb = token_regen(wb, args)
     tokencert, tokenkey = get_token_names()
     return CertInfo(tokencert)
@@ -4544,10 +4544,7 @@ def cmd_token_info(): _cmd('token-info')
 def cmd_token_destroy(): _cmd('token-destroy')
 
 
-def cmd_token_init():
-    print_out('INFO: JAliEn client automatically creates tokens, '
-              'alien-token-init is deprecated')
-    _cmd('token-init')
+def cmd_token_init(): _cmd('token-init')
 
 
 if __name__ == '__main__':
