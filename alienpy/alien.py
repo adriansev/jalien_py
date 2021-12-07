@@ -3533,16 +3533,17 @@ Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
     return RET(0, msg)
 
 
-def check_ip_port(addr_port: tuple) -> bool:
+def check_ip_port(socket_object: tuple) -> bool:
     """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
-    if not addr_port: return False
-    s = socket.socket()  # Create a TCP socket
+    if not socket_object: return False
+    # socket_object = (family, type, proto, canonname, sockaddr)
+    s = socket.socket(socket_object[0],socket_object[1],socket_object[2])  # Create a TCP socket
     s.settimeout(2)  # timeout 2s
     is_open = False
     try:
-        s.connect(addr_port)
+        s.connect(socket_object[4])
         is_open = True
-    except Exception:
+    except Exception as e:
         pass
     s.close()
     return is_open
@@ -3551,7 +3552,7 @@ def check_ip_port(addr_port: tuple) -> bool:
 def check_port(address: str, port: Union[str, int]) -> list:
     """Check TCP connection to fqdn:port"""
     ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
-    return [(*ip_port[-1], check_ip_port(ip_port[-1])) for ip_port in ip_list]
+    return [(*sock_obj[-1], check_ip_port(sock_obj)) for sock_obj in ip_list]
 
 
 def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] = 8097) -> bool:
@@ -3578,7 +3579,7 @@ def DO_checkAddr(args: Union[list, None] = None) -> RET:
     result_list.extend(check_port(addr, port))
     stdout = ''
     for res in result_list:
-        stdout += f'{res[0]}:{res[1]}        {PrintColor(COLORS.BIGreen) + "OK" if res[2] else PrintColor(COLORS.BIRed) + "FAIL"}{PrintColor(COLORS.ColorReset)}\n'
+        stdout += f'{res[0]}:{res[1]}        {PrintColor(COLORS.BIGreen) + "OK" if res[-1] else PrintColor(COLORS.BIRed) + "FAIL"}{PrintColor(COLORS.ColorReset)}\n'
     return RET(0, stdout)
 
 
