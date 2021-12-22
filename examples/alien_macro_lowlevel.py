@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 
-import alienpy.alien as alien
+try:
+    from alienpy import alien
+except Exception as e:
+    try:
+        from xjalienfs import alien
+    except Exception as e:
+        print("Can't load alienpy, exiting...")
+        sys.exit(1)
+
 
 # in the case of AliEnMsg class just low-level json messages are exchanged with the server
 # there are no client side implementations available, only message exchange with the AliEn central services

@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 
-import alienpy.alien as alien
+try:
+    from alienpy import alien
+except Exception as e:
+    try:
+        from xjalienfs import alien
+    except Exception as e:
+        print("Can't load alienpy, exiting...")
+        sys.exit(1)
+
+
 alien.setup_logging()
 j = alien.AliEn()
 
