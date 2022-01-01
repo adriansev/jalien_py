@@ -3536,16 +3536,15 @@ Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
 def check_ip_port(socket_object: tuple) -> bool:
     """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
     if not socket_object: return False
-    # socket_object = (family, type, proto, canonname, sockaddr)
-    s = socket.socket(socket_object[0],socket_object[1],socket_object[2])  # Create a TCP socket
-    s.settimeout(2)  # timeout 2s
     is_open = False
-    try:
-        s.connect(socket_object[4])
-        is_open = True
-    except Exception as e:
-        pass
-    s.close()
+    # socket_object = (family, type, proto, canonname, sockaddr)
+    with socket.socket(socket_object[0],socket_object[1],socket_object[2]) as s:  # Create a TCP socket
+        s.settimeout(2)  # timeout 2s
+        try:
+            s.connect(socket_object[4])
+            is_open = True
+        except Exception as e:
+            pass
     return is_open
 
 
