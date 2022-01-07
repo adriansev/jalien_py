@@ -89,6 +89,9 @@ ALIENPY_EXECUTABLE = ''
 #   GLOBAL POINTER TO WB CONNECTION  #############
 __SESSION_WB = None
 ##################################################
+#   GLOBAL STATE ASYNCIO LOOP
+_alienpy_global_asyncio_loop = None
+##################################################
 
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
@@ -457,10 +460,6 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
 #########################
 #   ASYNCIO MECHANICS
 #########################
-# GLOBAL STATE ASYNCIO LOOP
-_alienpy_global_asyncio_loop = None
-
-
 def start_asyncio():
     """Initialization of main thread that will keep the asyncio loop"""
     global _alienpy_global_asyncio_loop
@@ -4112,6 +4111,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
 
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
+    global __SESSION_WB
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
@@ -4491,24 +4491,28 @@ def setup_logging():
 
 
 def main():
-    setup_logging()
+    global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, _DEBUG
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
-    global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0)) # remove the name of the script
     _JSON_OUT_GLOBAL = _JSON_OUT = get_arg(sys.argv, '-json')
+    if not _DEBUG:
+        _DEBUG = get_arg(sys.argv, '-debug')
+        if _DEBUG: print_out(f'Debug enabled, logfile is: {_DEBUG_FILE}')
+
+    setup_logging()
+    if _DEBUG:
+        ret_obj = DO_version()
+        logging.debug(f'{ret_obj.out}\n')
+
     arg_list_expanded = []
     for arg in sys.argv:
         for item in shlex.split(arg):
             arg_list_expanded.append(item)
     sys.argv = arg_list_expanded
-
-    if _DEBUG:
-        ret_obj = DO_version()
-        logging.debug(f'{ret_obj.out}\n')
 
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
