@@ -453,62 +453,69 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
     except Exception as e:
         return int(-1)
 
+
 #########################
 #   ASYNCIO MECHANICS
 #########################
+# GLOBAL STATE ASYNCIO LOOP
+_alienpy_global_asyncio_loop = None
+
+
 def start_asyncio():
     """Initialization of main thread that will keep the asyncio loop"""
-    loop = None
+    global _alienpy_global_asyncio_loop
     ready = threading.Event()
 
-    def _cancel_all_tasks(loop):
+    def _cancel_all_tasks(loop_to_cancel):
         if sys.version_info[1] < 8:
-            to_cancel = asyncio.Task.all_tasks(loop)  # pylint: disable=no-member # asyncio.tasks
+            to_cancel = asyncio.Task.all_tasks(loop_to_cancel)  # pylint: disable=no-member # asyncio.tasks
         else:
-            to_cancel = asyncio.all_tasks(loop)  # asyncio.tasks
+            to_cancel = asyncio.all_tasks(loop_to_cancel)  # asyncio.tasks
         if not to_cancel: return
         for task in to_cancel: task.cancel()
-        loop.run_until_complete(asyncio.tasks.gather(*to_cancel, loop=loop, return_exceptions=True))
+        loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
 
         for task in to_cancel:
             if task.cancelled(): continue
             if task.exception() is not None:
-                loop.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task, })
+                loop_to_cancel.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task, })
 
     def run(mainasync, *, debug=False):
+        global _alienpy_global_asyncio_loop
         if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")  # pylint: disable=protected-access
         if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError("a coroutine was expected, got {!r}".format(mainasync))
 
-        loop = asyncio.events.new_event_loop()
+        _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
         try:
-            asyncio.events.set_event_loop(loop)
-            loop.set_debug(debug)
-            return loop.run_until_complete(mainasync)
+            asyncio.events.set_event_loop(_alienpy_global_asyncio_loop)
+            _alienpy_global_asyncio_loop.set_debug(debug)
+            return _alienpy_global_asyncio_loop.run_until_complete(mainasync)
         finally:
             try:
-                _cancel_all_tasks(loop)
-                loop.run_until_complete(loop.shutdown_asyncgens())
+                _cancel_all_tasks(_alienpy_global_asyncio_loop)
+                _alienpy_global_asyncio_loop.run_until_complete(_alienpy_global_asyncio_loop.shutdown_asyncgens())
             finally:
                 asyncio.events.set_event_loop(None)
-                loop.close()
+                _alienpy_global_asyncio_loop.close()
 
     async def wait_forever():
-        nonlocal loop
-        loop = asyncio.get_event_loop()
+        global _alienpy_global_asyncio_loop
+        _alienpy_global_asyncio_loop = asyncio.get_event_loop()
         ready.set()
-        await loop.create_future()
+        await _alienpy_global_asyncio_loop.create_future()
 
-    threading.Thread(daemon=True, target=run, args=(wait_forever(),)).start()
+    threading.Thread(daemon = True, target = run, args = (wait_forever(),)).start()
     ready.wait()
-    return loop
 
 
-# GLOBAL STATE ASYNCIO LOOP !!! REQUIRED TO BE GLOBAL !!!
-_alienpy_global_asyncio_loop = start_asyncio()
+# Let's start the asyncio main thread
+start_asyncio()
+
 
 def syncify(fn):
     """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
     def syncfn(*args, **kwds):
+        global _alienpy_global_asyncio_loop
         # submit the original coroutine to the event loop and wait for the result
         conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _alienpy_global_asyncio_loop)
         return conc_future.result()
@@ -519,8 +526,7 @@ def syncify(fn):
 @syncify
 async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
-    time_begin = None
-    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    time_begin = time.perf_counter() if _DEBUG_TIMING else None
     if _DEBUG:
         logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
     try:
@@ -530,7 +536,7 @@ async def IsWbConnected(wb) -> bool:
         logging.debug('WB ping/pong failed!!!')
         logging.exception(e)
         return False
-    if time_begin: logging.error(f">>>IsWbConnected time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    if time_begin: logging.error(f">>>IsWbConnected time = {deltat_ms_perf(time_begin)} ms")
     return True
 
 
@@ -545,7 +551,7 @@ async def msg_proxy(websocket, use_usercert = False):
     """Proxy messages from a connection point to another"""
     wb_jalien = AlienConnect(None, use_usercert)
     local_query = await websocket.recv()
-    jalien_answer = await SendMsg(wb_jalien, local_query)
+    jalien_answer = SendMsg(wb_jalien, local_query)
     await websocket.send(jalien_answer.ansdict)
 
 
@@ -553,10 +559,10 @@ async def msg_proxy(websocket, use_usercert = False):
 async def __sendmsg(wb, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
     time_begin = None
-    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _DEBUG_TIMING: time_begin = time.perf_counter()
     await wb.send(jsonmsg)
     result = await wb.recv()
-    if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    if time_begin: logging.debug(f">>>__sendmsg time = {deltat_ms_perf(time_begin)} ms")
     return result
 
 
@@ -565,7 +571,7 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
     time_begin = None
-    if _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    if _DEBUG_TIMING: time_begin = time.perf_counter()
     for msg in jsonmsg_list: await wb.send(msg)
 
     result_list = []
@@ -573,7 +579,7 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
         result = await wb.recv()
         result_list.append(result)
 
-    if time_begin: logging.debug(f">>>__sendmsg time = {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms")
+    if time_begin: logging.debug(f">>>__sendmsg time = {deltat_ms_perf(time_begin)} ms")
     return result_list
 
 
@@ -584,8 +590,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)
     if not args: args = []
-    time_begin = None
-    if _DEBUG or _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
@@ -629,7 +634,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
             non_connection_exception = True
         if result is None and not non_connection_exception: time.sleep(0.2)
 
-    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
+    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms_perf(time_begin)} ms")
     if not result:
         if connection_exception:
             msg = f"SendMsg:: communication error!\nSent command: {jsonmsg}"
@@ -642,8 +647,9 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         return RET(1, '', 'SendMsg:: Empty result received from server')
 
     if 'rawstr' in opts: return result
+    time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
-    if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
+    if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_us_perf(time_begin_decode)} us")
     return ret_obj
 
 
@@ -654,8 +660,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)
     if not cmds_list: return []
-    time_begin = None
-    if _DEBUG or _DEBUG_TIMING: time_begin = datetime.datetime.now().timestamp()
+    time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
@@ -667,9 +672,8 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
             jsonmsg = CreateJsonCommand(cmd_str, [], opts)  # nomsg/nokeys will be passed to CreateJsonCommand
         json_cmd_list.append(jsonmsg)
 
-
     if _DEBUG:
-        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {chr(32).join(json_cmd_list)}")  # pylint: disable=protected-access
 
     nr_tries = int(1)
     result_list = None
@@ -702,8 +706,9 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
     if not result_list: return []
     if 'rawstr' in opts: return result_list
+    time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
-    if time_begin: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin)} ms")
+    if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin_decode)} ms")
     return ret_obj_list
 
 
@@ -853,6 +858,20 @@ def deltat_us(t0: Union[str, float, None] = None) -> str:
     else:
         t0 = float(t0)
         return f"{(datetime.datetime.now().timestamp() - t0) * 1000000:.3f}"
+
+
+def deltat_ms_perf(t0: Union[str, float, None] = None) -> str:
+    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    if not t0: return ""
+    t0 = float(t0)
+    return f"{(time.perf_counter() - t0) * 1000:.3f}"
+
+
+def deltat_us_perf(t0: Union[str, float, None] = None) -> str:
+    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    if not t0: return ""
+    t0 = float(t0)
+    return f"{(time.perf_counter() - t0) * 1000000:.3f}"
 
 
 def is_help(args: Union[str, list]) -> bool:
@@ -1010,6 +1029,7 @@ def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
     if len(timestr) < 10: return ''
     micros = None
     millis = None
+    time_decimals = ''
     if len(timestr) > 10:
         time_decimals = timestr[10:]
         if len(time_decimals) <= 3:
@@ -1052,6 +1072,7 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
 def push2stack(path: str):
     if not str: return
     global AlienSessionInfo
+    home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
     if home and home in path: path = path.replace(home, '~')
     AlienSessionInfo['pathq'].appendleft(path)
@@ -1094,13 +1115,13 @@ def get_arg_value(target: list, item):
 
 def get_arg_2values(target: list, item):
     """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
-    val = None
+    val1 = val2 = None
     for x in target:
         if x == item:
             val2 = target.pop(target.index(x) + 2)
             val1 = target.pop(target.index(x) + 1)
             target.pop(target.index(x))
-    return (val1, val2)
+    return val1, val2
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1628,7 +1649,7 @@ def commitFile(wb, lfnInfo: CommitInfo) -> RET:
 
 def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
     """Upon succesful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
-    if not wb or not lfnInfo_list: return -1
+    if not wb or not lfnInfo_list: return []
     batch_size = 30
     batches_list = [lfnInfo_list[x:x+batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
     commit_results = []
@@ -1854,7 +1875,7 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
-        if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
+        if is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
             if valid_regex(pattern) is None:
                 logging.error(f"list_files_grid:: {pattern} failed to re.compile")
                 return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
@@ -1959,7 +1980,7 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
     if not dir: return RET(2, "", "No search directory specified")
 
-    # lets process the pattern: extract it from src if is in the path globbing form
+    # let's process the pattern: extract it from src if is in the path globbing form
     regex = None
     is_single_file = False  # dir actually point to a file
     if '*' in dir:  # we have globbing in src path
@@ -1983,7 +2004,7 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
         elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             regex = pattern
             is_regex = True
-        elif type(pattern) is str and is_regex:  # it was explictly requested that pattern is regex
+        elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
             regex = valid_regex(pattern)
             if regex is None:
                 logging.error(f"list_files_grid:: {pattern} failed to re.compile")
@@ -2389,7 +2410,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if use_regex and not pattern_regex:
             msg = ("-name :: No selection verbs were recognized!"
                    "usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
-                   f"The invalid pattern was: {pattern_regex_arg}")
+                   f"The invalid pattern was: {pattern_regex}")
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
     if use_regex: pattern = pattern_regex
@@ -2403,7 +2424,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         for cp_line in cp_arg_list:
             cp_line_items = cp_line.strip().split()
             if len(cp_line_items) > 2:
-                print_out(f'Line skipped, it has more than 2 arguments => f{line.strip()}')
+                print_out(f'Line skipped, it has more than 2 arguments => f{cp_line.strip()}')
                 continue
             retobj = makelist_lfn(wb, cp_line_items[0], cp_line_items[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
             retf_print(retobj, "noout err")  # print error and continue with the other files
@@ -3448,6 +3469,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
+    sh_cmd = shlex.quote(sh_cmd)
     args = sh_cmd if do_shell else shlex.split(sh_cmd)
     capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
     status = exitcode = except_msg = None
@@ -3673,12 +3695,9 @@ def lfn_list(wb, lfn: str = ''):
 
 def wb_ping(wb) -> float:
     """Websocket ping function, it will return rtt in ms"""
-    init_delta = float(-999.0)
-    init_begin = datetime.datetime.now().timestamp()
+    init_begin = time.perf_counter()
     if IsWbConnected(wb):
-        init_end = datetime.datetime.now().timestamp()
-        init_delta = float((init_end - init_begin) * 1000)
-        return init_delta
+        return deltat_ms_perf(init_begin)
     return float(-1)
 
 
@@ -4020,14 +4039,13 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         try:
             if _DEBUG:
                 logging.debug(f"TRY ENDPOINT: {host}:{port}")
-                init_begin = datetime.datetime.now().timestamp()
+                init_begin = time.perf_counter()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
             if _DEBUG:
-                init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-                logging.debug(f"TCP SOCKET DELTA: {init_delta:.3f} ms")
+                logging.debug(f"TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms")
         except Exception as e:
             msg = 'Could NOT establish connection (TCP socket) to {0}:{1}\n{2}'.format(host, port, e)
             logging.error(msg)
@@ -4039,7 +4057,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
             try:
-                if _DEBUG: init_begin = datetime.datetime.now().timestamp()
+                if _DEBUG: init_begin = time.perf_counter()
                 wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
                                        extensions=[deflateFact, ],
                                        max_queue=QUEUE_SIZE,
@@ -4050,8 +4068,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                                        extra_headers=headers_list
                                        )
                 if _DEBUG:
-                    init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-                    logging.debug(f"WEBSOCKET DELTA: {init_delta:.3f} ms")
+                    logging.debug(f"WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms")
             except Exception as e:
                 msg = 'Could NOT establish connection (WebSocket) to {0}:{1}\n{2}'.format(socket_endpoint_addr, socket_endpoint_port, e)
                 logging.error(msg)
@@ -4066,7 +4083,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     wb = None
     nr_tries = 0
     init_begin = init_delta = None
-    if _TIME_CONNECT or _DEBUG: init_begin = datetime.datetime.now().timestamp()
+    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
 
@@ -4083,8 +4100,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
             time.sleep(connect_tries_interval)
 
     if wb and init_begin:
-        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        msg = f'>>>   Endpoint total connecting time: {init_delta:.3f} ms'
+        msg = f'>>>   Websocket connecting time: {deltat_ms_perf(init_begin)} ms'
         if _DEBUG: logging.debug(msg)
         if _TIME_CONNECT: print_out(msg)
 
@@ -4267,20 +4283,19 @@ def getSessionVars(wb):
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a session to AliEn services, including session globals"""
     global AlienSessionInfo
-    init_begin = init_delta = None
-    if _TIME_CONNECT or _DEBUG: init_begin = datetime.datetime.now().timestamp()
+    init_begin = None
+    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
     wb = AlienConnect(token_args, use_usercert, localConnect)
     if init_begin:
-        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        msg = f">>>   Time for websocket connection: {init_delta:.3f} ms"
+        msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
         if _DEBUG: logging.debug(msg)
         if _TIME_CONNECT: print_out(msg)
 
     if wb is not None: AlienSessionInfo['session_started'] = True
+    session_begin = time.perf_counter() if init_begin else None
     getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if init_begin:
-        init_delta = (datetime.datetime.now().timestamp() - init_begin) * 1000
-        msg = f">>>   Time for session connection: {init_delta:.3f} ms"
+    if session_begin:
+        msg = f">>>   Time for session initialization: {deltat_ms_perf(session_begin)} ms"
         if _DEBUG: logging.debug(msg)
         if _TIME_CONNECT: print_out(msg)
     return wb
@@ -4311,7 +4326,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
         if not args or is_help(args): return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
-        time_begin = datetime.datetime.now().timestamp()
+        time_begin = time.perf_counter()
 
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
         ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -4329,7 +4344,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
     if ret_obj is None: return RET(1, '', f"NO RET OBJ!! The command was not found: {cmd} {chr(32).join(args)}")
-    if time_begin: msg_timing = f">>>ProcessInput time: {(datetime.datetime.now().timestamp() - time_begin) * 1000:.3f} ms"
+    if time_begin: msg_timing = f">>>ProcessInput time: {deltat_ms_perf(time_begin)} ms"
 
     if shellcmd:
         if ret_obj.exitcode != 0: return ret_obj
