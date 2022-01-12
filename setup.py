@@ -1,5 +1,6 @@
 import setuptools
 import os
+import sys
 
 
 def get_version_from_file():
@@ -18,11 +19,15 @@ with open("README.md", "r") as fh:
 
 standard_requirements = [
         'async-stagger',
-        'websockets',
         'pyOpenSSL',
         'xrootd',
         'rich',
     ]
+
+if sys.version_info[1] < 7:
+    standard_requirements.append('websockets<=9.1')
+else:
+    standard_requirements.append('websockets')
 
 if "ALIBUILD" not in os.environ.keys():
     selected_requirements = standard_requirements
