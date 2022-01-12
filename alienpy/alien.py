@@ -3696,7 +3696,7 @@ def wb_ping(wb) -> float:
     """Websocket ping function, it will return rtt in ms"""
     init_begin = time.perf_counter()
     if IsWbConnected(wb):
-        return deltat_ms_perf(init_begin)
+        return float(deltat_ms_perf(init_begin))
     return float(-1)
 
 
@@ -4042,7 +4042,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
-                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, resolution_delay=0.050, detailed_exceptions=True)
+                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, delay = 0, resolution_delay=0.050, detailed_exceptions=True)
             if _DEBUG:
                 logging.debug(f"TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms")
         except Exception as e:
