@@ -3752,11 +3752,13 @@ def IsValidCert(fname: str):
         with open(fname) as f:
             cert_bytes = f.read()
     except Exception:
+        logging.error(f'IsValidCert:: Unable to open certificate file {fname}')
         return False
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
+        logging.error(f'IsValidCert:: Unable to load certificate {fname}')
         return False
 
     x509_notafter = x509.get_notAfter()
@@ -3764,6 +3766,8 @@ def IsValidCert(fname: str):
     time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
     time_current  = int(datetime.datetime.now().timestamp())
     time_remaining = time_notafter - time_current
+    if time_remaining < 1:
+        logging.error(f'IsValidCert:: Expired certificate {fname}')
     return time_remaining > 300
 
 
