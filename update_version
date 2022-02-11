@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
 sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" alienpy/alien.py
-sed -i "/^ALIENPY_VERSION_STR = /c\ALIENPY_VERSION_STR = \'$(< ./VERSION)\'" alienpy/alien.py
+sed -i "/^ALIENPY_VERSION_STR = /c\ALIENPY_VERSION_STR = \'$(< alienpy/VERSION)\'" alienpy/alien.py
 

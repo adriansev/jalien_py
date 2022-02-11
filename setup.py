@@ -5,7 +5,7 @@ import sys
 
 def get_version_from_file():
     try:
-        f = open('./VERSION')
+        f = open('alienpy/VERSION')
         version = f.read().strip()
         f.close()
         return version
@@ -87,6 +87,7 @@ setuptools.setup(
     scripts = [
         'examples/alien_wbtime',
         ],
+    data_files = [('alienpy', ['alienpy/VERSION'])],
     keywords = 'CERN ALICE JAliEn GRID',
 
 )

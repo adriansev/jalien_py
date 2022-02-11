@@ -7,15 +7,15 @@ git commit -m "alien.py update version info" alienpy/alien.py VERSION
 git push
 git push xjalienfs master
 
-git tag $(< VERSION)
+git tag $(< alienpy/VERSION)
 git push --tags
 git push --tags xjalienfs master
 
 #tag=$(git describe --tags --abbrev=0 --exact-match)
 
 mkdir -p dist
-rm -rf dist/*
-python3 setup.py sdist bdist_wheel
+#rm -rf dist/*
+python3 -m build --sdist --wheel
 
 echo "# Now, for pypi publishing one can do either:
 twine upload --verbose dist/*
