@@ -230,13 +230,10 @@ class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     overwrite: bool
     batch: int
     sources: int
-    chunks: int
-    chunksize: int
     makedir: bool
     tpc: str
     posc: bool
     hashtype: str
-    streams: int
     cksum: bool
     timeout: int
     rate: int
@@ -1321,13 +1318,10 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
     sources = xrd_cp_args.sources
-    chunks = xrd_cp_args.chunks
-    chunksize = xrd_cp_args.chunksize
     makedir = xrd_cp_args.makedir
     tpc = xrd_cp_args.tpc
     posc = xrd_cp_args.posc
     # hashtype = xrd_cp_args.hashtype
-    streams = xrd_cp_args.streams
     cksum = xrd_cp_args.cksum
     timeout = xrd_cp_args.timeout
     rate = xrd_cp_args.rate
@@ -2262,7 +2256,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
     sources = int(1)  # max number of download sources
     streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
-    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
+    chunks = int(1)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
     chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
     makedir = bool(True)  # create the parent directories when creating a file
     overwrite = bool(False)  # overwrite target if it exists
@@ -2277,20 +2271,25 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # TODO these will not work for xrdcp subprocess; the env vars should also be set
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
-    if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s
+    if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s; default 15
 
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
-    if not os.getenv('XRD_CONNECTIONRETRY'): XRD_EnvPut('ConnectionRetry', int(3))
+    if not os.getenv('XRD_CONNECTIONRETRY'): XRD_EnvPut('ConnectionRetry', int(5))  # default 5
 
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
     # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
-    if not os.getenv('XRD_CONNECTIONWINDOW'): XRD_EnvPut('ConnectionWindow', int(10))
+    if not os.getenv('XRD_CONNECTIONWINDOW'): XRD_EnvPut('ConnectionWindow', int(10))  # default 120
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
-    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(30))
+    # N.B.!!. This is the total time for the initialization dialogue!! see https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-580004.3.6
+    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(600))  # default 1800
+
+    # Default value for the time after which a connection error is declared (and a recovery attempted) if there are unfulfilled requests and there is no socket activity or a registered wait timeout.
+    # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
+    if not os.getenv('XRD_STREAMTIMEOUT'): XRD_EnvPut('StreamTimeout', int(15))  # default 60    
 
     # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
-    if not os.getenv('XRD_CPINITTIMEOUT'): XRD_EnvPut('CPInitTimeout', int(30))
+    if not os.getenv('XRD_CPINITTIMEOUT'): XRD_EnvPut('CPInitTimeout', int(300))  # default 600
 
     # Time period after which an idle connection to a data server should be closed.
     if not os.getenv('XRD_DATASERVERTTL'): XRD_EnvPut('DataServerTTL', int(20))  # we have no reasons to keep idle connections
@@ -2300,6 +2299,28 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+    streams_arg = get_arg_value(xrd_copy_command, '-S')
+    if streams_arg:
+        streams = abs(int(streams))
+        if (streams > 15): streams = 15
+    if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
+        print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value {streams}')
+    XRD_EnvPut('SubStreamsPerChannel', streams)
+
+    chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
+    if chunks_arg:
+        chunks = abs(int(chunks_arg))
+    if os.getenv('XRD_CPPARALLELCHUNKS'):
+        print_out(f'Warning! env var XRD_CPPARALLELCHUNKS is set and will be overwritten with value {chunks}')
+    XRD_EnvPut('CPParallelChunks', chunks)
+
+    chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
+    if chunksz_arg:
+        chunksize = abs(int(chunksz_arg))
+    if os.getenv('XRD_CPCHUNKSIZE'):
+        print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
+    XRD_EnvPut('CPChunkSize', chunksize)
 
     if get_arg(xrd_copy_command, '-noxrdzip'): os.environ["ALIENPY_NOXRDZIP"] = "nozip"
 
@@ -2316,20 +2337,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # sources = int(y_arg_val)
     if y_arg_val: print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
 
-    streams_arg = get_arg_value(xrd_copy_command, '-S')
-    if streams_arg:
-        streams = int(streams)
-        if (streams > 15): streams = 15
-
     batch = 8  # a nice enough default
     batch_arg = get_arg_value(xrd_copy_command, '-T')
     if batch_arg: batch = int(batch_arg)
-
-    chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
-    if chunks_arg: chunks = int(chunks_arg)
-
-    chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
-    if chunksz_arg: chunksize = int(chunksz_arg)
 
     timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
     if timeout_arg:
@@ -2456,7 +2466,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     copy_jobs_failed_nr = copy_jobs_failed_nr1 = copy_jobs_failed_nr2 = 0
     copy_jobs_success_nr = copy_jobs_success_nr1 = copy_jobs_success_nr2 = 0
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, chunks, chunksize, makedir, tpc, posc, hashtype, streams, cksum, timeout, rate)
+    my_cp_args = XrdCpArgs(overwrite, batch, sources, makedir, tpc, posc, hashtype, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(wb, xrdcopy_job_list, my_cp_args, printout)
     copy_jobs_nr = len(xrdcopy_job_list)
@@ -2645,20 +2655,14 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
     sources = xrd_cp_args.sources
-    chunks = xrd_cp_args.chunks
-    chunksize = xrd_cp_args.chunksize
     makedir = xrd_cp_args.makedir
     tpc = xrd_cp_args.tpc
     posc = xrd_cp_args.posc
     # hashtype = xrd_cp_args.hashtype
-    streams = xrd_cp_args.streams
     cksum = xrd_cp_args.cksum
     timeout = xrd_cp_args.timeout
     rate = xrd_cp_args.rate
 
-    if streams > 0:
-        if streams > 15: streams = 15
-        xrd_client.EnvPutInt('SubStreamsPerChannel', streams)
 
     cksum_mode = 'none'  # none | source | target | end2end
     cksum_type = ''
@@ -2694,8 +2698,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                     cksum_preset = ''
                     cksum_mode = 'none'
         process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
-                        force = overwrite, posc = posc, mkdir = makedir,
-                        chunksize = chunksize, parallelchunks = chunks, thirdparty = tpc,
+                        force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
                         checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
 
     process.prepare()
