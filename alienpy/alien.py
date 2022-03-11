@@ -229,10 +229,7 @@ class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep the set of xrootd flags used for xrootd copy process"""
     overwrite: bool
     batch: int
-    sources: int
-    makedir: bool
     tpc: str
-    posc: bool
     hashtype: str
     cksum: bool
     timeout: int
@@ -427,9 +424,18 @@ def print_err(msg: str, toLog: bool = False):
         print(msg, file=sys.stderr, flush = True)
 
 
-def isfloat(arg: Union[str, float, None]) -> bool:
+def is_float(arg: Union[str, float, None]) -> bool:
     if not arg: return False
-    return str(arg).replace('.', '', 1).isdigit()
+    s = str(arg).replace('.', '', 1)
+    if s[0] in ('-', '+'): return s[1:].isdigit()
+    return s.isdigit()
+
+
+def is_int(arg: Union[str, int, float, None]) -> bool:
+    if not arg: return False
+    s = str(arg)
+    if s[0] in ('-', '+'): return s[1:].isdigit()
+    return s.isdigit()  
 
 
 def time_unix2simple(time_arg: Union[str, int, None]) -> str:
@@ -441,8 +447,8 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
     if not time_arg:
         return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
     time_arg = str(time_arg)
-    if (time_arg.isdigit() or isfloat(time_arg)) and (len(time_arg) != 10 or len(time_arg) != 13): return int(-1)
-    if isfloat(time_arg) and len(time_arg) == 10:
+    if (time_arg.isdigit() or is_float(time_arg)) and (len(time_arg) != 10 or len(time_arg) != 13): return int(-1)
+    if is_float(time_arg) and len(time_arg) == 10:
         return int(float(time_arg) * 1000)
     if time_arg.isdigit() and len(time_arg) == 13:
         return int(time_arg)
@@ -1273,10 +1279,8 @@ where disk selects the number of replicas and the following specifiers add (or r
 options are the following :
 -h : print help
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
--P : enable persist on successful close semantic
 -cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified
--y <nr_sources> : use up to the number of sources specified in parallel (N.B. Ignored as it breaks download of files stored in archives)
--S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
+-S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
 -T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
@@ -1317,10 +1321,7 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
 
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
-    sources = xrd_cp_args.sources
-    makedir = xrd_cp_args.makedir
     tpc = xrd_cp_args.tpc
-    posc = xrd_cp_args.posc
     # hashtype = xrd_cp_args.hashtype
     cksum = xrd_cp_args.cksum
     timeout = xrd_cp_args.timeout
@@ -2254,13 +2255,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
     hashtype = str('md5')
     batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-    sources = int(1)  # max number of download sources
     streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
-    chunks = int(1)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
+    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
     chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
-    makedir = bool(True)  # create the parent directories when creating a file
     overwrite = bool(False)  # overwrite target if it exists
-    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
     cksum = bool(False)
     timeout = int(0)
     rate = int(0)
@@ -2302,31 +2300,55 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     streams_arg = get_arg_value(xrd_copy_command, '-S')
     if streams_arg:
-        streams = abs(int(streams))
-        if (streams > 15): streams = 15
-    if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
-        print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value {streams}')
-    XRD_EnvPut('SubStreamsPerChannel', streams)
+        if is_int(streams_arg):
+            streams = abs(int(streams))
+            if (streams > 15): streams = 15
+            if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
+                print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value: {streams}')
+            XRD_EnvPut('SubStreamsPerChannel', streams)
+    else:
+        if not os.getenv('XRD_SUBSTREAMSPERCHANNEL'): XRD_EnvPut('SubStreamsPerChannel', streams)  # if no env customization, then use our defaults
 
     chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
     if chunks_arg:
-        chunks = abs(int(chunks_arg))
-    if os.getenv('XRD_CPPARALLELCHUNKS'):
-        print_out(f'Warning! env var XRD_CPPARALLELCHUNKS is set and will be overwritten with value {chunks}')
-    XRD_EnvPut('CPParallelChunks', chunks)
+        if is_int(chunks_arg):
+            chunks = abs(int(chunks_arg))
+            if os.getenv('XRD_CPPARALLELCHUNKS'):
+                print_out(f'Warning! env var XRD_CPPARALLELCHUNKS is set and will be overwritten with value: {chunks}')
+            XRD_EnvPut('CPParallelChunks', chunks)
+    else:
+        if not os.getenv('XRD_CPPARALLELCHUNKS'): XRD_EnvPut('CPParallelChunks', chunks)
 
     chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
     if chunksz_arg:
-        chunksize = abs(int(chunksz_arg))
-    if os.getenv('XRD_CPCHUNKSIZE'):
-        print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
-    XRD_EnvPut('CPChunkSize', chunksize)
+        if is_int(chunksz_arg):
+            chunksize = abs(int(chunksz_arg))
+            if os.getenv('XRD_CPCHUNKSIZE'):
+                print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
+            XRD_EnvPut('CPChunkSize', chunksize)
+    else:
+        if not os.getenv('XRD_CPCHUNKSIZE'): XRD_EnvPut('CPChunkSize', chunksize)
 
     if get_arg(xrd_copy_command, '-noxrdzip'): os.environ["ALIENPY_NOXRDZIP"] = "nozip"
 
+    timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
+    if timeout_arg:
+        timeout = abs(int(timeout_arg))
+        XRD_EnvPut('CPTimeout', timeout)
+
+    rate_arg = get_arg_value(xrd_copy_command, '-ratethreshold')
+    if rate_arg:
+        rate = abs(int(rate_arg))
+        XRD_EnvPut('XRateThreshold', rate)
+
+    XRD_EnvPut('CpRetryPolicy', 'force')
+    retry_arg = get_arg_value(xrd_copy_command, '-retry')
+    if rate_arg:
+        retry = abs(int(retry_arg))
+        XRD_EnvPut('CpRetry', retry)
+
     _use_system_xrdcp = get_arg(xrd_copy_command, '-xrdcp')
     overwrite = get_arg(xrd_copy_command, '-f')
-    posc = get_arg(xrd_copy_command, '-P')
     cksum = get_arg(xrd_copy_command, '-cksum')
 
     tpc = 'none'
@@ -2340,22 +2362,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     batch = 8  # a nice enough default
     batch_arg = get_arg_value(xrd_copy_command, '-T')
     if batch_arg: batch = int(batch_arg)
-
-    timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
-    if timeout_arg:
-        timeout = int(timeout_arg)
-        XRD_EnvPut('CPTimeout', timeout)
-
-    rate_arg = get_arg_value(xrd_copy_command, '-ratethreshold')
-    if rate_arg:
-        rate = int(rate_arg)
-        XRD_EnvPut('XRateThreshold', rate)
-
-    XRD_EnvPut('CpRetryPolicy', 'force')
-    retry_arg = get_arg_value(xrd_copy_command, '-retry')
-    if rate_arg:
-        retry = int(retry_arg)
-        XRD_EnvPut('CpRetry', retry)
 
     # options for envelope request
     strictspec = get_arg(xrd_copy_command, '-strictspec')
@@ -2466,7 +2472,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     copy_jobs_failed_nr = copy_jobs_failed_nr1 = copy_jobs_failed_nr2 = 0
     copy_jobs_success_nr = copy_jobs_success_nr1 = copy_jobs_success_nr2 = 0
 
-    my_cp_args = XrdCpArgs(overwrite, batch, sources, makedir, tpc, posc, hashtype, cksum, timeout, rate)
+    my_cp_args = XrdCpArgs(overwrite, batch, tpc, hashtype, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
     copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(wb, xrdcopy_job_list, my_cp_args, printout)
     copy_jobs_nr = len(xrdcopy_job_list)
@@ -2652,17 +2658,19 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
         print_err("cp arguments are not set, XrdCpArgs tuple missing")
         return []
 
+    # MANDATORY DEFAULTS, always used
+    makedir = bool(True)  # create the parent directories when creating a file
+    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+    sources = int(1)  # max number of download sources; we (ALICE) do not rely on parallel multi-source downloads
+
+    # passed arguments
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
-    sources = xrd_cp_args.sources
-    makedir = xrd_cp_args.makedir
     tpc = xrd_cp_args.tpc
-    posc = xrd_cp_args.posc
     # hashtype = xrd_cp_args.hashtype
     cksum = xrd_cp_args.cksum
     timeout = xrd_cp_args.timeout
     rate = xrd_cp_args.rate
-
 
     cksum_mode = 'none'  # none | source | target | end2end
     cksum_type = ''
@@ -2697,8 +2705,9 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                     cksum_type = ''
                     cksum_preset = ''
                     cksum_mode = 'none'
-        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources,
-                        force = overwrite, posc = posc, mkdir = makedir, thirdparty = tpc,
+        process.add_job(copy_job.src, copy_job.dst,
+                        sourcelimit = sources, posc = posc, mkdir = makedir,
+                        force = overwrite, thirdparty = tpc,
                         checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
 
     process.prepare()
