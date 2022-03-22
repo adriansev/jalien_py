@@ -3988,7 +3988,8 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         AlienSessionInfo['use_usercert'] = True
 
     if _DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
+    ctx = ssl.SSLContext(ssl_protocol)
     # try:
     #    ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
     # except ssl.SSLError:
