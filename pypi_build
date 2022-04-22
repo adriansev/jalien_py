@@ -3,7 +3,7 @@
 [[ ! -e alienpy/alien.py ]] && { echo "alien.py was not found"; exit 1; }
 
 ./update_version
-git commit -m "alien.py update version info" alienpy/alien.py VERSION
+git commit -m "alien.py update version info" alienpy/alien.py alienpy/VERSION
 git push
 git push xjalienfs master
 
