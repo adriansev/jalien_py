@@ -17,23 +17,21 @@ def get_version_from_file():
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-standard_requirements = [
-        'async-stagger',
-        'pyOpenSSL',
-        'xrootd',
-        'rich',
-    ]
+base_requirements = [ 'async-stagger', 'pyOpenSSL', 'rich', 'requests', ]
+alibuild_requirements = [ 'gnureadline' ]
+local_requirements = [ 'xrootd' ]
 
 if sys.version_info[1] < 7:
-    standard_requirements.append('websockets<=9.1')
+    base_requirements.append('websockets<=9.1')
 else:
-    standard_requirements.append('websockets')
+    base_requirements.append('websockets')
 
-if "ALIBUILD" not in os.environ.keys():
-    selected_requirements = standard_requirements
+# ALICE needs gnureadline as the python built does not have built-in readline for macos reasons
+# also the xrootd is built in a separate recipe
+if "ALIBUILD" in os.environ.keys():
+    selected_requirements = base_requirements + alibuild_requirements
 else:
-    standard_requirements.remove('xrootd')
-    selected_requirements = standard_requirements + ['gnureadline']
+    selected_requirements = base_requirements + local_requirements
 
 setuptools.setup(
     name="alienpy",
