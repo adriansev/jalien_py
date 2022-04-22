@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-GIT_TAG="${1}"
-shift
-
-[[ -n "${GIT_TAG}" ]] && GIT="@${GIT_TAG}"
-
-python3 -m pip install --user --editable "${@}" git+file:///home/adrian/work-ALICE/jalien_py${GIT}#egg=alienpy
+MYDIR="$(dirname $(realpath ${BASH_SOURCE}))"
+python3 -m pip install --user --editable "${@}" file://${MYDIR}#egg=alienpy
 
