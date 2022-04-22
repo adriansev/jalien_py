@@ -36,6 +36,7 @@ import grp
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
+import requests
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
@@ -2280,7 +2281,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
     # N.B.!!. This is the total time for the initialization dialogue!! see https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-580004.3.6
-    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(600))  # default 1800
+    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(900))  # default 1800
 
     # Default value for the time after which a connection error is declared (and a recovery attempted) if there are unfulfilled requests and there is no socket activity or a registered wait timeout.
     # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
