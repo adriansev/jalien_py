@@ -4326,6 +4326,13 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     if args is None: args = []
     ret_obj = None
 
+    # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
+    time_begin = msg_timing = None
+    if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
+        if not args or is_help(args): return RET(0, 'Command format: time command arguments')
+        cmd = args.pop(0)
+        time_begin = time.perf_counter()
+
     # early command aliases and default flags
     if cmd == 'ls': args[0:0] = ['-F']
     if cmd == 'll':
@@ -4337,14 +4344,6 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     if cmd == 'lla':
         cmd = 'ls'
         args[0:0] = ['-F', '-l', '-a']
-
-    # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
-    time_begin = msg_timing = None
-
-    if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
-        if not args or is_help(args): return RET(0, 'Command format: time command arguments')
-        cmd = args.pop(0)
-        time_begin = time.perf_counter()
 
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
         ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -4416,7 +4415,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         else:
             if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
-            args.insert(0, '-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
+            args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
         retf_print(ret_obj, print_opts)
