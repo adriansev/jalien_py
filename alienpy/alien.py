@@ -989,7 +989,7 @@ def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
 
 def writePidFile(filename: str):
     try:
-        with open(filename, 'w') as f: f.write(str(os.getpid()))
+        with open(filename, 'w', encoding="ascii", errors="replace") as f: f.write(str(os.getpid()))
     except Exception as e:
         logging.error('{0}'.format(e))
 
@@ -999,7 +999,7 @@ def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".
 
 def SessionSave():
     try:
-        with open(GetSessionFilename(), "w") as f:
+        with open(GetSessionFilename(), "w", encoding="ascii", errors="replace") as f:
             line1 = f"CWD = {AlienSessionInfo['currentdir']}\n"
             if not AlienSessionInfo['prevdir']: AlienSessionInfo['prevdir'] = AlienSessionInfo['currentdir']
             line2 = f"CWDPREV = {AlienSessionInfo['prevdir']}\n"
@@ -1505,7 +1505,7 @@ def expand_path_grid(wb, path_input: str, check_path: bool = False, check_writab
         file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
         exp_path = get_lfn_key(file_stat)
         if not exp_path:
-            logging.error("expand_path_grid:: {exp_path} stat have no lfn nor file key!!")
+            logging.error(f"expand_path_grid:: {exp_path} stat have no lfn nor file key!!")
             return ''
         path_type = file_stat["type"]
         if check_writable and path_type == "d":
@@ -1559,7 +1559,7 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not (meta_filename and replica_list): return ''
     try:
-        with open(meta_filename, 'w') as f:
+        with open(meta_filename, 'w', encoding="ascii", errors="replace") as f:
             published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
@@ -3016,9 +3016,9 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
 
     if lfn_filelist:  # a given file with list of files/lfns was provided
         if is_local:
-            if not os.path.exists(lfn_filelist): return RET(1, '', 'filelist {lfn_filelist} could not be found!!')
+            if not os.path.exists(lfn_filelist): return RET(1, '', f'filelist {lfn_filelist} could not be found!!')
             filelist_content_list = file2list(lfn_filelist)
-            if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')
+            if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')  
             if filelist_content_list[0].startswith('alien:'):
                 return RET(1, '', 'Local filelists should contain only local files (not alien: lfns)')
             xml_coll = mk_xml_local(filelist_content_list)
@@ -3027,7 +3027,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                     return RET(1, '', 'For the moment upload the resulting file by hand in grid')
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w') as f: f.write(xml_coll)
+                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(xml_coll)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
@@ -3044,7 +3044,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
             if output_file and output_file.startswith("file:"):
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w') as f: f.write(ret_obj.out)
+                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(ret_obj.out)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
@@ -3063,7 +3063,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                 if output_file.startswith('alien:'):
                     return RET(1, '', 'For the moment upload the resulting file by hand in grid')
                 output_file = lfn_prefix_re.sub('', output_file)
-                with open(output_file, 'w') as f: f.write(xml_coll)
+                with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(xml_coll)
                 return RET(0)
             else:
                 return RET(0, xml_coll)
@@ -3077,7 +3077,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
             if output_file and output_file.startswith("file:"):
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w') as f: f.write(ret_obj.out)
+                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(ret_obj.out)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
@@ -3762,7 +3762,7 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
 def IsValidCert(fname: str):
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
     try:
-        with open(fname) as f:
+        with open(fname, encoding="ascii", errors="replace") as f:
             cert_bytes = f.read()
     except Exception:
         logging.error(f'IsValidCert:: Unable to open certificate file {fname}')
@@ -3787,7 +3787,7 @@ def IsValidCert(fname: str):
 def CertInfo(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
     try:
-        with open(fname) as f:
+        with open(fname, encoding="ascii", errors="replace") as f:
             cert_bytes = f.read()
     except Exception:
         return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
@@ -3822,7 +3822,7 @@ def DO_tokeninfo(args: Union[list, None] = None) -> RET:
 def CertVerify(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
     try:
-        with open(fname) as f:
+        with open(fname, encoding="ascii", errors="replace") as f:
             cert_bytes = f.read()
     except Exception:
         return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
@@ -3871,14 +3871,14 @@ def DO_tokenverify(args: Union[list, None] = None) -> RET:
 def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
     """Check if Certificate and key match"""
     try:
-        with open(cert_fname) as f: cert_bytes = f.read()
+        with open(cert_fname, encoding="ascii", errors="replace") as f: cert_bytes = f.read()
         x509cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
         logging.debug(traceback.format_exc())
         return RET(5, "", f'Could not load certificate >>>{cert_fname}<<<')  # EIO /* I/O error */
 
     try:
-        with open(key_fname) as g: key_bytes = g.read()
+        with open(key_fname, encoding="ascii", errors="replace") as g: key_bytes = g.read()
         x509key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_bytes)
     except Exception:
         logging.debug(traceback.format_exc())
@@ -4546,7 +4546,7 @@ def main():
 
     cmd_string = ''
     if len(sys.argv) > 0 and os.path.isfile(sys.argv[0]):
-        with open(sys.argv[0]) as input_file:
+        with open(sys.argv[0], encoding="ascii", errors="replace") as input_file:
             cmd_string = input_file.read()
     else:
         cmd_string = ' '.join(sys.argv)

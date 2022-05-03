@@ -5,7 +5,7 @@ import sys
 
 def get_version_from_file():
     try:
-        f = open('alienpy/VERSION')
+        f = open('alienpy/VERSION', encoding="ascii")
         version = f.read().strip()
         f.close()
         return version
@@ -14,7 +14,7 @@ def get_version_from_file():
         return 'unknown'
 
 
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 base_requirements = [ 'async-stagger', 'pyOpenSSL', 'rich', 'requests', ]
