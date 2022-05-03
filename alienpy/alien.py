@@ -2994,7 +2994,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     if not args or is_help(args):
         central_help = SendMsg(wb, 'toXml', ['-h'], opts = 'nokeys')
         central_help_msg = central_help.out
-        msg_local = (f'\nAdditionally the client implements these options:'
+        msg_local = ('\nAdditionally the client implements these options:'
                      '\n-local: specify that the target lfns are local files'
                      '\nfor -x (output file) and -l (file with lfns) the file: and alien: represent the location of file'
                      '\nthe inferred defaults are that the target files and the output files are of the same type'
@@ -3677,7 +3677,8 @@ def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
     """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
     key = 'path' if fullpath else 'name'
     ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-a', '-F', os.path.normpath(lfn)])
-    return list(item[key] for item in ret_obj.ansdict['results']) if ret_obj.exitcode == 0 else []
+    if ret_obj.exitcode != 0: return []
+    return [item[key] for item in ret_obj.ansdict['results']]
 
 
 def lfn_list(wb, lfn: str = ''):
