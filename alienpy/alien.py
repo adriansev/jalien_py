@@ -4361,7 +4361,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
-    if ret_obj is None: return RET(1, '', f"NO RET OBJ!! The command was not found: {cmd} {chr(32).join(args)}")
+    if ret_obj is None: return RET(1, '', f"NO RETURN from command: {cmd} {chr(32).join(args)}")
     if time_begin: msg_timing = f">>>ProcessInput time: {deltat_ms_perf(time_begin)} ms"
 
     if shellcmd:
