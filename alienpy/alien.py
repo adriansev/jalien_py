@@ -3245,7 +3245,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
         os.chmod(tokencert, 0o400)  # make it readonly
     except Exception:
-        print_err('Error writing to file the aquired token cert; check the log file!')
+        print_err('Error writing to file the aquired token cert; check the log file {_DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -3256,7 +3256,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
         os.chmod(tokenkey, 0o400)  # make it readonly
     except Exception:
-        print_err('Error writing to file the aquired token key; check the log file!')
+        print_err('Error writing to file the aquired token key; check the log file {_DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -4190,18 +4190,14 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     if not token_args: token_args = []
     init_begin = time.perf_counter() if (_TIME_CONNECT or _DEBUG) else None
     wb = AlienConnect(token_args, use_usercert, localConnect)
-
-    if use_usercert:                                                  # if usercert connection
-        if token(wb, token_args) == 0:                                # always regenerate token if connected with usercert
-            wb_close(wb, code = 1000, reason = 'Reconect with token') # close previous (usercert) connection
-            wb = AlienConnect(token_args, False, localConnect)        # now reconnect with the token
-
     if init_begin:
         msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
         if _DEBUG: logging.debug(msg)
         if _TIME_CONNECT: print_out(msg)
-    if not wb: return None
 
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars
         AlienSessionInfo['session_started'] = True
         session_begin = time.perf_counter() if init_begin else None
@@ -4210,6 +4206,10 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
             msg = f">>>   Time for session initialization: {deltat_us_perf(session_begin)} us"
             if _DEBUG: logging.debug(msg)
             if _TIME_CONNECT: print_out(msg)
+
+    if AlienSessionInfo['use_usercert']:  # if usercert connection
+        # always regenerate token if connected with usercert
+        if (token(wb, token_args) != 0): print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
     return wb
 
 
