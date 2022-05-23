@@ -2619,13 +2619,13 @@ if _HAS_XROOTD:
                     print_out(f"{job_status_info} >>> SPEED {speed_str}")
             else:
                 self.copy_failed_list.append(xrdjob)
-                if xrdjob.isUpload:
-                    msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas"
-                else:
-                    msg = f"{job_status_info} : {xrdjob.lfn}"
                 codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
                 xrd_resp_msg = results['status'].message
-                logging.error(f"\n{codes_info}\n{xrd_resp_msg}\n{msg}")
+                if xrdjob.isUpload:
+                    msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas\n{msg}"
+                else:
+                    msg = f"{job_status_info} : {xrdjob.lfn}\n{msg}"
+                logging.error(f"\n{codes_info}\n{msg}")
                 print_err(msg)
 
             if not xrdjob.isUpload:
