@@ -88,7 +88,7 @@ ALIENPY_EXECUTABLE = ''
 
 ##################################################
 #   GLOBAL POINTER TO WB CONNECTION  #############
-__SESSION_WB = None
+__ALIEN_WB = None
 ##################################################
 #   GLOBAL STATE ASYNCIO LOOP
 _alienpy_global_asyncio_loop = None
@@ -546,7 +546,10 @@ async def IsWbConnected(wb) -> bool:
 @syncify
 async def wb_close(wb, code, reason):
     """Send close to websocket"""
-    await wb.close(code = code, reason = reason)
+    try:
+        await wb.close(code = code, reason = reason)
+    except Exception as e:
+        pass
 
 
 @syncify
@@ -607,47 +610,28 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")
 
     if _DEBUG:
-        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
+        logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\n>>>   SEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
 
     nr_tries = int(1)
     result = None
-    non_connection_exception = False
-    connection_exception = False
     while result is None:
-        if non_connection_exception: break
-        if nr_tries > 3:
-            connection_exception = True
-            break
+        if nr_tries > 3: break
         nr_tries += 1
         try:
             result = __sendmsg(wb, jsonmsg)
-        except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
+        except Exception as e:
             if e.__cause__:
                 logging.exception(f'SendMsg:: failure because of {e.__cause__}')
-                # non_connection_exception = True
-                # break
             logging.exception(e)
-            try:
-                wb = InitConnection()
-            except Exception as e:
-                logging.error(f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}')
-                logging.exception(e)
-        except Exception as e:
-            logging.exception(e)
-            non_connection_exception = True
-        if result is None and not non_connection_exception: time.sleep(0.2)
+            wb = InitConnection()
+        if result is None: time.sleep(0.2)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms_perf(time_begin)} ms")
     if not result:
-        if connection_exception:
-            msg = f"SendMsg:: communication error!\nSent command: {jsonmsg}"
-            print_err(msg)
-            logging.error(msg)
-        if non_connection_exception:
-            msg = f'SendMsg:: Non-connection related exception!! Check {_DEBUG_FILE}'
-            print_err(msg)
-            logging.error(msg)
-        return RET(1, '', 'SendMsg:: Empty result received from server')
+        msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {_DEBUG_FILE}"
+        print_err(msg)
+        logging.error(msg)
+        return RET(70, '', 'SendMsg:: Empty result received from server')  # ECOMM
 
     if 'rawstr' in opts: return result
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
@@ -740,7 +724,6 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> RET
     ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
 
     if AlienSessionInfo:  # update global state of session
-        AlienSessionInfo['exitcode'] = out_dict["metadata"]["exitcode"]  # keep last exit code
         AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
         current_dir = out_dict["metadata"]["currentdir"]
 
@@ -1125,6 +1108,16 @@ def get_arg_2values(target: list, item):
             val1 = target.pop(target.index(x) + 1)
             target.pop(target.index(x))
     return val1, val2
+
+
+def file_readable(filepath: str = '') -> bool:
+    if not filepath: return False
+    return os.access(filepath, os.R_OK, follow_symlinks = True)
+
+
+def file_writable(filepath: str = '') -> bool:
+    if not filepath: return False
+    return os.access(filepath, os.W_OK, follow_symlinks = True)
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -2933,9 +2926,8 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     return ''
 
 
-def queryML(args: list = None) -> str:
+def queryML(args: list = None) -> RET:
     """submit: process submit commands for local jdl cases"""
-    global AlienSessionInfo
     alimon = 'http://alimonitor.cern.ch/rest/'
     type_json = '?Accept=application/json'
     type_xml = '?Accept=text/xml'
@@ -2958,11 +2950,15 @@ def queryML(args: list = None) -> str:
     req = urlreq.urlopen(url)
     ansraw = req.read().decode()
 
-    if req.getcode() == 200:
-        AlienSessionInfo['exitcode'] = 0
+    stdout = stderr = ansdict = None
+    exitcode = 0 if (req.getcode() == 200) else req.getcode()
+
+    if type_default == type_json:
+        stdout = stderr = ''
+        ansdict = json.loads(ansraw)
     else:
-        AlienSessionInfo['exitcode'] = req.getcode()
-    return ansraw
+        stdout, stderr = ansraw, '' if (exitcode == 0) else '', ansraw
+    return RET(exitcode, stdout, stderr, ansdict)
 
 
 def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
@@ -3100,11 +3096,11 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     types = ('text', 'xml', 'json')
     if any(type in types for arg in args): args.remove(type)
     args.append('json')
-    ansraw = queryML(args)
-    ans2dict = json.loads(ansraw)
-    ans_list = ans2dict["results"]
-    if len(ans_list) == 0:
-        return RET(AlienSessionInfo['exitcode'], "", "queryML:: Empty answer")
+    retobj = queryML(args)
+
+    if (retobj.exitcode != 0): return RET(retobj.exitcode, '', f'Error getting query: {" ".join(args)}')
+    ans_list = retobj.ansdict["results"]
+    if len(ans_list) == 0: return RET(retobj.exitcode, f'queryML:: Empty answer from query: {" ".join(args)}')
 
     if 'Timestamp' in ans_list[0]:
         for item in ans_list: item['Timestamp'] = unixtime2local(item['Timestamp'])
@@ -3128,7 +3124,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     for row in ans_list:
         value_list = [row.get(key) for key in keys]
         msg = f'{msg}\n{row_format.format(*value_list)}'
-    return RET(AlienSessionInfo['exitcode'], msg, "")
+    return RET(0, msg, '')
 
 
 def DO_submit(wb, args: Union[list, None] = None) -> RET:
@@ -3198,6 +3194,7 @@ strict : lfn specifications will be considered to be strict
 http : URIs will be for http end-points of enabled SEs
 '''
         return RET(0, msg)
+    
     write_meta = get_arg(args, 'meta')
     strictspec = get_arg(args, 'strict')
     httpurl = get_arg(args, 'http')
@@ -3226,50 +3223,68 @@ http : URIs will be for http end-points of enabled SEs
 
 def token(wb, args: Union[None, list] = None) -> int:
     """(Re)create the tokencert and tokenkey files"""
+    global AlienSessionInfo
     if not wb: return 1
     if not args: args = []
-    global AlienSessionInfo
     tokencert, tokenkey = get_token_names(True)
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
-    if ret_obj.exitcode != 0: return retf_print(ret_obj)
+    if ret_obj.exitcode != 0:
+        logging.error('Token request returned error')
+        return retf_print(ret_obj, 'err')
     tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
     tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
-    if not tokencert_content or not tokenkey_content: return int(1)
+    if not tokencert_content or not tokenkey_content:
+        logging.error('Token request valid but empty fields!!')
+        return int(42)  # ENOMSG 
 
-    if os.path.isfile(tokencert):
-        os.chmod(tokencert, 0o600)  # make it writeable
-        os.remove(tokencert)
-    with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file=tcert)  # write the tokencert
-    os.chmod(tokencert, 0o400)  # make it readonly
+    try:
+        if file_readable(tokencert):
+            os.chmod(tokencert, 0o600)  # make it writeable
+            os.remove(tokencert)
+        with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
+        os.chmod(tokencert, 0o400)  # make it readonly
+    except Exception:
+        print_err('Error writing to file the aquired token cert; check the log file!')
+        logging.debug(traceback.format_exc())
+        return 5  # EIO
 
-    if os.path.isfile(tokenkey):
-        os.chmod(tokenkey, 0o600)  # make it writeable
-        os.remove(tokenkey)
-    with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file=tkey)  # write the tokenkey
-    os.chmod(tokenkey, 0o400)  # make it readonly
-    return ret_obj.exitcode
+    try:
+        if file_readable(tokenkey):
+            os.chmod(tokenkey, 0o600)  # make it writeable
+            os.remove(tokenkey)
+        with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
+        os.chmod(tokenkey, 0o400)  # make it readonly
+    except Exception:
+        print_err('Error writing to file the aquired token key; check the log file!')
+        logging.debug(traceback.format_exc())
+        return 5  # EIO
+
+    return int(0)
 
 
 def token_regen(wb, args: Union[None, list] = None):
     global AlienSessionInfo
+    wb_usercert = None
     if not AlienSessionInfo['use_usercert']:
         wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
-            wb = InitConnection(use_usercert = True)  # we have to reconnect with the new token
+            wb_usercert = InitConnection(args, use_usercert = True)  # we have to reconnect with the new token
         except Exception:
             logging.debug(traceback.format_exc())
+            return None  # we failed usercert connection
 
     # now we are connected with usercert, so we can generate token
-    if token(wb, args) != 0: return wb
+    if token(wb_usercert, args) != 0: return wb_usercert
     # we have to reconnect with the new token
-    wb_close(wb, code = 1000, reason = 'Re-initialize the connection with the new token')
+    wb_close(wb_usercert, code = 1000, reason = 'Re-initialize the connection with the new token')
+    AlienSessionInfo['use_usercert'] = False
+    wb_token_new = None
     try:
-        AlienSessionInfo['use_usercert'] = False
-        wb = InitConnection()
+        wb_token_new = InitConnection(args)
     except Exception:
         logging.debug(traceback.format_exc())
-    return wb
+    return wb_token_new
 
 
 def DO_token(wb, args: Union[list, None] = None) -> RET:
@@ -3760,7 +3775,7 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     return RET(0, "Token was destroyed! Re-connect for token re-creation.")
 
 
-def IsValidCert(fname: str):
+def IsValidCert(fname: str) -> bool:
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
     try:
         with open(fname, encoding="ascii", errors="replace") as f:
@@ -3947,21 +3962,21 @@ def get_token_filenames() -> tuple:
     global AlienSessionInfo
     tokencert, tokenkey = get_token_names()
     random_str = None
-    if not os.path.isfile(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
+    if not file_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         AlienSessionInfo['templist'].append(tokencert)
-    if not os.path.isfile(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
+    if not file_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
         AlienSessionInfo['templist'].append(tokenkey)
-    return (tokencert, tokenkey) if (IsValidCert(tokencert) and os.path.isfile(tokenkey)) else (None, None)
+    return (tokencert, tokenkey) if (IsValidCert(tokencert) and file_readable(tokenkey)) else (None, None)
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -3972,11 +3987,11 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     usercert, userkey = get_files_cert()
     tokencert, tokenkey = get_token_filenames()
 
-    if not use_usercert and tokencert and tokenkey:
+    if not use_usercert and (tokencert and tokenkey):  # token auth
         cert, key = tokencert, tokenkey
         AlienSessionInfo['use_usercert'] = False
-    else:
-        if not (os.path.exists(usercert) and os.path.exists(userkey)):
+    else:                                              # usercert auth
+        if not (file_readable(usercert) and file_readable(userkey)):
             msg = "User certificate files NOT FOUND!!! Connection will not be possible!!"
             print_err(msg)
             logging.info(msg)
@@ -3989,7 +4004,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
             sys.exit(129)
         AlienSessionInfo['use_usercert'] = True
 
-    if _DEBUG: logging.debug(f"Cert = {cert}; Key = {key}; Creating SSL context .. ")
+    if _DEBUG: logging.debug(f"\nCert = {cert}\nKey = {key}\nCreating SSL context .. ")
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
     ctx = ssl.SSLContext(ssl_protocol)
     # try:
@@ -4007,7 +4022,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         ctx.load_verify_locations(capath = ca_verify_location)
     if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
     ctx.load_cert_chain(certfile=cert, keyfile=key)
-    if _DEBUG: logging.debug("SSL context done.")
+    if _DEBUG: logging.debug("\nSSL context done.")
     return ctx
 
 
@@ -4106,8 +4121,8 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
 
     while wb is None:
+        nr_tries += 1
         try:
-            nr_tries += 1
             wb = wb_create(host, str(port), path, use_usercert, localConnect)
         except Exception as e:
             logging.error('{0}'.format(e))
@@ -4117,8 +4132,9 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
                 break
             time.sleep(connect_tries_interval)
 
-    if wb and init_begin:
-        msg = f'>>>   Websocket connecting time: {deltat_ms_perf(init_begin)} ms'
+    if init_begin:
+        fail_msg = 'trials ' if not wb else ''
+        msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
         if _DEBUG: logging.debug(msg)
         if _TIME_CONNECT: print_out(msg)
 
@@ -4130,11 +4146,14 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
 
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
-    global __SESSION_WB
+    global __ALIEN_WB
+    if not token_args: token_args = []
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
     jclient_env = f'{_TMPDIR}/jclient_token_{str(os.getuid())}'
+
+    if __ALIEN_WB: wb_close(__ALIEN_WB, code = 1000, reason = 'Close previous websocket')
 
     # let's try to get a websocket
     wb = None
@@ -4159,10 +4178,38 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         msg = f'Check the logfile: {_DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
         print_err(msg)
-        sys.exit(1)
+        sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
+    
+    __ALIEN_WB = wb  # Save the connection as a global variable
+    return wb
 
-    __SESSION_WB = wb  # Save the connection as a global variable
-    if AlienSessionInfo['use_usercert']: token(wb, token_args)  # if we connect with usercert then let get a default token
+
+def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
+    """Create a session to AliEn services, including session globals and token regeneration"""
+    global AlienSessionInfo
+    if not token_args: token_args = []
+    init_begin = time.perf_counter() if (_TIME_CONNECT or _DEBUG) else None
+    wb = AlienConnect(token_args, use_usercert, localConnect)
+
+    if use_usercert:                                                  # if usercert connection
+        if token(wb, token_args) == 0:                                # always regenerate token if connected with usercert
+            wb_close(wb, code = 1000, reason = 'Reconect with token') # close previous (usercert) connection
+            wb = AlienConnect(token_args, False, localConnect)        # now reconnect with the token
+
+    if init_begin:
+        msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
+        if _DEBUG: logging.debug(msg)
+        if _TIME_CONNECT: print_out(msg)
+    if not wb: return None
+
+    if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars
+        AlienSessionInfo['session_started'] = True
+        session_begin = time.perf_counter() if init_begin else None
+        getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
+        if session_begin:
+            msg = f">>>   Time for session initialization: {deltat_us_perf(session_begin)} us"
+            if _DEBUG: logging.debug(msg)
+            if _TIME_CONNECT: print_out(msg)
     return wb
 
 
@@ -4299,27 +4346,6 @@ def getSessionVars(wb):
     if AlienSessionInfo['prevdir'] and (AlienSessionInfo['prevdir'] != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
-def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
-    """Create a session to AliEn services, including session globals"""
-    global AlienSessionInfo
-    init_begin = None
-    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
-    wb = AlienConnect(token_args, use_usercert, localConnect)
-    if init_begin:
-        msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
-        if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print_out(msg)
-
-    if wb is not None: AlienSessionInfo['session_started'] = True
-    session_begin = time.perf_counter() if init_begin else None
-    getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-    if session_begin:
-        msg = f">>>   Time for session initialization: {deltat_ms_perf(session_begin)} ms"
-        if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print_out(msg)
-    return wb
-
-
 def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
     """Process a command line within shell or from command line mode input"""
     global AlienSessionInfo
@@ -4347,8 +4373,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         args[0:0] = ['-F', '-l', '-a']
 
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
-        ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
-        return ret_obj
+        return AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
 
     opts = ''  # let's proccess special server args
     if get_arg(args, '-nokeys'): opts = f'{opts} nokeys'
@@ -4361,8 +4386,9 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
-    if ret_obj is None: return RET(1, '', f"NO RETURN from command: {cmd} {chr(32).join(args)}")
+
     if time_begin: msg_timing = f">>>ProcessInput time: {deltat_ms_perf(time_begin)} ms"
+    if ret_obj is None: return RET(1, '', f"NO RETURN from command: {cmd} {chr(32).join(args)}")
 
     if shellcmd:
         if ret_obj.exitcode != 0: return ret_obj
@@ -4373,7 +4399,8 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
     if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
-    if ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']: ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
+    if ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
+        ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
     return ret_obj
 
 
@@ -4385,7 +4412,8 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         for alias in AlienSessionInfo['alias_cache']: cmd_chain = cmd_chain.replace(alias, AlienSessionInfo['alias_cache'][alias])
     cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n
 
-    ret_obj = None
+    # for each command, save exitcode and RET of the command
+    exitcode = None
     for cmdline in cmdline_list:
         if not cmdline: continue
         if _DEBUG: logging.info(f'>>> RUN COMMAND: {cmdline}')
@@ -4395,7 +4423,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
                 cmdline = cmdline.replace(' -noout', '')
                 capture_out = False
             ret_obj = runShellCMD(cmdline, capture_out)
-            retf_print(ret_obj, 'debug')
+            exitcode = retf_print(ret_obj, 'debug')
             continue
 
         # process the input and take care of pipe to shell
@@ -4419,10 +4447,10 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
-        retf_print(ret_obj, print_opts)
+        AlienSessionInfo['exitcode'] = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
         if cmd == 'cd': SessionSave()
         _JSON_OUT = _JSON_OUT_GLOBAL  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
-    return ret_obj.exitcode
+    return AlienSessionInfo['exitcode']
 
 
 def JAlien(commands: str = '') -> int:
@@ -4432,11 +4460,9 @@ def JAlien(commands: str = '') -> int:
     wb = None
 
     # Command mode interaction
-    if commands:
-        AlienSessionInfo['exitcode'] = ProcessCommandChain(wb, commands)
-        return AlienSessionInfo['exitcode']
+    if commands: return ProcessCommandChain(wb, commands)
 
-    # Start interactive mode
+    # Start interactive/shell mode
     wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
     if _HAS_READLINE:
@@ -4461,6 +4487,7 @@ def JAlien(commands: str = '') -> int:
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
+    
     while True:
         INPUT = None
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -4474,7 +4501,7 @@ def JAlien(commands: str = '') -> int:
 
         if not INPUT: continue
         AlienSessionInfo['exitcode'] = ProcessCommandChain(wb, INPUT)
-    return AlienSessionInfo['exitcode']
+    return AlienSessionInfo['exitcode']  # exit with the last command exitcode run in interactive mode
 
 
 def setup_logging():
