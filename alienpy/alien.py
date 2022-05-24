@@ -33,6 +33,7 @@ import threading
 import asyncio
 import pwd
 import grp
+import stat
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
@@ -326,6 +327,20 @@ class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     size: str = ''
     turl: str = ''
     type: str = ''
+
+
+class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
+    """Stat attributes of a lfn"""
+    path: str = ''
+    type: str = ''
+    perm: str = ''
+    uid: str = ''
+    gid: str = ''
+    ctime: str = ''
+    mtime: str = ''
+    guid: str = ''
+    size: str = ''
+    md5: str = ''
 
 
 class Msg:
@@ -1110,6 +1125,16 @@ def get_arg_2values(target: list, item):
     return val1, val2
 
 
+def uid2name(uid: Union[str, int]) -> str:
+    """Convert numeric UID to username"""
+    return pwd.getpwuid(int(uid)).pw_name
+
+
+def gid2name(gid: Union[str, int]) -> str:
+    """Convert numeric GUI to group name"""
+    return grp.getgrgid(int(gid)).gr_name
+
+
 def file_readable(filepath: str = '') -> bool:
     if not filepath: return False
     return os.access(filepath, os.R_OK, follow_symlinks = True)
@@ -1215,7 +1240,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
             msg = " ".join(AlienSessionInfo['pathq'])
             return RET(0, msg)  # end of +N|-N
 
-        path = expand_path_grid(wb, arg_list[0])
+        path = expand_path_grid(arg_list[0])
         if do_not_cd:
             cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(path)
@@ -1459,11 +1484,12 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
     return access_list
 
 
-def expand_path_local(path_input: str, check_path: bool = False, check_writable: bool = False) -> str:
+def expand_path_local(path_arg: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     exp_path = None
+    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     try:
-        exp_path = Path(path_input).expanduser().resolve().as_posix()
+        exp_path = Path(path_arg).expanduser().resolve().as_posix()
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
@@ -1472,47 +1498,68 @@ def expand_path_local(path_input: str, check_path: bool = False, check_writable:
         is_file = os.path.isfile(exp_path)
         if is_dir:
             exp_path = f'{exp_path}/'
-            if check_writable and not os.access(exp_path, os.W_OK): return ''  # checking for writable dir
-    else:
-        if check_path: return ''
-        if path_input.endswith('/'): exp_path = f'{exp_path}/'
+            if not os.access(exp_path, os.W_OK): return ''  # checking for writable dir
+    if path_arg.endswith('/'): exp_path = f'{exp_path}/'
     return exp_path
 
 
-def expand_path_grid(wb, path_input: str, check_path: bool = False, check_writable: bool = False) -> str:
+def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
+    """Get full information on a local path"""
+    norm_path = expand_path_local(path)
+    if not os.path.exists(norm_path): return STAT_FILEPATH(norm_path)
+    type = 'd' if os.path.isdir(norm_path) else 'f'
+    statinfo = os.stat(norm_path)
+    perm = oct(statinfo.st_mode)[-3:]
+    uid = uid2name(statinfo.st_uid)
+    gid = uid2name(statinfo.st_gid)
+    ctime = str(statinfo.st_ctime)
+    mtime = str(statinfo.st_mtime)
+    guid = ''
+    size = str(statinfo.st_size)
+    md5 = ''
+    if do_md5 and type == 'f': md5 = md5(norm_path)
+    return STAT_FILEPATH(norm_path, type, perm, uid, guid, ctime, mtime, guid, size, md5)
+
+
+def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
+    """Get full information on a GRID path/lfn"""
+    norm_path = expand_path_grid(path)
+    ret_obj = SendMsg(wb, 'stat', [norm_path], opts = 'nomsg log')
+    if ret_obj.exitcode != 0: return STAT_FILEPATH(norm_path)
+    file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
+    mtime = file_stat.get('mtime', '')
+    guid = file_stat.get('guid', '')
+    size = file_stat.get('size', '')
+    md5 = file_stat.get('md5', '')
+    return STAT_FILEPATH(file_stat['lfn'], file_stat['type'], file_stat['perm'], file_stat['owner'], file_stat['gowner'], file_stat['ctime'],
+                         mtime, guid, size, md5)
+
+
+def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
+    p_user = int(file_stat['perm'][0])
+    p_group = int(file_stat['perm'][1])
+    p_others = int(file_stat['perm'][2])
+    writable_user = writable_group = writable_others = False
+    write_perm = {2, 6, 7}
+    if AlienSessionInfo['user'] == file_stat['uid'] and p_user in write_perm: writable_user = True
+    if AlienSessionInfo['user'] == file_stat['gid'] and p_group in write_perm: writable_group = True
+    if p_others in write_perm: writable_others = True
+    return writable_user or writable_group or writable_others
+    
+
+def expand_path_grid(path_arg: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
-    exp_path = path_input
-    exp_path = lfn_prefix_re.sub('', exp_path)
+    global AlienSessionInfo
+    is_dir = path_arg.endswith('/')
+    exp_path = lfn_prefix_re.sub('', path_arg) # lets remove any prefixes
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if exp_path == '.': exp_path = AlienSessionInfo['currentdir']
     if exp_path == '~': exp_path = AlienSessionInfo['alienHome']
     if exp_path.startswith('./'): exp_path = exp_path.replace('.', AlienSessionInfo['currentdir'], 1)
     if exp_path.startswith('~/'): exp_path = exp_path.replace('~', AlienSessionInfo['alienHome'], 1)  # replace ~ for the usual meaning
     if not exp_path.startswith('/'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
-    is_dir = exp_path.endswith('/')
     exp_path = os.path.normpath(exp_path)
     if is_dir: exp_path = f'{exp_path}/'
-    if check_path:
-        ret_obj = SendMsg(wb, 'stat', [exp_path], opts = 'nomsg log')
-        if ret_obj.exitcode != 0: return ''
-        file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
-        exp_path = get_lfn_key(file_stat)
-        if not exp_path:
-            logging.error(f"expand_path_grid:: {exp_path} stat have no lfn nor file key!!")
-            return ''
-        path_type = file_stat["type"]
-        if check_writable and path_type == "d":
-            writable_user = writable_group = writable_others = False
-            perms = file_stat["perm"]
-            p_user = int(perms[0])
-            p_group = int(perms[1])
-            p_others = int(perms[2])
-            path_owner = file_stat["owner"]
-            path_gowner = file_stat["gowner"]
-            if AlienSessionInfo['user'] == path_owner and p_user == 6 or p_user == 7: writable_user = True
-            if AlienSessionInfo['user'] == path_gowner and p_group == 6 or p_group == 7: writable_group = True
-            if p_others == 6 or p_others == 7: writable_others = True
-            if not (p_user or p_group or p_others): return ''
     return exp_path
 
 
@@ -1717,11 +1764,6 @@ def name2regex(pattern_regex: str = '') -> str:
             else:
                 translated_pattern_regex = f'{translated_pattern_regex}{re_all_end}' + '$'
     return translated_pattern_regex
-
-
-def gid2name(gid: Union[str, int]) -> str:
-    """From the list of all groups return the name of gid"""
-    return str(grp.getgrgid(int(gid)).gr_name)
 
 
 def file2file_dict(fn: str) -> dict:
@@ -2058,17 +2100,10 @@ def extract_glob_pattern(path_arg: str) -> tuple:
     return (base_path, pattern)
 
 
-def check_path(wb, path_arg: str, check_path: bool = False) -> tuple:
-    """Check if path exists and what kind; returns the resolved path and the location"""
-    location = 'grid'  # default location is grid; MANDATORY specification of file: for local
-    filepath = None
-    if path_arg.startswith('file:'): location = 'local'
-    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
-    filepath = path_arg
-    if check_path:
-        if location == 'local': filepath = expand_path_local(path_arg, check_path = True)
-        if location == 'grid': filepath = expand_path_grid(wb, path_arg, check_path = True)
-    return (filepath, location)
+def path_type(path_arg: str) -> tuple:
+    """Check if path is local or grid; default is grid and local must have file: prefix"""
+    location = 'local' if path_arg.startswith('file:') else 'grid'
+    return (path_arg, location)
 
 
 def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
@@ -2103,30 +2138,37 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
     # N.B.!!! the check will be wrong when the same relative path is present local and on grid
     # first let's check only prefixes
-    src, src_type = check_path(wb, arg_src, check_path = False)
-    dst, dst_type = check_path(wb, arg_dst, check_path = False)  # do not check path, it can be missing and then auto-created
+    src, src_type = path_type(arg_src)
+    dst, dst_type = path_type(arg_dst)
 
     if src_type == dst_type == 'grid':
-        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: dowload file and upload it; local src,dst should be ALWAYS prefixed with file:')
+        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
     if src_type == dst_type == 'local':
         return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
 
     isSrcLocal = (src_type == 'local')
+    isDownload = not isSrcLocal
+    if isSrcLocal:  # UPLOAD
+        src_stat = path_local_stat(src)
+        dst_stat = path_grid_stat(wb, dst)
+    else:           # DOWNLOAD
+        src_stat = path_grid_stat(wb, src)
+        dst_stat = path_local_stat(dst)
+        
+    src = src_stat.path
+    dst = dst_stat.path
 
-    if isSrcLocal:
-        src = expand_path_local(src, check_path = True)
-        dst = expand_path_grid(wb, dst, check_path = False)
-    else:
-        src = expand_path_grid(wb, src, check_path = True)
-        dst = expand_path_local(dst, check_path = False)
     if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) on {src_type}')  # ENOENT /* No such file or directory */
 
-    if slashend_src and not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
-    if src.endswith('/') and not dst.endswith('/'): dst = f"{dst}/"
-    isDstDir = isSrcDir = src.endswith('/')  # is src is dir, so dst must be
-    isDownload = not isSrcLocal
+    if slashend_src:
+        if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
+        if not dst.endswith('/'): dst = f"{dst}/"
+
+    if src_stat.type == 'd': isDstDir = isSrcDir = True  # is source is directory so destination must be
+
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
+    # prepare destination locations
     if isDownload:
         try:  # we can try anyway, this is like mkdir -p
             mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
@@ -2137,8 +2179,9 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
     else:  # this is upload to GRID
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
-        ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
-        if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result
+        if not dst_stat.type:  # dst does not exists
+            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
+            if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result
 
     specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
     specs_list = specs_split.split(specs) if specs else []
@@ -2150,29 +2193,39 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
     error_msg = ''  # container which accumulates the error messages
     isWrite = not isDownload
-    if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID directory
-        results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
-        if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
-            msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
-            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-
-        for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
-            lfn = get_lfn_key(lfn_obj)
-            dst_filename = format_dst_fn(src, lfn, dst, parent)
+    if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID location
+        # to reduce the remote calls we treat files and directory on separate code-paths
+        if src_stat.type == 'f':  # single file
+            dst_filename = format_dst_fn(src, src, dst, parent)
             if os.path.isfile(dst_filename):
                 if not overwrite:
                     print_out(f'{dst_filename} exists, skipping..')
-                    continue
-                # -f (force) was used
-                file_size = lfn_obj['size']
-                file_md5 = lfn_obj['md5']
-                if retf_print(fileIsValid(dst_filename, file_size, file_md5)) == 0:
-                    continue  # destination exists and is valid, no point to re-download
+                else:
+                    retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5))
 
-            tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
-            if not tokens or 'answer' not in tokens: continue
-            copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
-    else:  # src is LOCAL, we are UPLOADING from LOCAL directory
+            tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
+            if tokens and 'answer' in tokens:
+                copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
+        else:  # directory to be listed
+            results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
+            if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
+                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+
+            for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
+                lfn = get_lfn_key(lfn_obj)
+                dst_filename = format_dst_fn(src, lfn, dst, parent)
+                if os.path.isfile(dst_filename):
+                    if not overwrite:
+                        print_out(f'{dst_filename} exists, skipping..')
+                        continue
+                    if retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'])) == 0: continue  # destination exists and is valid, no point to re-download
+
+                tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
+                if not tokens or 'answer' not in tokens: continue
+                copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
+
+    else:  # src is LOCAL, we are UPLOADING
         results_list = list_files_local(src, pattern, is_regex, " ".join(find_args))
         if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
             msg = f"No files found in: {src} /pattern: {pattern} /find_args: {' '.join(find_args)}"
@@ -2180,12 +2233,18 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
         for file in results_list.ansdict["results"]:
             file_path = get_lfn_key(file)
+            print(file_path)
             lfn = format_dst_fn(src, file_path, dst, parent)
-            if pathtype_grid(wb, lfn) == 'f':  # lfn exists
+            lfn_dst_stat = path_grid_stat(wb, lfn)  # check each destination lfn
+            if lfn_dst_stat.type == 'f':  # lfn exists
                 if not overwrite:
                     print_out(f'{lfn} exists, skipping..')
                     continue
-                print_out(f'{lfn} exists, deleting..')  # we want to overwrite so clear up the destination lfn
+                md5sum = md5(file_path)
+                if md5sum == lfn_dst_stat.md5:
+                    print_out(f'{lfn} exists and md5 match, skipping..')
+                    continue
+                print_out(f'{lfn} exists and md5 does not match, deleting..')  # we want to overwrite so clear up the destination lfn
                 ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
 
             tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite, strictspec)
