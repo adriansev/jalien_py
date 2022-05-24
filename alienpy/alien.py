@@ -2689,9 +2689,9 @@ if _HAS_XROOTD:
                 codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
                 xrd_resp_msg = results['status'].message
                 if xrdjob.isUpload:
-                    msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas\n{msg}"
+                    msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas\n{xrd_resp_msg}"
                 else:
-                    msg = f"{job_status_info} : {xrdjob.lfn}\n{msg}"
+                    msg = f"{job_status_info} : {xrdjob.lfn}\n{xrd_resp_msg}"
                 logging.error(f"\n{codes_info}\n{msg}")
                 print_err(msg)
 
