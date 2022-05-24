@@ -1504,7 +1504,8 @@ def expand_path_local(path_arg: str) -> str:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
-    if len(exp_path) > 1 and path_arg.endswith('/'): exp_path = f'{exp_path}/'
+    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path):
+        exp_path = f'{exp_path}/'
     return exp_path
 
 
