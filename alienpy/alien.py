@@ -1307,6 +1307,8 @@ after each src,dst can be added comma separated specifiers in the form of: @disk
 where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
 options are the following :
 -h : print help
+-d | -dd | -ddd : enable XRootD log level to Info/Debug/Dump
+-xrdlog : change the default filepath of XRootD logfile (default: xrdlog)
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified
 -S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
@@ -2358,6 +2360,23 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+    if get_arg(xrd_copy_command, '-d'):
+        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Info')
+        XRD_EnvPut('XRD_LOGLEVEL', 'Info')
+    if get_arg(xrd_copy_command, '-dd'):
+        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Debug')
+        XRD_EnvPut('XRD_LOGLEVEL', 'Debug')
+    if get_arg(xrd_copy_command, '-ddd'):
+        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Dump')
+        XRD_EnvPut('XRD_LOGLEVEL', 'Dump')
+
+    XRD_LOG='xrdlog.txt'
+    xrd_logfile_arg = get_arg_value(xrd_copy_command, '-xrdlog')
+    if xrd_logfile_arg:
+        if os.getenv('XRD_LOGFILE'): print_out(f'XRD_LOGFILE already set, it will be overwritten with {xrd_logfile_arg}')
+        XRD_LOG = xrd_logfile_arg
+    XRD_EnvPut('XRD_LOGFILE', XRD_LOG)
 
     streams_arg = get_arg_value(xrd_copy_command, '-S')
     if streams_arg:
