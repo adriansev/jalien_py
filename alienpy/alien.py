@@ -1135,14 +1135,24 @@ def gid2name(gid: Union[str, int]) -> str:
     return grp.getgrgid(int(gid)).gr_name
 
 
-def file_readable(filepath: str = '') -> bool:
+def path_readable(filepath: str = '') -> bool:
     if not filepath: return False
+    if not os.path.exists(filepath): return False
     return os.access(filepath, os.R_OK, follow_symlinks = True)
 
 
-def file_writable(filepath: str = '') -> bool:
+def path_writable(filepath: str = '') -> bool:
     if not filepath: return False
+    if not os.path.exists(filepath): return False
     return os.access(filepath, os.W_OK, follow_symlinks = True)
+
+
+def path_writable_any(filepath: str = '') -> bool:
+    """Will check for writeability each path in hierarchy"""
+    if not filepath: return False
+    for p in Path(filepath).parents:
+        if path_writable(p): return True
+    return False
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1486,6 +1496,7 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
 
 def expand_path_local(path_arg: str) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
+    if not path_arg: return ''
     exp_path = None
     path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     try:
@@ -1493,13 +1504,7 @@ def expand_path_local(path_arg: str) -> str:
     except RuntimeError:
         print_err(f"Loop encountered along the resolution of {path_input}")
     if exp_path is None: return ''
-    if os.path.exists(exp_path):
-        is_dir = os.path.isdir(exp_path)
-        is_file = os.path.isfile(exp_path)
-        if is_dir:
-            exp_path = f'{exp_path}/'
-            if not os.access(exp_path, os.W_OK): return ''  # checking for writable dir
-    if path_arg.endswith('/'): exp_path = f'{exp_path}/'
+    if len(exp_path) > 1 and path_arg.endswith('/'): exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -2154,7 +2159,9 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     else:           # DOWNLOAD
         src_stat = path_grid_stat(wb, src)
         dst_stat = path_local_stat(dst)
-        
+        if not path_writable_any(dst_stat.path):
+            return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
+
     src = src_stat.path
     dst = dst_stat.path
 
@@ -3298,7 +3305,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         return int(42)  # ENOMSG 
 
     try:
-        if file_readable(tokencert):
+        if path_readable(tokencert):
             os.chmod(tokencert, 0o600)  # make it writeable
             os.remove(tokencert)
         with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
@@ -3309,7 +3316,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         return 5  # EIO
 
     try:
-        if file_readable(tokenkey):
+        if path_readable(tokenkey):
             os.chmod(tokenkey, 0o600)  # make it writeable
             os.remove(tokenkey)
         with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
@@ -4021,21 +4028,21 @@ def get_token_filenames() -> tuple:
     global AlienSessionInfo
     tokencert, tokenkey = get_token_names()
     random_str = None
-    if not file_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
+    if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         AlienSessionInfo['templist'].append(tokencert)
-    if not file_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
+    if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
         temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
         AlienSessionInfo['templist'].append(tokenkey)
-    return (tokencert, tokenkey) if (IsValidCert(tokencert) and file_readable(tokenkey)) else (None, None)
+    return (tokencert, tokenkey) if (IsValidCert(tokencert) and path_readable(tokenkey)) else (None, None)
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -4050,7 +4057,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         cert, key = tokencert, tokenkey
         AlienSessionInfo['use_usercert'] = False
     else:                                              # usercert auth
-        if not (file_readable(usercert) and file_readable(userkey)):
+        if not (path_readable(usercert) and path_readable(userkey)):
             msg = "User certificate files NOT FOUND!!! Connection will not be possible!!"
             print_err(msg)
             logging.info(msg)
