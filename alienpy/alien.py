@@ -2973,7 +2973,7 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
 def download_tmp(wb, lfn: str, overwrite: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     global AlienSessionInfo
-    tmpfile = make_tmp_fn(expand_path_grid(wb, lfn))
+    tmpfile = make_tmp_fn(expand_path_grid(lfn))
     if os.path.isfile(tmpfile):
         if overwrite:
             os.remove(tmpfile)
@@ -3221,7 +3221,7 @@ def DO_submit(wb, args: Union[list, None] = None) -> RET:
         msg = ("Specifications as where to upload the jdl to be submitted and with what parameters are not yet defined"
                "Upload first the jdl to a suitable location (with a safe number of replicas) and then submit")
         return RET(0, msg)
-    args[0] = expand_path_grid(wb, args[0])
+    args[0] = expand_path_grid(args[0])
     return SendMsg(wb, 'submit', args)
 
 
@@ -3295,7 +3295,7 @@ http : URIs will be for http end-points of enabled SEs
     lfn = args[0]
     lfn_components = specs_split.split(lfn, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
     lfn = lfn_components[0]  # first item is the file path, let's remove it; it remains disk specifications
-    if not isWrite: lfn = expand_path_grid(wb, lfn)
+    if not isWrite: lfn = expand_path_grid(lfn)
     specs = ''
     if len(lfn_components) > 1: specs = lfn_components[1]
     if write_meta:
@@ -3405,7 +3405,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
             editor = 'mcedit -u'
     versioned_backup = False
     if get_arg(args, '-datebck'): versioned_backup = True
-    lfn = expand_path_grid(wb, args[-1])  # assume that the last argument is the lfn
+    lfn = expand_path_grid(args[-1])  # assume that the last argument is the lfn
     # check for valid (single) specifications delimiter
     count_tokens = collections.Counter(lfn)
     if count_tokens[','] + count_tokens['@'] > 1:
@@ -3573,7 +3573,7 @@ The server options:''')
         find_args.insert(0, '-r')
         pattern = pattern_regex
     start_location = args[-1] if filtering_enabled else args[-2]
-    find_args.append(expand_path_grid(wb, start_location))
+    find_args.append(expand_path_grid(start_location))
     find_args.append(pattern)
     return SendMsg(wb, 'find', find_args, opts = 'nokeys')
 
