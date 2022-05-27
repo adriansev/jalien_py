@@ -83,8 +83,9 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_DATE = '20211202_153804'
-ALIENPY_VERSION_STR = '1.3.7'
+ALIENPY_VERSION_HASH = '2739d79'
+ALIENPY_VERSION_DATE = '20220527_114948'
+ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
 ##################################################
@@ -1266,6 +1267,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
 def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused-argument
     stdout = (f'alien.py version: {ALIENPY_VERSION_STR}\n'
               f'alien.py version date: {ALIENPY_VERSION_DATE}\n'
+              f'alien.py version hash: {ALIENPY_VERSION_HASH}\n'
               f'alien.py location: {os.path.realpath(__file__)}\n'
               f'script location: {ALIENPY_EXECUTABLE}\n'
               f'Interpreter: {os.path.realpath(sys.executable)}\n'

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
-if [ -e .commit ]; then
-    rm .commit
-    REPO="$(git rev-parse --show-toplevel)"
+REPO="$(git rev-parse --show-toplevel)"
+
+if [ -e ${REPO}/.commit ]; then
+    rm ${REPO}/.commit
     ALIENPY_IS_CHANGED=$(git status -s ${REPO}/alienpy/alien.py)
     if [ -n "${ALIENPY_IS_CHANGED}" ]; then
-        sed -i "/^ALIENPY_VERSION_DATE = /c\ALIENPY_VERSION_DATE = \'$(date -u +%Y%m%d_%H%M%S)\'" ${REPO}/alienpy/alien.py
+        ${REPO}/update_version
         git add ${REPO}/alienpy/alien.py
         git commit --amend -C HEAD --no-verify
     fi
 fi
-exit
+
 
