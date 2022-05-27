@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
 REPO="$(git rev-parse --show-toplevel)"
-touch ${REPO}/.commit
+
+ALIENPY_IS_CHANGED=$(git status -s ${REPO}/alienpy/alien.py)
+[[ -n "${ALIENPY_IS_CHANGED}" ]] && touch ${REPO}/.commit_in_progress
+
+exit 0
 

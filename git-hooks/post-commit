@@ -2,14 +2,13 @@
 
 REPO="$(git rev-parse --show-toplevel)"
 
-if [ -e ${REPO}/.commit ]; then
-    rm ${REPO}/.commit
-    ALIENPY_IS_CHANGED=$(git status -s ${REPO}/alienpy/alien.py)
-    if [ -n "${ALIENPY_IS_CHANGED}" ]; then
-        ${REPO}/update_version
-        git add ${REPO}/alienpy/alien.py
-        git commit --amend -C HEAD --no-verify
-    fi
+if [[ -e ${REPO}/.commit_in_progress ]]; then
+    pushd "${REPO}" &> /dev/null
+    rm -f ${REPO}/.commit_in_progress
+    ${REPO}/update_version
+    git add ${REPO}/alienpy/alien.py
+    git commit --amend -C HEAD --no-verify
+    popd &> /dev/null
 fi
 
-
+exit 0
