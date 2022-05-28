@@ -83,8 +83,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'd450dd3'
-ALIENPY_VERSION_DATE = '20220528_123435'
+ALIENPY_VERSION_HASH = 'd80f81a'
+ALIENPY_VERSION_DATE = '20220528_130431'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -161,9 +161,15 @@ if _HAS_XROOTD:
         else:
             return xrd_client.EnvPutString(key, value)
 
+    def XRD_EnvGet(key):
+        """Get the value of the key from xrootd"""
+        val = xrd_client.EnvGetString(key)
+        if not val:
+            val = xrd_client.EnvGetInt(key)
+        return val
+
     # Override the application name reported to the xrootd server.
     XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
-
     _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
 
@@ -2345,7 +2351,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
     # N.B.!!. This is the total time for the initialization dialogue!! see https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-580004.3.6
-    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(900))  # default 1800
+    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(1200))  # default 1800
 
     # Default value for the time after which a connection error is declared (and a recovery attempted) if there are unfulfilled requests and there is no socket activity or a registered wait timeout.
     # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
@@ -2720,6 +2726,10 @@ if _HAS_XROOTD:
                 if _DEBUG: msg = f'{msg}\n{failed_after}'
                 logging.error(f"\n{codes_info}\n{msg}")
                 print_err(msg)
+                defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
+                if deltaT >= defined_reqtimeout:
+                    print_err('Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Set XRD_REQUESTTIMEOUT to a higher value')
+
 
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
