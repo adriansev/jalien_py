@@ -38,6 +38,8 @@ import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
 import requests
+import difflib
+
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
@@ -83,8 +85,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'd80f81a'
-ALIENPY_VERSION_DATE = '20220528_130431'
+ALIENPY_VERSION_HASH = '4647ffe'
+ALIENPY_VERSION_DATE = '20220528_172658'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -3607,8 +3609,10 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
-    sh_cmd = shlex.quote(sh_cmd)
-    args = sh_cmd if do_shell else shlex.split(sh_cmd)
+    if do_shell:
+        args = shlex.quote(sh_cmd)
+    else:
+        args = shlex.split(sh_cmd)
     capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
     status = exitcode = except_msg = None
     msg_out = msg_err = ''
@@ -4499,6 +4503,14 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
 
     if time_begin: msg_timing = f">>>ProcessInput time: {deltat_ms_perf(time_begin)} ms"
+
+    if cmd not in AlienSessionInfo['commandlist']:
+        similar_list = difflib.get_close_matches(cmd, AlienSessionInfo['commandlist'])
+        similar_cmds = None
+        if similar_list: similar_cmds = ' '.join(similar_list)
+        msg = f'WARNING! command >>> {cmd} <<< not in the list of known commands!'
+        if similar_cmds: msg = f'{msg}\nSimilar commands: {similar_cmds}'
+        print_err(msg)
     if ret_obj is None: return RET(1, '', f"NO RETURN from command: {cmd} {chr(32).join(args)}")
 
     if shellcmd:
