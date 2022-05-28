@@ -83,8 +83,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '2739d79'
-ALIENPY_VERSION_DATE = '20220527_114948'
+ALIENPY_VERSION_HASH = 'd450dd3'
+ALIENPY_VERSION_DATE = '20220528_123435'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -2658,7 +2658,10 @@ if _HAS_XROOTD:
             if not ('quiet' in self.printout or 'silent' in self.printout):
                 print_out("jobID: {0}/{1} >>> Start".format(jobId, total))
             self.jobs = int(total)
-            jobInfo = {'src': source, 'tgt': target, 'bytes_total': 0, 'bytes_processed': 0, 'start': timestamp_begin}
+            xrdjob = self.xrdjob_list[jobId - 1]
+            file_size = xrdjob.token_request['size'] if xrdjob.isUpload else get_size_meta(xrdjob.src)
+
+            jobInfo = {'src': source, 'tgt': target, 'bytes_total': file_size, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
             if self.debug: logging.debug(f"CopyProgressHandler.src: {source}\nCopyProgressHandler.dst: {target}\n")
 
@@ -2709,10 +2712,12 @@ if _HAS_XROOTD:
                 self.copy_failed_list.append(xrdjob)
                 codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
                 xrd_resp_msg = results['status'].message
+                failed_after = f'Failed after {deltaT}'
                 if xrdjob.isUpload:
                     msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas\n{xrd_resp_msg}"
                 else:
                     msg = f"{job_status_info} : {xrdjob.lfn}\n{xrd_resp_msg}"
+                if _DEBUG: msg = f'{msg}\n{failed_after}'
                 logging.error(f"\n{codes_info}\n{msg}")
                 print_err(msg)
 
@@ -2724,8 +2729,9 @@ if _HAS_XROOTD:
                     os.remove(meta_path)  # remove the created metalink
 
         def update(self, jobId, processed, total):
-            self.job_list[jobId - 1]['bytes_processed'] = processed
-            self.job_list[jobId - 1]['bytes_total'] = total
+            #self.job_list[jobId - 1]['bytes_total'] = total
+            #self.job_list[jobId - 1]['bytes_processed'] = processed
+            pass
 
         def should_cancel(self, jobId):
             return False
@@ -2942,8 +2948,15 @@ def DO_SEqos(wb, args: list = None) -> RET:
 
 
 def get_lfn_meta(meta_fn: str) -> str:
+    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return ''
     return xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue
+
+
+def get_size_meta(meta_fn: str) -> int:
+    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
+    if not os.path.isfile(meta_fn): return int(0)
+    return int(xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
