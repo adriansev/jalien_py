@@ -85,8 +85,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '4647ffe'
-ALIENPY_VERSION_DATE = '20220528_172658'
+ALIENPY_VERSION_HASH = '090a4c6'
+ALIENPY_VERSION_DATE = '20220529_224135'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -1809,50 +1809,60 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
     if not f_obj or not base_dir: return False
     if not find_opts: return True
     opts = find_opts.split() if isinstance(find_opts, str) else find_opts.copy()
-    min_depth = get_arg_value(opts, '-min_depth')
-    if min_depth and min_depth.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
 
-    max_depth = get_arg_value(opts, '-max_depth')
-    if max_depth and max_depth.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    min_depth = get_arg_value(opts, '-mindepth')
+    if min_depth:
+        if not min_depth.isdigit() or min_depth.startswith("-"):
+            print_err(f'filter_file_prop::mindepth arg not recognized: {" ".join(opts)}')
+            return False
 
-    min_size = get_arg_value(opts, '-min_size')
-    if min_size and min_size.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    max_depth = get_arg_value(opts, '-maxdepth')
+    if max_depth:
+        if not max_depth.isdigit() or max_depth.startswith("-"):
+            print_err(f'filter_file_prop::maxdepth arg not recognized: {" ".join(opts)}')
+            return False
 
-    max_size = get_arg_value(opts, '-max_size')
-    if max_size and max_size.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    min_size = get_arg_value(opts, '-minsize')
+    if min_size:
+        if not min_size.isdigit() or min_size.startswith("-"):
+            print_err(f'filter_file_prop::minsize arg not recognized: {" ".join(opts)}')
+            return False
 
-    min_ctime = get_arg_value(opts, '-min_ctime')
-    if min_ctime and min_ctime.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    max_size = get_arg_value(opts, '-maxsize')
+    if max_size:
+        if not max_size.isdigit() or max_size.startswith("-"):
+            print_err(f'filter_file_prop::maxsize arg not recognized: {" ".join(opts)}')
+            return False
 
-    max_ctime = get_arg_value(opts, '-max_ctime')
-    if max_ctime and max_ctime.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    min_ctime = get_arg_value(opts, '-min-ctime')
+    if min_ctime:
+        if min_ctime.startswith("-"):
+            print_err(f'filter_file_prop::min-ctime arg not recognized: {" ".join(opts)}')
+            return False
+
+    max_ctime = get_arg_value(opts, '-max-ctime')
+    if max_ctime:
+        if max_ctime.startswith("-"):
+            print_err(f'filter_file_prop::max-ctime arg not recognized: {" ".join(opts)}')
+            return False
 
     jobid = get_arg_value(opts, '-jobid')
-    if jobid and jobid.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    if jobid:
+        if not jobid.isdigit() or jobid.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
 
     user = get_arg_value(opts, '-user')
-    if user and user.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    if user:
+        if not user.isalpha() or user.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
 
     group = get_arg_value(opts, '-group')
-    if group and group.startswith("-"):
-        print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-        return False
+    if group:
+        if not group.isalpha() or group.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
 
     if min_depth or max_depth:
         lfn = get_lfn_key(f_obj)
@@ -1940,50 +1950,68 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
         get_arg(find_args_list, '-w')
         get_arg(find_args_list, '-wh')
 
-        min_depth = get_arg_value(find_args_list, '-min_depth')
+        min_depth = get_arg_value(find_args_list, '-mindepth')
         if min_depth:
-            if min_depth.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-min_depth', min_depth])
+            if not min_depth.isdigit() or min_depth.startswith("-"):
+                print_err(f'list_files_grid::mindepth arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-mindepth', min_depth])
 
-        max_depth = get_arg_value(find_args_list, '-max_depth')
+        max_depth = get_arg_value(find_args_list, '-maxdepth')
         if max_depth:
-            if max_depth.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-max_depth', max_depth])
+            if not max_depth.isdigit() or max_depth.startswith("-"):
+                print_err(f'list_files_grid::maxdepth arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-maxdepth', max_depth])
 
-        min_size = get_arg_value(find_args_list, '-min_size')
+        min_size = get_arg_value(find_args_list, '-minsize')
         if min_size:
-            if min_size.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-min_size', min_size])
+            if not min_size.isdigit() or min_size.startswith("-"):
+                print_err(f'list_files_grid::minsize arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-minsize', min_size])
 
-        max_size = get_arg_value(find_args_list, '-max_size')
+        max_size = get_arg_value(find_args_list, '-maxsize')
         if max_size:
-            if max_size.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-max_size', max_size])
+            if not max_size.isdigit() or max_size.startswith("-"):
+                print_err(f'list_files_grid::maxsize arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-maxsize', max_size])
 
-        min_ctime = get_arg_value(find_args_list, '-min_ctime')
+        min_ctime = get_arg_value(find_args_list, '-min-ctime')
         if min_ctime:
-            if min_ctime.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-min_ctime', min_ctime])
+            if min_ctime.startswith("-"):
+                print_err(f'list_files_grid::min-ctime arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-min-ctime', min_ctime])
 
-        max_ctime = get_arg_value(find_args_list, '-max_ctime')
+        max_ctime = get_arg_value(find_args_list, '-max-ctime')
         if max_ctime:
-            if max_ctime.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-max_ctime', max_ctime])
+            if max_ctime.startswith("-"):
+                print_err(f'list_files_grid::max-ctime arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-max-ctime', max_ctime])
 
         jobid = get_arg_value(find_args_list, '-jobid')
         if jobid:
-            if jobid.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-jobid', jobid])
+            if not jobid.isdigit() or jobid.startswith("-"):
+                print_err(f'list_files_grid::jobid arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-jobid', jobid])
 
         user = get_arg_value(find_args_list, '-user')
         if user:
-            if user.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-user', user])
+            if not user.isalpha() or user.startswith("-"):
+                print_err(f'list_files_grid::user arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-user', user])
 
         group = get_arg_value(find_args_list, '-group')
         if group:
-            if group.startswith("-"): print_err(f'filter_file_prop::Missing argument in list:: {" ".join(find_args_list)}')
-            filter_args_list.extend(['-group', group])
+            if not group.isalpha() or group.startswith("-"):
+                print_err(f'list_files_grid::group arg not recognized: {" ".join(find_args_list)}')
+            else:
+                filter_args_list.extend(['-group', group])
 
     # create and return the list object just for a single file
     if is_single_file:
