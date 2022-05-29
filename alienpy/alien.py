@@ -85,8 +85,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '090a4c6'
-ALIENPY_VERSION_DATE = '20220529_224135'
+ALIENPY_VERSION_HASH = '3c0c0e2'
+ALIENPY_VERSION_DATE = '20220529_235034'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -1898,10 +1898,17 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
     return True
 
 
-def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
+def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: Union[str, list, None] = None) -> RET:
     """Return a list of files(lfn/grid files) that match pattern found in dir
     Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args"""
     if not dir: return RET(-1, "", "No search directory specified")
+
+    if find_args is None: args = []
+    if isinstance(find_args, str):
+        find_args_list = find_args.split() if find_args else []
+    else:
+        find_args_list = find_args.copy()
+
     # lets process the pattern: extract it from src if is in the path globbing form
     is_single_file = False  # dir actually point to a file
 
@@ -1939,10 +1946,8 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
                 return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
 
     # remove default from additional args
-    find_args_list = None
     filter_args_list = []
     if find_args:
-        find_args_list = find_args.split()
         get_arg(find_args_list, '-a')
         get_arg(find_args_list, '-s')
         get_arg(find_args_list, '-f')
@@ -3568,37 +3573,52 @@ def DO_syscmd(wb, cmd: str = '', args: Union[None, list, str] = None) -> RET:
     return runShellCMD(' '.join(new_arg_list), captureout = True, do_shell = True)
 
 
-def DO_find2(wb,  args: list) -> RET:
+def DO_find2(wb, args: Union[None, list, str] = None) -> RET:
     if args is None: args = []
+    if isinstance(args, str):
+        args = args.split() if args else []
     if is_help(args):
         msg_client = (f'''Client-side implementation of find, it contain the following helpers.
 Command formant: find2 <options> <directory>
--select <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--name <pattern> : select only these files; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)} defaults to all ".*"
--name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria. verbs are aditive e.g.:
--name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}\n
+N.B. directory to be search for must be last element of command
+-glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
+-select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
+-name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
+-name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
+verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
 The server options:''')
         srv_answ = get_help_srv(wb, 'find')
         msg_srv = srv_answ.out
         return RET(0, f'{msg_client}\n{msg_srv}')
 
-    find_args = ['-a', '-s']
+    #clean up the options
+    get_arg(args, '-v')
     get_arg(args, '-a')
     get_arg(args, '-s')
-    if get_arg(args, '-v'): print_out("Verbose mode not implemented, ignored")
+    get_arg(args, '-f')
+    get_arg(args, '-w')
+    get_arg(args, '-wh')
+    get_arg(args, '-d')
 
-    pattern = '*'
-    pattern_regex = None
+    search_dir = args.pop()
     use_regex = False
     filtering_enabled = False
 
-    glob_arg = get_arg_value(args, '-glob')
-    if glob_arg:
-        pattern = glob_arg
-        use_regex = False
-        filtering_enabled = True
+    dir_glob = False
+    pattern = None
+    if '*' in search_dir:  # we have globbing in path
+        dir_glob = True
+        search_dir, pattern = extract_glob_pattern(search_dir)
+    else:
+        pattern = get_arg_value(args, '-glob')
+        if pattern:
+            use_regex = False
+            filtering_enabled = True
 
+    search_dir = expand_path_grid(search_dir)
+
+    pattern_regex = None
     select_arg = get_arg_value(args, '-select')
     if select_arg:
         if filtering_enabled:
@@ -3613,24 +3633,17 @@ The server options:''')
         if filtering_enabled:
             msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
-        pattern_regex_arg = name_arg
         use_regex = True
         filtering_enabled = True
-
-        pattern_regex = name2regex(pattern_regex_arg)
+        pattern_regex = name2regex(name_arg)
         if use_regex and not pattern_regex:
-            msg = ("No selection verbs were recognized!"
+            msg = ("-name :: No selection verbs were recognized!"
                    "usage format is -name <attribute>_<string> where attribute is one of: begin, contain, ends, ext"
-                   f"The invalid pattern was: {pattern_regex_arg}")
+                   f"The invalid pattern was: {pattern_regex}")
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
-    if use_regex:
-        find_args.insert(0, '-r')
-        pattern = pattern_regex
-    start_location = args[-1] if filtering_enabled else args[-2]
-    find_args.append(expand_path_grid(start_location))
-    find_args.append(pattern)
-    return SendMsg(wb, 'find', find_args, opts = 'nokeys')
+    if use_regex: pattern = pattern_regex
+    return list_files_grid(wb, search_dir, pattern, use_regex, args)    
 
 
 def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
@@ -4550,7 +4563,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
     if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
-    if ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
+    if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
         ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
     return ret_obj
 
