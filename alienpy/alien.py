@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '299caf5'
-ALIENPY_VERSION_DATE = '20220530_213159'
+ALIENPY_VERSION_HASH = '5a8073a'
+ALIENPY_VERSION_DATE = '20220530_220912'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -1708,7 +1708,7 @@ def GetHumanReadable(size, precision = 2):
     while size > 1024 and suffixIndex < 5:
         suffixIndex += 1  # increment the index of the suffix
         size = size / 1024.0  # apply the division
-    return '%.*f %s' % (precision, size, suffixes[suffixIndex])
+    return f'{size:.{precision}f} {suffixes[suffixIndex]}'
 
 
 def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
@@ -2748,7 +2748,7 @@ if _HAS_XROOTD:
                 print_err(msg)
                 defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
                 if deltaT >= defined_reqtimeout:
-                    print_err('Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Set XRD_REQUESTTIMEOUT to a higher value')
+                    print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Set XRD_REQUESTTIMEOUT to a higher value')
 
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
@@ -3376,7 +3376,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokencert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
         os.chmod(tokencert, 0o400)  # make it readonly
     except Exception:
-        print_err('Error writing to file the aquired token cert; check the log file {_DEBUG_FILE}!')
+        print_err(f'Error writing to file the aquired token cert; check the log file {_DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -3387,7 +3387,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokenkey, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
         os.chmod(tokenkey, 0o400)  # make it readonly
     except Exception:
-        print_err('Error writing to file the aquired token key; check the log file {_DEBUG_FILE}!')
+        print_err(f'Error writing to file the aquired token key; check the log file {_DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
