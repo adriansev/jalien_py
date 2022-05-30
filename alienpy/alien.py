@@ -85,8 +85,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'f80b4fa'
-ALIENPY_VERSION_DATE = '20220530_075740'
+ALIENPY_VERSION_HASH = '1cba386'
+ALIENPY_VERSION_DATE = '20220530_085323'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -2265,15 +2265,18 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         # to reduce the remote calls we treat files and directory on separate code-paths
         if src_stat.type == 'f':  # single file
             dst_filename = format_dst_fn(src, src, dst, parent)
+            skip_file = False
             if os.path.isfile(dst_filename):
                 if not overwrite:
                     print_out(f'{dst_filename} exists, skipping..')
+                    skip_file = True
                 else:
-                    retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5))
+                    skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5)) == 0)
 
-            tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
-            if tokens and 'answer' in tokens:
-                copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
+            if not skip_file:
+                tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
+                if tokens and 'answer' in tokens:
+                    copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
         else:  # directory to be listed
             results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
             if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
