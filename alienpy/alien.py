@@ -1,76 +1,78 @@
 #!/usr/bin/env python3
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
-import sys
-if sys.version_info[0] != 3 or sys.version_info[1] < 6:
-    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True)
-    sys.exit(1)
-
 import os
+import sys
+if sys.version_info[0] < 3:
+    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True); sys.exit(1)
+if sys.version_info[0] == 3 and sys.version_info[1] < 6:
+    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True); sys.exit(1)
 import atexit
-import re
-import subprocess
-import signal
 import json
-import traceback
+import re
+import signal
+import subprocess
 import logging
+import traceback
 import ssl
-import uuid
-import statistics
 import collections
+import statistics
+import uuid
 import multiprocessing as mp
-from typing import Union
 from typing import NamedTuple
+from typing import Union
 import shlex
 import tempfile
-import time
 import datetime
+import time
 from pathlib import Path
-from urllib.parse import urlparse
 import urllib.request as urlreq
+from urllib.parse import urlparse
 import socket
-import threading
 import asyncio
-import pwd
+import threading
 import grp
-import stat
+import pwd
+# import stat
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 import zipfile
-import requests
 import difflib
+
+# External imports
+import requests
 
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
         import async_stagger
-    except Exception as e:
+    except Exception:
         print("async_stagger module could not be load", file=sys.stderr, flush = True)
         sys.exit(1)
 
 try:
     import OpenSSL
-except Exception as e:
+except Exception:
     print("websockets module could not be load", file=sys.stderr, flush = True)
     sys.exit(1)
-    
+
 try:
     import websockets
     from websockets.extensions import permessage_deflate as _wb_permessage_deflate
-except Exception as e:
+except Exception:
     print("websockets module could not be load", file=sys.stderr, flush = True)
     sys.exit(1)
 
 try:
     from XRootD import client as xrd_client
     _HAS_XROOTD = True
-except Exception as e:
+except Exception:
     _HAS_XROOTD = False
 
 try:
     import rich
     from rich.pretty import pprint
-except Exception as e:
+except Exception:
     print("rich module could not be load", file=sys.stderr, flush = True)
 
 try:
@@ -85,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '8c13326'
-ALIENPY_VERSION_DATE = '20220530_091238'
+ALIENPY_VERSION_HASH = 'cf553f9'
+ALIENPY_VERSION_DATE = '20220530_212950'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -127,48 +129,47 @@ AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandli
 
 
 if _HAS_READLINE:
-    def setupHistory():
+    def setupHistory() -> None:
         """Setup up history mechanics for readline module"""
         histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-        if not os.path.exists(histfile): open(histfile, 'wb').close()
+        if not os.path.exists(histfile): Path(histfile).touch(exist_ok = True)
         rl.set_history_length(-1)  # unlimited history
         rl.read_history_file(histfile)
 
-        def startup_hook(): rl.append_history_file(1, histfile)  # before next prompt save last line
+        def startup_hook() -> None: rl.append_history_file(1, histfile)  # before next prompt save last line
         rl.set_startup_hook(startup_hook)
 
 
 def _is_valid_xrootd() -> bool:
     if not _HAS_XROOTD: return False
     xrd_ver_arr = xrd_client.__version__.split(".")
-    if len(xrd_ver_arr) > 1:
+    if len(xrd_ver_arr) > 1:  # noqa: PLR1705
         _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_2 = xrd_ver_arr[1]
-        return True if int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2 else False
+        return int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
     else:  # version is not of x.y.z form, this is git based form
         xrdver_git = xrd_ver_arr[0].split("-")
         _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
         _XRDVER_2 = xrdver_git[1]
-        return True if int(_XRDVER_1) > 20211113 else False
+        return int(_XRDVER_1) > 20211113
+
 
 # use only 5.3 versions and up - reference point
 _HAS_XROOTD = _is_valid_xrootd()
 _HAS_XROOTD_GETDEFAULT = False
 if _HAS_XROOTD:
-    def XRD_EnvPut(key, value):
+    def XRD_EnvPut(key, value):  # noqa: ANN001,ANN201
         """Sets the given key in the xrootd client environment to the given value.
-        Returns false if there is already a shell-imported setting for this key, true otherwise"""
-        if str(value).isdigit():
-            return xrd_client.EnvPutInt(key, value)
-        else:
-            return xrd_client.EnvPutString(key, value)
+        Returns false if there is already a shell-imported setting for this key, true otherwise
+        """
+        return xrd_client.EnvPutInt(key, value) if str(value).isdigit() else xrd_client.EnvPutString(key, value)
 
-    def XRD_EnvGet(key):
+    def XRD_EnvGet(key):  # noqa: ANN001,ANN201
         """Get the value of the key from xrootd"""
         val = xrd_client.EnvGetString(key)
         if not val:
             val = xrd_client.EnvGetInt(key)
-        return val
+        return val  # noqa: R504
 
     # Override the application name reported to the xrootd server.
     XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
@@ -267,7 +268,7 @@ class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
     se: str
     guid: str
     md5: str
-    
+
 
 class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
     """Map a lfn to file (and reverse)"""
@@ -288,7 +289,8 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     err: str = ''
     ansdict: dict = {}
 
-    def print(self, opts = ''):
+    def print(self, opts: str = '') -> None:
+        """Print the in json format the content of ansdict, if existent"""
         if 'json' in opts:
             if self.ansdict:
                 json_out = json.dumps(self.ansdict, sort_keys = True, indent = 4)
@@ -311,8 +313,8 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
 
     __call__ = print
 
-    def __bool__(self):
-        return True if self.exitcode == 0 else False
+    def __bool__(self) -> bool:
+        return bool(self.exitcode == 0)
 
 
 class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
@@ -356,7 +358,7 @@ class Msg:
     """Class to create json messages to be sent to server"""
     __slots__ = ('cmd', 'args', 'opts')
 
-    def __init__(self, cmd = '', args = None, opts = ''):
+    def __init__(self, cmd: str = '', args: Union[str, list, None] = None, opts: str = '') -> None:
         self.cmd = cmd
         self.opts = opts
         if not args:
@@ -366,21 +368,22 @@ class Msg:
         elif isinstance(args, list):
             self.args = args.copy()
 
-    def add_arg(self, arg):
+    def add_arg(self, arg: Union[str, list, None]) -> None:
+        if not arg: return
         if isinstance(arg, str): self.args.extend(shlex.split(arg))
         if isinstance(arg, list): self.args.extend(arg)
 
-    def dict(self):
+    def msgdict(self) -> dict:
         return CreateJsonCommand(self.cmd, self.args, self.opts, True)
 
-    def str(self):
+    def msgstr(self) -> str:
         return CreateJsonCommand(self.cmd, self.args, self.opts)
 
-    def __call__(self):
+    def __call__(self) -> tuple:
         return (self.cmd, self.args, self.opts)
 
     def __bool__(self):
-        return True if self.cmd else False
+        return bool(self.cmd)
 
 
 class AliEn:
@@ -415,7 +418,7 @@ class AliEn:
 
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
-    print_out(f'\nCought signal {sig}, let\'s exit')
+    print_out(f"\nCought signal {sig}, let\'s exit")
     exit_message(int(AlienSessionInfo['exitcode']))
 
 
@@ -460,7 +463,7 @@ def is_int(arg: Union[str, int, float, None]) -> bool:
     if not arg: return False
     s = str(arg)
     if s[0] in ('-', '+'): return s[1:].isdigit()
-    return s.isdigit()  
+    return s.isdigit()
 
 
 def time_unix2simple(time_arg: Union[str, int, None]) -> str:
@@ -468,7 +471,7 @@ def time_unix2simple(time_arg: Union[str, int, None]) -> str:
     return datetime.datetime.fromtimestamp(time_arg).replace(microsecond=0).isoformat().replace('T', ' ')
 
 
-def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
+def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
     if not time_arg:
         return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
     time_arg = str(time_arg)
@@ -479,9 +482,9 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
         return int(time_arg)
     # asume that this is a strptime arguments in the form of: time_str, format_str
     try:
-        time_obj = eval(f"datetime.datetime.strptime({time_arg})")
+        time_obj = eval(f'datetime.datetime.strptime({time_arg})')
         return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
-    except Exception as e:
+    except Exception:
         return int(-1)
 
 
@@ -490,14 +493,10 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
 #########################
 def start_asyncio():
     """Initialization of main thread that will keep the asyncio loop"""
-    global _alienpy_global_asyncio_loop
     ready = threading.Event()
 
     def _cancel_all_tasks(loop_to_cancel):
-        if sys.version_info[1] < 8:
-            to_cancel = asyncio.Task.all_tasks(loop_to_cancel)  # pylint: disable=no-member # asyncio.tasks
-        else:
-            to_cancel = asyncio.all_tasks(loop_to_cancel)  # asyncio.tasks
+        to_cancel = asyncio.Task.all_tasks(loop_to_cancel) if sys.version_info[1] < 8 else asyncio.all_tasks(loop_to_cancel)
         if not to_cancel: return
         for task in to_cancel: task.cancel()
         loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
@@ -505,12 +504,12 @@ def start_asyncio():
         for task in to_cancel:
             if task.cancelled(): continue
             if task.exception() is not None:
-                loop_to_cancel.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task, })
+                loop_to_cancel.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task})
 
     def run(mainasync, *, debug=False):
         global _alienpy_global_asyncio_loop
-        if asyncio.events._get_running_loop() is not None: raise RuntimeError("asyncio.run() cannot be called from a running event loop")  # pylint: disable=protected-access
-        if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError("a coroutine was expected, got {!r}".format(mainasync))
+        if asyncio.events._get_running_loop() is not None: raise RuntimeError('asyncio.run() cannot be called from a running event loop')  # pylint: disable=protected-access
+        if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError(f'a coroutine was expected, got {mainasync!r}')
 
         _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
         try:
@@ -542,7 +541,6 @@ start_asyncio()
 def syncify(fn):
     """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
     def syncfn(*args, **kwds):
-        global _alienpy_global_asyncio_loop
         # submit the original coroutine to the event loop and wait for the result
         conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _alienpy_global_asyncio_loop)
         return conc_future.result()
@@ -572,7 +570,7 @@ async def wb_close(wb, code, reason):
     """Send close to websocket"""
     try:
         await wb.close(code = code, reason = reason)
-    except Exception as e:
+    except Exception:
         pass
 
 
@@ -592,7 +590,7 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     if _DEBUG_TIMING: time_begin = time.perf_counter()
     await wb.send(jsonmsg)
     result = await wb.recv()
-    if time_begin: logging.debug(f">>>__sendmsg time = {deltat_ms_perf(time_begin)} ms")
+    if time_begin: logging.debug(f'>>>__sendmsg time = {deltat_ms_perf(time_begin)} ms')
     return result
 
 
@@ -605,7 +603,7 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
     for msg in jsonmsg_list: await wb.send(msg)
 
     result_list = []
-    for i in range(len(jsonmsg_list)):
+    for _i in range(len(jsonmsg_list)):
         result = await wb.recv()
         result_list.append(result)
 
@@ -624,10 +622,9 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
-    if '{"command":' in cmdline and '"options":' in cmdline:  # seems as json input
-        jsonmsg = cmdline
-    else:
-        jsonmsg = CreateJsonCommand(cmdline, args, opts)  # nomsg/nokeys will be passed to CreateJsonCommand
+    json_signature = ['{"command":', '"options":']
+    # if already json format just use it as is; nomsg/nokeys will be passed to CreateJsonCommand
+    jsonmsg = cmdline if all(x in cmdline for x in json_signature) else CreateJsonCommand(cmdline, args, opts)
 
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty!")
@@ -675,12 +672,11 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
+    json_signature = ['{"command":', '"options":']
     json_cmd_list = []
     for cmd_str in cmds_list:
-        if '{"command":' in cmd_str and '"options":' in cmd_str:  # seems as json input
-            jsonmsg = cmd_str
-        else:
-            jsonmsg = CreateJsonCommand(cmd_str, [], opts)  # nomsg/nokeys will be passed to CreateJsonCommand
+        # if already json format just use it as is; nomsg/nokeys will be passed to CreateJsonCommand
+        jsonmsg = cmd_str if all(x in cmd_str for x in json_signature) else CreateJsonCommand(cmd_str, [], opts)
         json_cmd_list.append(jsonmsg)
 
     if _DEBUG:
@@ -688,21 +684,14 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
 
     nr_tries = int(1)
     result_list = None
-    non_connection_exception = False
-    connection_exception = False
     while result_list is None:
-        if non_connection_exception: break
-        if nr_tries > 3:
-            connection_exception = True
-            break
+        if nr_tries > 3: break
         nr_tries += 1        
         try:
             result_list = __sendmsg_multi(wb, json_cmd_list)
         except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
             if e.__cause__:
                 logging.exception(f'SendMsg:: failure because of {e.__cause__}')
-                # non_connection_exception = True
-                # break
             logging.exception(e)
             try:
                 wb = InitConnection()
@@ -711,8 +700,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
                 logging.exception(e)
         except Exception as e:
             logging.exception(e)
-            non_connection_exception = True
-        if result_list is None and not non_connection_exception: time.sleep(0.2)
+        if result_list is None: time.sleep(0.2)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
     if not result_list: return []
@@ -723,7 +711,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     return ret_obj_list
 
 
-def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> RET:
+def retf_result2ret(result: Union[str, dict, None]) -> RET:
     """Convert AliEn answer dictionary to RET object"""
     global AlienSessionInfo
     if not result: return RET()
@@ -732,7 +720,7 @@ def retf_result2ret(result: Union[str, dict, None], internal_cmd = False) -> RET
         try:
             out_dict = json.loads(result)
         except Exception as e:
-            msg = 'retf_result2ret:: Could not load argument as json!\n{0}'.format(e)
+            msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
             logging.error(msg)
             return RET(1, '', msg)
     else:
@@ -776,7 +764,7 @@ def PrintDict(in_arg: Union[str, dict, list]):
         try:
             in_arg = json.loads(in_arg)
         except Exception as e:
-            print_err('PrintDict:: Could not load argument as json!\n{0}'.format(e))
+            print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
     print_out(json.dumps(in_arg, sort_keys = True, indent = 4))
 
 
@@ -853,35 +841,27 @@ def now_str() -> str: return str(datetime.datetime.now().strftime("%Y%m%d_%H%M%S
 
 
 def deltat_ms(t0: Union[str, float, None] = None) -> str:
-    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
-    if not t0:
-        return f"{datetime.datetime.now().timestamp() * 1000:.3f}"
-    else:
-        t0 = float(t0)
-        return f"{(datetime.datetime.now().timestamp() - t0) * 1000:.3f}"
+    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    now = datetime.datetime.now().timestamp()
+    return f"{(now - float(t0)) * 1000:.3f}" if t0 else f"{now * 1000:.3f}"
 
 
 def deltat_us(t0: Union[str, float, None] = None) -> str:
-    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
-    if not t0:
-        return f"{datetime.datetime.now().timestamp() * 1000000:.3f}"
-    else:
-        t0 = float(t0)
-        return f"{(datetime.datetime.now().timestamp() - t0) * 1000000:.3f}"
+    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    now = datetime.datetime.now().timestamp()
+    return f"{(now - float(t0)) * 1000000:.3f}" if t0 else f"{now * 1000000:.3f}"
 
 
 def deltat_ms_perf(t0: Union[str, float, None] = None) -> str:
-    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
     if not t0: return ""
-    t0 = float(t0)
-    return f"{(time.perf_counter() - t0) * 1000:.3f}"
+    return f"{(time.perf_counter() - float(t0)) * 1000:.3f}"
 
 
 def deltat_us_perf(t0: Union[str, float, None] = None) -> str:
-    "Return delta t in ms from a time start; if no argment it return a timestamp in ms"
+    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
     if not t0: return ""
-    t0 = float(t0)
-    return f"{(time.perf_counter() - t0) * 1000000:.3f}"
+    return f"{(time.perf_counter() - float(t0)) * 1000000:.3f}"
 
 
 def is_help(args: Union[str, list]) -> bool:
@@ -921,11 +901,12 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
     return ret_obj.exitcode
 
 
-def read_conf_file(file: str) -> dict:
+def read_conf_file(conf_file: str) -> dict:
     """Convert a configuration file with key = value format to a dict"""
+    if not conf_file or not os.path.isfile(conf_file): return {}
     DICT_INFO = {}
     try:
-        with open(file) as rel_file:
+        with open(conf_file, encoding="ascii", errors="replace") as rel_file:
             for line in rel_file:
                 line = line.partition('#')[0].rstrip()
                 name, var = line.partition("=")[::2]
@@ -937,22 +918,22 @@ def read_conf_file(file: str) -> dict:
     return DICT_INFO
 
 
-def file2list(file: str) -> list:
+def file2list(input_file: str) -> list:
     """Parse a file and return a list of elements"""
-    if not file or not os.path.isfile(file): return []
+    if not input_file or not os.path.isfile(input_file): return []
     file_list = []
-    with open(file) as filecontent:
+    with open(input_file, encoding="ascii", errors="replace") as filecontent:
         for line in filecontent:
             if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
             file_list.extend(line.strip().split())
     return file_list
 
 
-def fileline2list(file: str) -> list:
+def fileline2list(input_file: str) -> list:
     """Parse a file and return a list of file lines"""
-    if not file or not os.path.isfile(file): return []
+    if not input_file or not os.path.isfile(input_file): return []
     file_list = []
-    with open(file) as filecontent:
+    with open(input_file, encoding="ascii", errors="replace") as filecontent:
         for line in filecontent:
             if not line or ignore_comments_re.search(line) or emptyline_re.match(line): continue
             file_list.extend([line.strip()])
@@ -962,7 +943,6 @@ def fileline2list(file: str) -> list:
 def import_aliases():
     global AlienSessionInfo
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
-    global AlienSessionInfo
     if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
 
@@ -979,10 +959,10 @@ def get_lfn_key(lfn_obj: dict) -> str:
 
 
 def pid_uid(pid: int) -> int:
-    '''Return username of UID of process pid'''
+    """Return username of UID of process pid"""
     uid = int(-1)
     try:
-        with open(f'/proc/{pid}/status') as proc_status:
+        with open(f'/proc/{pid}/status', encoding="ascii", errors="replace") as proc_status:
             for line in proc_status:
                 # Uid, Gid: Real, effective, saved set, and filesystem UIDs(GIDs)
                 if line.startswith('Uid:'): uid = int((line.split()[1]))
@@ -998,7 +978,7 @@ def writePidFile(filename: str):
     try:
         with open(filename, 'w', encoding="ascii", errors="replace") as f: f.write(str(os.getpid()))
     except Exception as e:
-        logging.error('{0}'.format(e))
+        logging.error(f'{e!r}')
 
 
 def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")
@@ -1017,8 +997,8 @@ def SessionSave():
 
 
 def SessionRestore(wb):
-    if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     global AlienSessionInfo
+    if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     session = read_conf_file(GetSessionFilename())
     if not session: return
     sys_cur_dir = AlienSessionInfo['currentdir']
@@ -1080,8 +1060,8 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
 
 
 def push2stack(path: str):
-    if not str: return
     global AlienSessionInfo
+    if not str: return
     home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
     if home and home in path: path = path.replace(home, '~')
@@ -1159,9 +1139,7 @@ def path_writable(filepath: str = '') -> bool:
 def path_writable_any(filepath: str = '') -> bool:
     """Will check for writeability each path in hierarchy"""
     if not filepath: return False
-    for p in Path(filepath).parents:
-        if path_writable(p): return True
-    return False
+    return any(path_writable(p) for p in Path(filepath).parents)
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1279,15 +1257,13 @@ def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused
               f'alien.py location: {os.path.realpath(__file__)}\n'
               f'script location: {ALIENPY_EXECUTABLE}\n'
               f'Interpreter: {os.path.realpath(sys.executable)}\n'
-              f'Python version: {sys.version}\n')
-    if _HAS_XROOTD:
-        stdout = f'{stdout}XRootD version: {xrd_client.__version__}\nXRootD path: {xrd_client.__file__}'
-    else:
-        stdout = f'{stdout}XRootD version: Not Found!'
+              f'Python version: {sys.version}\n'
+              'XRootD version: ')
+    stdout = f'{stdout}{xrd_client.__version__}\nXRootD path: {xrd_client.__file__}' if _HAS_XROOTD else f'{stdout}Not Found!'
     return RET(0, stdout, "")
 
 
-def DO_exit(args: Union[list, None] = None) -> RET:
+def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
     if args is None: args = []
     if len(args) > 0 and args[0] == '-h':
         msg = 'Command format: exit [code] [stderr|err] [message]'
@@ -1296,18 +1272,18 @@ def DO_exit(args: Union[list, None] = None) -> RET:
     msg = ''
     if len(args) > 0:
         if args[0].isdecimal(): code = args.pop(0)
-        if args[0] == 'stderr' or args[0] == 'err':
-            args.pop(0)
-            print2stdout = sys.stderr
+        if args[0] == 'stderr' or args[0] == 'err': args.pop(0)
         msg = ' '.join(args).strip()
         if msg:
-            if code != 0: print_err(msg)
-            else: print_out(msg)
+            if code == 0:
+                print_out(msg)
+            else:
+                print_err(msg)
     sys.exit(int(code))
 
 
 def xrdcp_help() -> str:
-    helpstr = f'''Command format is of the form of (with the strict order of arguments):
+    return f'''Command format is of the form of (with the strict order of arguments):
         cp <options> src dst
         or
         cp <options> -input input_file
@@ -1352,7 +1328,6 @@ Further filtering of the files can be applied with the following options:
 -min-ctime/-max-ctime UNIX_TIME: restrict results to at least/at most this UNIX_TIME (ms, 13 decimals integer)
 -user/-group string_name : restrict results to specified user/group
 '''
-    return helpstr
 
 
 def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
@@ -1364,10 +1339,9 @@ def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
 
 
-def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> int:
+def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> int:
     """xrdcp based task that process a copyfile and it's arguments"""
-    if not copy_job: return
-
+    if not copy_job: return int(2)
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
     tpc = xrd_cp_args.tpc
@@ -1375,12 +1349,11 @@ def _xrdcp_copyjob(wb, copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
     cksum = xrd_cp_args.cksum
     timeout = xrd_cp_args.timeout
     rate = xrd_cp_args.rate
-
     cmdline = f'{copy_job.src} {copy_job.dst}'
     return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
 
-def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
+def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
         print_err("XRootD not found or lower version thant 5.3.3")
@@ -1388,7 +1361,6 @@ def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = ''
     if not xrd_cp_args:
         print_err("cp arguments are not set, XrdCpArgs tuple missing")
         return []
-
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
     makedir = xrd_cp_args.makedir
@@ -1400,7 +1372,7 @@ def XrdCopy_xrdcp(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = ''
     # print(q.get())
     # p.join()
     for copy_job in job_list:
-        if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
+        if _DEBUG: logging.debug(f'\nadd copy job with\nsrc: {copy_job.src}\ndst: {copy_job.dst}\n')
         xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
         if _DEBUG: print_out(copy_job)
     return []
@@ -1420,8 +1392,8 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
         size = int(os.stat(local_file).st_size)
         md5sum = md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
-        if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576:  # we have a special lfn
-            if not specs: specs.append('disk:4')  # if no specs defined then default to disk:4
+        if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576 and not specs:  # we have a special lfn
+            specs.append('disk:4')  # and no specs defined then default to disk:4
         get_envelope_arg_list = ['-s', size, '-m', md5sum, access_type, lfn]
         if not specs: specs.append('disk:2')  # hard default if nothing is specified
     else:
@@ -1474,10 +1446,7 @@ def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] =
         return ''
     subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'))  # keep it in local directory
     metafile = os.path.realpath(os.path.basename(metafile))
-    if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ:
-        return f'{metafile}?xrdcl.unzip={file_in_zip}'
-    else:
-        return f'{metafile}'
+    return f'{metafile}?xrdcl.unzip={file_in_zip}' if (file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ) else f'{metafile}'
 
 
 def lfn2fileTokens(wb, arg_lfn2file: lfn2file, specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
@@ -1522,10 +1491,9 @@ def expand_path_local(path_arg: str) -> str:
     try:
         exp_path = Path(path_arg).expanduser().resolve().as_posix()
     except RuntimeError:
-        print_err(f"Loop encountered along the resolution of {path_input}")
+        print_err(f"Loop encountered along the resolution of {path_arg}")
     if exp_path is None: return ''
-    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path):
-        exp_path = f'{exp_path}/'
+    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
 
 
@@ -1533,7 +1501,7 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     """Get full information on a local path"""
     norm_path = expand_path_local(path)
     if not os.path.exists(norm_path): return STAT_FILEPATH(norm_path)
-    type = 'd' if os.path.isdir(norm_path) else 'f'
+    filetype = 'd' if os.path.isdir(norm_path) else 'f'
     statinfo = os.stat(norm_path)
     perm = oct(statinfo.st_mode)[-3:]
     uid = uid2name(statinfo.st_uid)
@@ -1542,9 +1510,9 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     mtime = str(statinfo.st_mtime)
     guid = ''
     size = str(statinfo.st_size)
-    md5 = ''
-    if do_md5 and type == 'f': md5 = md5(norm_path)
-    return STAT_FILEPATH(norm_path, type, perm, uid, guid, ctime, mtime, guid, size, md5)
+    md5hash = ''
+    if do_md5 and filetype == 'f': md5hash = md5(norm_path)
+    return STAT_FILEPATH(norm_path, filetype, perm, uid, gid, ctime, mtime, guid, size, md5hash)
 
 
 def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
@@ -1556,9 +1524,9 @@ def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
     mtime = file_stat.get('mtime', '')
     guid = file_stat.get('guid', '')
     size = file_stat.get('size', '')
-    md5 = file_stat.get('md5', '')
+    md5hash = file_stat.get('md5', '')
     return STAT_FILEPATH(file_stat['lfn'], file_stat['type'], file_stat['perm'], file_stat['owner'], file_stat['gowner'], file_stat['ctime'],
-                         mtime, guid, size, md5)
+                         mtime, guid, size, md5hash)
 
 
 def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
@@ -1571,13 +1539,13 @@ def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
     if AlienSessionInfo['user'] == file_stat['gid'] and p_group in write_perm: writable_group = True
     if p_others in write_perm: writable_others = True
     return writable_user or writable_group or writable_others
-    
+
 
 def expand_path_grid(path_arg: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
     global AlienSessionInfo
     is_dir = path_arg.endswith('/')
-    exp_path = lfn_prefix_re.sub('', path_arg) # lets remove any prefixes
+    exp_path = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
     if exp_path == '.': exp_path = AlienSessionInfo['currentdir']
     if exp_path == '~': exp_path = AlienSessionInfo['alienHome']
@@ -1629,13 +1597,13 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
             published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write(' <metalink xmlns="urn:ietf:params:xml:ns:metalink">\n')
-            f.write("   <published>{}</published>\n".format(published))
-            f.write("   <file name=\"{}\">\n".format(local_filename))
-            f.write("     <lfn>{}</lfn>\n".format(lfn))
-            f.write("     <size>{}</size>\n".format(size))
-            if md5in: f.write("     <hash type=\"md5\">{}</hash>\n".format(md5in))
+            f.write(f'   <published>{published}</published>\n')
+            f.write(f'   <file name="{local_filename}">\n')
+            f.write(f'     <lfn>{lfn}</lfn>\n')
+            f.write(f'     <size>{size}</size>\n')
+            if md5in: f.write(f'     <hash type="md5">{md5in}</hash>\n')
             for url in replica_list:
-                f.write("     <url><![CDATA[{}]]></url>\n".format(url))
+                f.write(f'     <url><![CDATA[{url}]]></url>\n')
             f.write('   </file>\n')
             f.write(' </metalink>\n')
         return meta_filename
@@ -1712,14 +1680,14 @@ def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
     """Upon succesful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
     if not wb or not lfnInfo_list: return []
     batch_size = 30
-    batches_list = [lfnInfo_list[x:x+batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
+    batches_list = [lfnInfo_list[x: x + batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
     commit_results = []
     for batch in batches_list:
         commit_list = []
         for file_commit in batch:
-            jsoncmd = CreateJsonCommand('commit', [file_commit.envelope, int(file_commit.size), file_commit.lfn, \
-                                                   file_commit.perm, file_commit.expire, file_commit.pfn, file_commit.se, \
-                                                   file_commit.guid, file_commit.md5], \
+            jsoncmd = CreateJsonCommand('commit', [file_commit.envelope, int(file_commit.size), file_commit.lfn,
+                                                   file_commit.perm, file_commit.expire, file_commit.pfn, file_commit.se,
+                                                   file_commit.guid, file_commit.md5],
                                         'nokeys')
             commit_list.append(jsoncmd)
         commit_results.extend(SendMsgMulti(wb, commit_list, 'log'))
@@ -1739,7 +1707,7 @@ def GetHumanReadable(size, precision = 2):
     suffixIndex = 0
     while size > 1024 and suffixIndex < 5:
         suffixIndex += 1  # increment the index of the suffix
-        size = size/1024.0  # apply the division
+        size = size / 1024.0  # apply the division
     return '%.*f %s' % (precision, size, suffixes[suffixIndex])
 
 
@@ -1796,19 +1764,21 @@ def file2file_dict(fn: str) -> dict:
     """Take a string as path and retur a dict with file propreties"""
     try:
         file_path = Path(fn)
-    except Exception as e:
+    except Exception:
         return {}
     try:
-        file_name = file_path.expanduser().resolve(strict = True).as_posix()
-    except Exception as e:
+        file_name = file_path.expanduser().resolve(strict = True)
+    except Exception:
         return {}
-    file_dict = {"file": file_name}
-    file_dict["lfn"] = file_name
-    file_dict["size"] = str(file_path.stat().st_size)
-    file_dict["mtime"] = str(int(file_path.stat().st_mtime * 1000))
-    file_dict["md5"] = md5(file_name)
-    file_dict["owner"] = pwd.getpwuid(file_path.stat().st_uid).pw_name
-    file_dict["gowner"] = gid2name(file_path.stat().st_gid)
+    if file_name.is_dir(): return {}
+
+    file_dict = {"file": file_name.as_posix()}
+    file_dict["lfn"] = file_name.as_posix()
+    file_dict["size"] = str(file_name.stat().st_size)
+    file_dict["mtime"] = str(int(file_name.stat().st_mtime * 1000))
+    file_dict["md5"] = md5(file_name.as_posix())
+    file_dict["owner"] = pwd.getpwuid(file_name.stat().st_uid).pw_name
+    file_dict["gowner"] = gid2name(file_name.stat().st_gid)
     return file_dict
 
 
@@ -1913,12 +1883,13 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
     return True
 
 
-def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: Union[str, list, None] = None) -> RET:
+def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: Union[str, list, None] = None) -> RET:
     """Return a list of files(lfn/grid files) that match pattern found in dir
-    Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args"""
-    if not dir: return RET(-1, "", "No search directory specified")
+    Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args
+    """
+    if not search_dir: return RET(-1, "", "No search directory specified")
 
-    if find_args is None: args = []
+    if find_args is None: find_args = []
     if isinstance(find_args, str):
         find_args_list = find_args.split() if find_args else []
     else:
@@ -1927,15 +1898,15 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
     # lets process the pattern: extract it from src if is in the path globbing form
     is_single_file = False  # dir actually point to a file
 
-    dir_arg_list = dir.split()
+    dir_arg_list = search_dir.split()
     if len(dir_arg_list) > 1:  # dir is actually a list of arguments
         if not pattern: pattern = dir_arg_list.pop(-1)
-        dir = dir_arg_list.pop(-1)
+        search_dir = dir_arg_list.pop(-1)
         if dir_arg_list: find_args = ' '.join(dir_arg_list)
 
-    if '*' in dir:  # we have globbing in src path
+    if '*' in search_dir:  # we have globbing in src path
         is_regex = False
-        src_arr = dir.split("/")
+        src_arr = search_dir.split("/")
         base_path_arr = []  # let's establish the base path
         for el in src_arr:
             if '*' not in el:
@@ -1943,11 +1914,11 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
             else:
                 break
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        search_dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
         pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
     else:  # pattern is specified by argument
         if pattern is None:
-            if not dir.endswith('/'):  # this is a single file
+            if not search_dir.endswith('/'):  # this is a single file
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
@@ -2036,12 +2007,12 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
     # create and return the list object just for a single file
     if is_single_file:
         send_opts = 'nomsg' if not _DEBUG else ''
-        ret_obj = SendMsg(wb, 'stat', [dir], opts = send_opts)
+        ret_obj = SendMsg(wb, 'stat', [search_dir], opts = send_opts)
     else:
         find_args_default = ['-f', '-a', '-s']
         if is_regex: find_args_default.insert(0, '-r')
         if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
-        find_args_default.append(dir)
+        find_args_default.append(search_dir)
         find_args_default.append(pattern)
         send_opts = 'nomsg' if not _DEBUG else ''
         ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
@@ -2059,12 +2030,12 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
     results_list_filtered = []
     # items that pass the conditions are the actual/final results
     for found_lfn_dict in results_list:  # parse results to apply filters
-        if not filter_file_prop(found_lfn_dict, dir, filter_args_list): continue
+        if not filter_file_prop(found_lfn_dict, search_dir, filter_args_list): continue
         # at this point all filters were passed
         results_list_filtered.append(found_lfn_dict)
 
     if not results_list_filtered:
-        return RET(2, "", f"No files passed the filters :: {dir} /pattern: {pattern} /find_args: {find_args}")
+        return RET(2, "", f"No files passed the filters :: {search_dir} /pattern: {pattern} /find_args: {find_args}")
 
     ansdict = {"results": results_list_filtered}
     lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in results_list_filtered]
@@ -2072,16 +2043,16 @@ def list_files_grid(wb, dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] 
     return RET(exitcode, stdout, stderr, ansdict)
 
 
-def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
+def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
     if not dir: return RET(2, "", "No search directory specified")
 
     # let's process the pattern: extract it from src if is in the path globbing form
     regex = None
     is_single_file = False  # dir actually point to a file
-    if '*' in dir:  # we have globbing in src path
+    if '*' in search_dir:  # we have globbing in src path
         is_regex = False
-        src_arr = dir.split("/")
+        src_arr = search_dir.split("/")
         base_path_arr = []  # let's establish the base path
         for el in src_arr:
             if '*' not in el:
@@ -2089,11 +2060,11 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
             else:
                 break
         for el in base_path_arr: src_arr.remove(el)  # remove the base path
-        dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        search_dir = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
         pattern = '/'.join(src_arr)  # the globbing part is the rest of element that contain *
     else:  # pattern is specified by argument or not specified
         if pattern is None:
-            if not dir.endswith('/'):  # this is a single file
+            if not search_dir.endswith('/'):  # this is a single file
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
@@ -2103,16 +2074,16 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
         elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
             regex = valid_regex(pattern)
             if regex is None:
-                logging.error(f"list_files_grid:: {pattern} failed to re.compile")
-                return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
+                logging.error(f'list_files_grid:: {pattern} failed to re.compile')
+                return RET(-1, '', f'list_files_grid:: {pattern} failed to re.compile')
 
     directory = None  # resolve start_dir to an absolute_path
     try:
-        directory = Path(dir).expanduser().resolve(strict = True).as_posix()
+        directory = Path(search_dir).expanduser().resolve(strict = True).as_posix()
     except FileNotFoundError:
-        return RET(2, "", f"{dir} not found")
+        return RET(2, '', f'{search_dir} not found')
     except RuntimeError:
-        return RET(2, "", f"Loop encountered along the resolution of {dir}")
+        return RET(2, '', f'Loop encountered along the resolution of {search_dir}')
 
     filter_args_list = None
     if find_args: filter_args_list = find_args.split()  # for local files listing we have only filtering options
@@ -2126,7 +2097,7 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
         file_list = [p.expanduser().resolve(strict = True).as_posix() for p in list(Path(directory).glob(f'**/{pattern}')) if p.is_file()]
 
     if not file_list:
-        return RET(2, "", f"No files found in :: {str} /pattern: {pattern} /find_args: {find_args}")
+        return RET(2, '', f"No files found in :: {directory} /pattern: {pattern} /find_args: {find_args}")
 
     # convert the file_list to a list of file properties dictionaries
     results_list = [file2file_dict(filepath) for filepath in file_list]
@@ -2139,11 +2110,11 @@ def list_files_local(dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = N
         results_list_filtered.append(found_lfn_dict)
 
     if not results_list_filtered:
-        return RET(2, "", f"No files passed the filters :: {str} /pattern: {pattern} /find_args: {find_args}")
+        return RET(2, '', f'No files passed the filters :: {directory} /pattern: {pattern} /find_args: {find_args}')
 
     ansdict = {"results": results_list_filtered}
     lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in results_list_filtered]
-    stdout = '\n'.join(file_list)
+    stdout = '\n'.join(lfn_list)
     return RET(exitcode, stdout, '', ansdict)
 
 
@@ -2159,7 +2130,7 @@ def extract_glob_pattern(path_arg: str) -> tuple:
             else: break
 
         for el in base_path_arr: path_components.remove(el)  # remove the base path components (those without *) from full path components
-        base_path = '/'.join(base_path_arr) + '/'  # rewrite the source path without the globbing part
+        base_path = f'{"/".join(base_path_arr)}{"/" if base_path_arr else ""}'  # rewrite the source path without the globbing part
         pattern = '/'.join(path_components)  # the globbing part is the rest of element that contain *
     else:
         base_path = path_arg
@@ -2442,8 +2413,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     streams_arg = get_arg_value(xrd_copy_command, '-S')
     if streams_arg:
         if is_int(streams_arg):
-            streams = abs(int(streams))
-            if (streams > 15): streams = 15
+            streams = min(abs(int(streams)), 15)
             if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
                 print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value: {streams}')
             XRD_EnvPut('SubStreamsPerChannel', streams)
@@ -2571,9 +2541,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     if use_regex: pattern = pattern_regex
     copy_lfnlist = []  # list of lfn copy tasks
-    input_file = ''  # input file with <source, destination> pairs
 
-    inputfile_arg = get_arg_value(xrd_copy_command, '-input')
+    inputfile_arg = get_arg_value(xrd_copy_command, '-input')  # input file with <source, destination> pairs
     if inputfile_arg:
         cp_arg_list = fileline2list(inputfile_arg)
         if not cp_arg_list: return RET(1, '', f'Input file {inputfile_arg} not found or invalid content')
@@ -2598,7 +2567,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
     makelist_xrdjobs(copy_lfnlist, xrdcopy_job_list)
-    
+
     if not xrdcopy_job_list:
         msg = "No XRootD operations in list! enable the DEBUG mode for more info"
         logging.info(msg)
@@ -2624,7 +2593,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     copy_failed_list2 = []
     if copy_failed_list:
         to_recover_list_try1 = []
-        failed_lfns = set([copy_job.lfn for copy_job in copy_failed_list if copy_job.isUpload])  # get which lfns had problems only for uploads
+        failed_lfns = {copy_job.lfn for copy_job in copy_failed_list if copy_job.isUpload}  # get which lfns had problems only for uploads
         for lfn in failed_lfns:  # process failed transfers per lfn
             failed_lfn_copy_jobs = [x for x in copy_failed_list if x.lfn == lfn]  # gather all failed copy jobs for one lfn
             failed_replica_nr = len(failed_lfn_copy_jobs)
@@ -2634,7 +2603,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                     excluded_SEs_list.append(f'!{se}')
             excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
             specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
-            
+
             job_file = failed_lfn_copy_jobs[0].token_request['file']
             job_lfn = failed_lfn_copy_jobs[0].token_request['lfn']
             job_isWrite = failed_lfn_copy_jobs[0].isUpload
@@ -2651,11 +2620,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
             msg2 = f"Succesful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
 
-
     copy_failed_list3 = []
     if copy_failed_list2:
         to_recover_list_try2 = []
-        failed_lfns2 = set([copy_job.lfn for copy_job in copy_failed_list2 if copy_job.isUpload])  # get which lfns had problems only for uploads
+        failed_lfns2 = {copy_job.lfn for copy_job in copy_failed_list2 if copy_job.isUpload}  # get which lfns had problems only for uploads
         for lfn in failed_lfns2:  # process failed transfers per lfn
             failed_lfn_copy_jobs2 = [x for x in copy_failed_list2 if x.lfn == lfn]  # gather all failed copy jobs for one lfn
             failed_replica_nr = len(failed_lfn_copy_jobs2)
@@ -2665,7 +2633,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                     excluded_SEs_list.append(f'!{se}')
             excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
             specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
-            
+
             job_file = failed_lfn_copy_jobs2[0].token_request['file']
             job_lfn = failed_lfn_copy_jobs2[0].token_request['lfn']
             job_isWrite = failed_lfn_copy_jobs2[0].isUpload
@@ -2680,17 +2648,16 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             copy_jobs_nr2 = len(xrdcopy_job_list_3)
             copy_jobs_failed_nr2 = len(copy_failed_list3)
             copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
-            msg3 = f"Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}" if not ('quiet' in printout or 'silent' in printout) else ''
+            msg3 = f'Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}' if not ('quiet' in printout or 'silent' in printout) else ''
 
-
-    copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
+    # copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
     copy_jobs_nr_total = copy_jobs_nr + copy_jobs_nr1 + copy_jobs_nr2
     copy_jobs_success_nr_total = copy_jobs_success_nr + copy_jobs_success_nr1 + copy_jobs_success_nr2
     # hard to return a single exitcode for a copy process optionally spanning multiple files
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
     msg_list = [msg1, msg2, msg3]
     if msg2 or msg3:
-        msg_sum = f"Succesful jobs (total): {copy_jobs_success_nr_total}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+        msg_sum = f"Succesful jobs (total): {copy_jobs_success_nr_total}/{copy_jobs_nr_total}" if not ('quiet' in printout or 'silent' in printout) else ''
         msg_list.append(msg_sum)
     msg_all = '\n'.join(x.strip() for x in msg_list if x.strip())
     if 'ALIENPY_NOXRDZIP' in os.environ: os.environ.pop("ALIENPY_NOXRDZIP")
@@ -2715,7 +2682,7 @@ if _HAS_XROOTD:
         def begin(self, jobId, total, source, target):
             timestamp_begin = datetime.datetime.now().timestamp()
             if not ('quiet' in self.printout or 'silent' in self.printout):
-                print_out("jobID: {0}/{1} >>> Start".format(jobId, total))
+                print_out(f'jobID: {jobId}/{total} >>> Start')
             self.jobs = int(total)
             xrdjob = self.xrdjob_list[jobId - 1]
             file_size = xrdjob.token_request['size'] if xrdjob.isUpload else get_size_meta(xrdjob.src)
@@ -2742,7 +2709,7 @@ if _HAS_XROOTD:
             if os.getenv('XRD_LOGLEVEL'): logging.debug(f'XRD copy job time:: {xrdjob.lfn} -> {deltaT}')
 
             if results['status'].ok:
-                speed = float(job_info['bytes_total'])/deltaT
+                speed = float(job_info['bytes_total']) / deltaT
                 speed_str = f'{GetHumanReadable(speed)}/s'
 
                 if xrdjob.isUpload:  # isUpload
@@ -2783,7 +2750,6 @@ if _HAS_XROOTD:
                 if deltaT >= defined_reqtimeout:
                     print_err('Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Set XRD_REQUESTTIMEOUT to a higher value')
 
-
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
@@ -2792,8 +2758,8 @@ if _HAS_XROOTD:
                     os.remove(meta_path)  # remove the created metalink
 
         def update(self, jobId, processed, total):
-            #self.job_list[jobId - 1]['bytes_total'] = total
-            #self.job_list[jobId - 1]['bytes_processed'] = processed
+            # self.job_list[jobId - 1]['bytes_total'] = total
+            # self.job_list[jobId - 1]['bytes_processed'] = processed
             pass
 
         def should_cancel(self, jobId):
@@ -2820,8 +2786,8 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     tpc = xrd_cp_args.tpc
     # hashtype = xrd_cp_args.hashtype
     cksum = xrd_cp_args.cksum
-    timeout = xrd_cp_args.timeout
-    rate = xrd_cp_args.rate
+    # timeout = xrd_cp_args.timeout
+    # rate = xrd_cp_args.rate
 
     cksum_mode = 'none'  # none | source | target | end2end
     cksum_type = ''
@@ -2843,7 +2809,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     process = xrd_client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
-        if _DEBUG: logging.debug("\nadd copy job with\nsrc: {0}\ndst: {1}\n".format(copy_job.src, copy_job.dst))
+        if _DEBUG: logging.debug(f'\nadd copy job with\nsrc: {copy_job.src}\ndst: {copy_job.dst}\n')
         if cksum:
             if copy_job.isUpload:
                 # WIP: checksumming with md5 for uploading breaks, keep it on auto
@@ -2875,8 +2841,7 @@ def xrd_stat(pfn: str):
         return None
     url_components = urlparse(pfn)
     endpoint = xrd_client.FileSystem(url_components.netloc)
-    answer = endpoint.stat(url_components.path)
-    return answer
+    return endpoint.stat(url_components.path)
 
 
 def get_pfn_flags(pfn: str):
@@ -3024,7 +2989,7 @@ def get_size_meta(meta_fn: str) -> int:
 
 def get_hash_meta(meta_fn: str) -> tuple:
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
-    if not os.path.isfile(meta_fn): return ('','')
+    if not os.path.isfile(meta_fn): return ('', '')
     content = xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
@@ -3121,7 +3086,7 @@ def queryML(args: list = None) -> RET:
         stdout = stderr = ''
         ansdict = json.loads(ansraw)
     else:
-        stdout, stderr = ansraw, '' if (exitcode == 0) else '', ansraw
+        stdout, stderr = (ansraw, '') if exitcode == 0 else ('', ansraw)
     return RET(exitcode, stdout, stderr, ansdict)
 
 
@@ -3129,6 +3094,7 @@ def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
     """Get a file and return an XML element structure"""
     if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
     p = Path(filepath).expanduser().resolve(strict = True)
+    if p.is_dir(): return ALIEN_COLLECTION_EL()
     p_stat = p.stat()
     turl = f'file://{p.as_posix()}'
     return ALIEN_COLLECTION_EL(
@@ -3143,7 +3109,7 @@ def mk_xml_local(filepath_list: list):
     collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
     for idx, item in enumerate(filepath_list, start = 1):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
-        f = ET.SubElement(e, 'file', attrib=file2xml_el(lfn_prefix_re.sub('', item))._asdict())
+        f = ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())  # noqa:F841
     oxml = ET.tostring(xml_root, encoding = 'ascii')
     dom = xml.dom.minidom.parseString(oxml)
     return dom.toprettyxml()
@@ -3171,14 +3137,14 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     lfn_filelist = get_arg_value(args, '-l')
 
     lfn_list = []
-    find_arg_list = None
     lfn_arg_list = None
 
     if lfn_filelist:  # a given file with list of files/lfns was provided
         if is_local:
+            if do_append: return RET(1, '', 'toXml::local usage - appending to local xml is WIP, try without -a')
             if not os.path.exists(lfn_filelist): return RET(1, '', f'filelist {lfn_filelist} could not be found!!')
             filelist_content_list = file2list(lfn_filelist)
-            if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')  
+            if not filelist_content_list: return RET(1, '', f'No files could be read from {lfn_filelist}')
             if filelist_content_list[0].startswith('alien:'):
                 return RET(1, '', 'Local filelists should contain only local files (not alien: lfns)')
             xml_coll = mk_xml_local(filelist_content_list)
@@ -3187,7 +3153,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                     return RET(1, '', 'For the moment upload the resulting file by hand in grid')
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(xml_coll)
+                    with open(output_file, 'w', encoding = "ascii", errors = "replace") as f: f.write(xml_coll)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
@@ -3204,7 +3170,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
             if output_file and output_file.startswith("file:"):
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(ret_obj.out)
+                    with open(output_file, 'w', encoding = "ascii", errors = "replace") as f: f.write(ret_obj.out)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
@@ -3215,15 +3181,16 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
     else:
         lfn_arg_list = args.copy()  # the rest of arguments are lfns
         if is_local:
+            if do_append: return RET(1, '', 'toXml::local usage - appending to local xml is WIP, try without -a')
             lfn_list_obj_list = [file2file_dict(filepath) for filepath in lfn_arg_list]
             if not lfn_list_obj_list: return RET(1, '', f'Invalid list of files: {lfn_arg_list}')
-            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list]
+            lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in lfn_list_obj_list if get_lfn_key(lfn_obj)]
             xml_coll = mk_xml_local(lfn_list)
             if output_file:
                 if output_file.startswith('alien:'):
                     return RET(1, '', 'For the moment upload the resulting file by hand in grid')
                 output_file = lfn_prefix_re.sub('', output_file)
-                with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(xml_coll)
+                with open(output_file, 'w', encoding = "ascii", errors = "replace") as f: f.write(xml_coll)
                 return RET(0)
             else:
                 return RET(0, xml_coll)
@@ -3237,13 +3204,13 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
             if output_file and output_file.startswith("file:"):
                 output_file = lfn_prefix_re.sub('', output_file)
                 try:
-                    with open(output_file, 'w', encoding="ascii", errors="replace") as f: f.write(ret_obj.out)
+                    with open(output_file, 'w', encoding = "ascii", errors = "replace") as f: f.write(ret_obj.out)
                     return RET(0)
                 except Exception as e:
                     logging.exception(e)
                     return RET(1, '', f'Error writing {output_file}')
             return ret_obj
-        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact developer!')
+        return RET(1, '', 'Allegedly unreachable point in DO_2xml. If you see this, contact the developer!')
 
 
 def DO_queryML(args: Union[list, None] = None) -> RET:
@@ -3262,7 +3229,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     args.append('json')
     retobj = queryML(args)
 
-    if (retobj.exitcode != 0): return RET(retobj.exitcode, '', f'Error getting query: {" ".join(args)}')
+    if retobj.exitcode != 0: return RET(retobj.exitcode, '', f'Error getting query: {" ".join(args)}')
     ans_list = retobj.ansdict["results"]
     if len(ans_list) == 0: return RET(retobj.exitcode, f'queryML:: Empty answer from query: {" ".join(args)}')
 
@@ -3358,7 +3325,7 @@ strict : lfn specifications will be considered to be strict
 http : URIs will be for http end-points of enabled SEs
 '''
         return RET(0, msg)
-    
+
     write_meta = get_arg(args, 'meta')
     strictspec = get_arg(args, 'strict')
     httpurl = get_arg(args, 'http')
@@ -3376,7 +3343,7 @@ http : URIs will be for http end-points of enabled SEs
     if not isWrite: lfn = expand_path_grid(lfn)
     specs = ''
     if len(lfn_components) > 1: specs = lfn_components[1]
-    if write_meta:
+    if write_meta:  # noqa: IFSTMT001
         out = lfn2meta(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
     else:
         out = lfn2uri(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
@@ -3400,13 +3367,13 @@ def token(wb, args: Union[None, list] = None) -> int:
     tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
     if not tokencert_content or not tokenkey_content:
         logging.error('Token request valid but empty fields!!')
-        return int(42)  # ENOMSG 
+        return int(42)  # ENOMSG
 
     try:
         if path_readable(tokencert):
             os.chmod(tokencert, 0o600)  # make it writeable
             os.remove(tokencert)
-        with open(tokencert, "w") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
+        with open(tokencert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
         os.chmod(tokencert, 0o400)  # make it readonly
     except Exception:
         print_err('Error writing to file the aquired token cert; check the log file {_DEBUG_FILE}!')
@@ -3417,7 +3384,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         if path_readable(tokenkey):
             os.chmod(tokenkey, 0o600)  # make it writeable
             os.remove(tokenkey)
-        with open(tokenkey, "w") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
+        with open(tokenkey, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
         os.chmod(tokenkey, 0o400)  # make it readonly
     except Exception:
         print_err('Error writing to file the aquired token key; check the log file {_DEBUG_FILE}!')
@@ -3559,7 +3526,7 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
     return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(tmp_list)}')
 
 
-def DO_exec(wb,  args: Union[list, None] = None) -> RET:
+def DO_exec(wb, args: Union[list, None] = None) -> RET:
     """exec lfn :: download lfn as a temporary file and executed in the shell"""
     if args is None: args = []
     if not args or is_help(args):
@@ -3610,7 +3577,7 @@ The server options:''')
         msg_srv = srv_answ.out
         return RET(0, f'{msg_client}\n{msg_srv}')
 
-    #clean up the options
+    # clean up the options
     get_arg(args, '-v')
     get_arg(args, '-a')
     get_arg(args, '-s')
@@ -3623,16 +3590,18 @@ The server options:''')
     use_regex = False
     filtering_enabled = False
 
-    dir_glob = False
     pattern = None
+    pattern_arg = get_arg_value(args, '-glob')
     if '*' in search_dir:  # we have globbing in path
-        dir_glob = True
         search_dir, pattern = extract_glob_pattern(search_dir)
-    else:
-        pattern = get_arg_value(args, '-glob')
-        if pattern:
-            use_regex = False
-            filtering_enabled = True
+        if not search_dir: search_dir = './'
+
+    is_default_glob = False
+    if not (pattern or pattern_arg):
+        is_default_glob = True
+        pattern = '*'  # default glob pattern
+    if not pattern: pattern = pattern_arg  # if both present use pattern, otherwise pattern_arg
+    filtering_enabled = not is_default_glob  # signal the filtering enabled only if explicit glob request was made
 
     search_dir = expand_path_grid(search_dir)
 
@@ -3640,7 +3609,7 @@ The server options:''')
     select_arg = get_arg_value(args, '-select')
     if select_arg:
         if filtering_enabled:
-            msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
+            msg = 'Only one rule of selection can be used, either -select (full path match), -name (match on file name), -glob (globbing) or path globbing'
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
         pattern_regex = select_arg
         use_regex = True
@@ -3649,7 +3618,7 @@ The server options:''')
     name_arg = get_arg_value(args, '-name')
     if name_arg:
         if filtering_enabled:
-            msg = "Only one rule of selection can be used, either -select (full path match), -name (match on file name) or -glob (globbing)"
+            msg = 'Only one rule of selection can be used, either -select (full path match), -name (match on file name), -glob (globbing) or path globbing'
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
         use_regex = True
         filtering_enabled = True
@@ -3660,18 +3629,15 @@ The server options:''')
                    f"The invalid pattern was: {pattern_regex}")
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
-    if use_regex: pattern = pattern_regex
-    return list_files_grid(wb, search_dir, pattern, use_regex, args)    
+    if use_regex: pattern = pattern_regex  # -select, -name usage overwrites glob usage
+    return list_files_grid(wb, search_dir, pattern, use_regex, args)
 
 
 def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
-    if do_shell:
-        args = shlex.quote(sh_cmd)
-    else:
-        args = shlex.split(sh_cmd)
+    args = shlex.quote(sh_cmd) if do_shell else shlex.split(sh_cmd)
     capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
     status = exitcode = except_msg = None
     msg_out = msg_err = ''
@@ -3683,7 +3649,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     except FileNotFoundError:
         print_err(f"Command not found: {sh_cmd}")
         exitcode = int(2)
-    except Exception as e:
+    except Exception:
         ex_type, ex_value, ex_traceback = sys.exc_info()
         except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
         exitcode = int(1)
@@ -3700,7 +3666,7 @@ def DO_quota(wb, args: Union[None, list] = None) -> RET:
     """quota : put togheter both job and file quota"""
     if not args: args = []
     if is_help(args):
-        msg = ('Client-side implementation that make use of server\'s jquota and fquota (hidden by this implementation)\n'
+        msg = ("Client-side implementation that make use of server\'s jquota and fquota (hidden by this implementation)\n"
                'Command format: quota [user]\n'
                'if [user] is not provided, it will be assumed the current user')
         return RET(0, msg)
@@ -3720,31 +3686,31 @@ def DO_quota(wb, args: Union[None, list] = None) -> RET:
 
     username = jquota_dict['results'][0]["username"]
 
-    running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"])/3600
-    running_time_max = float(jquota_dict['results'][0]["maxTotalRunningTime"])/3600
-    running_time_perc = (running_time/running_time_max)*100
+    running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"]) / 3600
+    running_time_max = float(jquota_dict['results'][0]["maxTotalRunningTime"]) / 3600
+    running_time_perc = (running_time / running_time_max) * 100
 
-    cpucost = float(jquota_dict['results'][0]["totalCpuCostLast24h"])/3600
-    cpucost_max = float(jquota_dict['results'][0]["maxTotalCpuCost"])/3600
-    cpucost_perc = (cpucost/cpucost_max)*100
+    cpucost = float(jquota_dict['results'][0]["totalCpuCostLast24h"]) / 3600
+    cpucost_max = float(jquota_dict['results'][0]["maxTotalCpuCost"]) / 3600
+    cpucost_perc = (cpucost / cpucost_max) * 100
 
     unfinishedjobs_max = int(jquota_dict['results'][0]["maxUnfinishedJobs"])
     waiting = int(jquota_dict['results'][0]["waiting"])
     running = int(jquota_dict['results'][0]["running"])
-    unfinishedjobs_perc = ((waiting + running)/unfinishedjobs_max)*100
+    unfinishedjobs_perc = ((waiting + running) / unfinishedjobs_max) * 100
 
     pjobs_nominal = int(jquota_dict['results'][0]["nominalparallelJobs"])
     pjobs_max = int(jquota_dict['results'][0]["maxparallelJobs"])
 
     size = float(fquota_dict['results'][0]["totalSize"])
-    size_MiB = size/(1024*1024)
+    size_MiB = size / (1024 * 1024)
     size_max = float(fquota_dict['results'][0]["maxTotalSize"])
-    size_max_MiB = size_max/(1024*1024)
-    size_perc = (size/size_max)*100
+    size_max_MiB = size_max / (1024 * 1024)
+    size_perc = (size / size_max) * 100
 
     files = float(fquota_dict['results'][0]["nbFiles"])
     files_max = float(fquota_dict['results'][0]["maxNbFiles"])
-    files_perc = (files/files_max)*100
+    files_perc = (files / files_max) * 100
 
     msg = (f"""Quota report for user : {username}
 Unfinished jobs(R + W / Max):\t\t{running} + {waiting} / {unfinishedjobs_max} --> {unfinishedjobs_perc:.2f}% used
@@ -3761,12 +3727,12 @@ def check_ip_port(socket_object: tuple) -> bool:
     if not socket_object: return False
     is_open = False
     # socket_object = (family, type, proto, canonname, sockaddr)
-    with socket.socket(socket_object[0],socket_object[1],socket_object[2]) as s:  # Create a TCP socket
+    with socket.socket(socket_object[0], socket_object[1], socket_object[2]) as s:  # Create a TCP socket
         s.settimeout(2)  # timeout 2s
         try:
             s.connect(socket_object[4])
             is_open = True
-        except Exception as e:
+        except Exception:
             pass
     return is_open
 
@@ -3779,9 +3745,7 @@ def check_port(address: str, port: Union[str, int]) -> list:
 
 def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] = 8097) -> bool:
     result_list = check_port(address, port)
-    for ip in result_list:
-        if ip[-1]: return True
-    return False
+    return any(ip[-1] for ip in result_list)
 
 
 def DO_checkAddr(args: Union[list, None] = None) -> RET:
@@ -3828,7 +3792,7 @@ def DO_help(wb, args: Union[list, None] = None) -> RET:
         nr = len(AlienSessionInfo['commandlist'])
         column_width = 24
         try:
-            columns = os.get_terminal_size()[0]//column_width
+            columns = os.get_terminal_size()[0] // column_width
         except Exception:
             columns = 5
 
@@ -3916,7 +3880,7 @@ def DO_ping(wb, args: Union[list, None] = None) -> RET:
         return RET(1, '', 'Unrecognized argument, it should be int type')
 
     results = []
-    for i in range(count):
+    for _i in range(count):
         p = wb_ping(wb)
         results.append(p)
 
@@ -3925,17 +3889,17 @@ def DO_ping(wb, args: Union[list, None] = None) -> RET:
     rtt_avg = statistics.mean(results)
     rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
     endpoint = wb.remote_address[0]
-    msg = (f"Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}")
+    msg = (f'Websocket ping/pong(s) : {count} time(s) to {endpoint}\nrtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}')
     return RET(0, msg)
 
 
 def get_files_cert() -> list:
-    return (os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem'))
+    return os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem')
 
 
 def get_token_names(files: bool = False) -> tuple:
     if files:
-        return (f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+        return f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem'
     else:
         return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
@@ -3967,7 +3931,7 @@ def IsValidCert(fname: str) -> bool:
     x509_notafter = x509.get_notAfter()
     utc_time = datetime.datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
     time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
-    time_current  = int(datetime.datetime.now().timestamp())
+    time_current = int(datetime.datetime.now().timestamp())
     time_remaining = time_notafter - time_current
     if time_remaining < 1:
         logging.error(f'IsValidCert:: Expired certificate {fname}')
@@ -3977,21 +3941,21 @@ def IsValidCert(fname: str) -> bool:
 def CertInfo(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
     try:
-        with open(fname, encoding="ascii", errors="replace") as f:
+        with open(fname, encoding = "ascii", errors = "replace") as f:
             cert_bytes = f.read()
     except Exception:
-        return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
+        return RET(2, '', f'File >>>{fname}<<< not found')  # ENOENT /* No such file or directory */
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
-        return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
+        return RET(5, '', f'Could not load certificate >>>{fname}<<<')  # EIO /* I/O error */
 
     utc_time_notafter = datetime.datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
     utc_time_notbefore = datetime.datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
-    issuer = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_issuer().get_components()]))
-    subject = '/%s' % ('/'.join(['%s=%s' % (k.decode("utf-8"), v.decode("utf-8")) for k, v in x509.get_subject().get_components()]))
-    info = f"DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}"
+    issuer = '/'.join([f'{k.decode("utf-8")}={v.decode("utf-8")}' for k, v in x509.get_issuer().get_components()])
+    subject = '/'.join([f'{k.decode("utf-8")}={v.decode("utf-8")}' for k, v in x509.get_subject().get_components()])
+    info = f'DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}'
     return RET(0, info)
 
 
@@ -4214,24 +4178,19 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     wb = None
     ctx = None
     #  client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
-    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4},)
-    headers_list = []
-    headers_list.append(('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}'))
+    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4})
+    headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}')]
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
-        logging.info(f"Request connection to : {fHostWSUrl}")
+        logging.info(f'Request connection to : {fHostWSUrl}')
         socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await websockets.unix_connect(socket_filename, fHostWSUrl,
-                                        max_queue=QUEUE_SIZE,
-                                        max_size=MSG_SIZE,
-                                        ping_interval=PING_INTERVAL,
-                                        ping_timeout=PING_TIMEOUT,
-                                        close_timeout=CLOSE_TIMEOUT,
-                                        extra_headers=headers_list
-                                        )
+                                               max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
+                                               ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
+                                               close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
         except Exception as e:
-            msg = 'Could NOT establish connection (local socket) to {0}\n{1}'.format(socket_filename, e)
+            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
             logging.error(msg)
             print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
             return None
@@ -4250,11 +4209,11 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
-                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns=True, delay = 0, resolution_delay=0.050, detailed_exceptions=True)
+                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
             if _DEBUG:
-                logging.debug(f"TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms")
+                logging.debug(f'TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
         except Exception as e:
-            msg = 'Could NOT establish connection (TCP socket) to {0}:{1}\n{2}'.format(host, port, e)
+            msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
             logging.error(msg)
             print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
             return None
@@ -4262,22 +4221,17 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         if socket_endpoint:
             socket_endpoint_addr = socket_endpoint.getpeername()[0]
             socket_endpoint_port = socket_endpoint.getpeername()[1]
-            logging.info(f"GOT SOCKET TO: {socket_endpoint_addr}")
+            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}')
             try:
                 if _DEBUG: init_begin = time.perf_counter()
-                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx,
-                                       extensions=[deflateFact, ],
-                                       max_queue=QUEUE_SIZE,
-                                       max_size=MSG_SIZE,
-                                       ping_interval=PING_INTERVAL,
-                                       ping_timeout=PING_TIMEOUT,
-                                       close_timeout=CLOSE_TIMEOUT,
-                                       extra_headers=headers_list
-                                       )
+                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
+                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
+                                              ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
+                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
                 if _DEBUG:
-                    logging.debug(f"WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms")
+                    logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
             except Exception as e:
-                msg = 'Could NOT establish connection (WebSocket) to {0}:{1}\n{2}'.format(socket_endpoint_addr, socket_endpoint_port, e)
+                msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
                 logging.error(msg)
                 print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
                 return None
@@ -4289,7 +4243,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
     """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
     wb = None
     nr_tries = 0
-    init_begin = init_delta = None
+    init_begin = None
     if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
@@ -4299,10 +4253,10 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         try:
             wb = wb_create(host, str(port), path, use_usercert, localConnect)
         except Exception as e:
-            logging.error('{0}'.format(e))
+            logging.error(f'{e!r}')
         if not wb:
             if nr_tries >= connect_tries:
-                logging.error(f"We tried on {host}:{port}{path} {nr_tries} times")
+                logging.error(f'We tried on {host}:{port}{path} {nr_tries} times')
                 break
             time.sleep(connect_tries_interval)
 
@@ -4337,9 +4291,8 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
             # lets check JBOX availability
             jalien_info = read_conf_file(jclient_env)
-            if jalien_info:
-                if is_my_pid(jalien_info['JALIEN_PID']) and isReachable(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
-                    jalien_server, jalien_websocket_port = jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']
+            if jalien_info and is_my_pid(jalien_info['JALIEN_PID']) and isReachable(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
+                jalien_server, jalien_websocket_port = jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']
 
         wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
@@ -4353,7 +4306,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         logging.error(msg)
         print_err(msg)
         sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
-    
+
     __ALIEN_WB = wb  # Save the connection as a global variable
     return wb
 
@@ -4383,7 +4336,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
 
     if AlienSessionInfo['use_usercert']:  # if usercert connection
         # always regenerate token if connected with usercert
-        if (token(wb, token_args) != 0): print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
+        if token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
     return wb
 
 
@@ -4419,7 +4372,7 @@ def make_func_map_clean_server():
 
 
 def make_func_map_nowb():
-    '''client side functions (new commands) that do not require connection to jcentral'''
+    """client side functions (new commands) that do not require connection to jcentral"""
     global AlienSessionInfo
     if AlienSessionInfo['cmd2func_map_nowb']: return
     AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
@@ -4445,7 +4398,7 @@ make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection im
 
 
 def make_func_map_client():
-    '''client side functions (new commands) that DO require connection to jcentral'''
+    """client side functions (new commands) that DO require connection to jcentral"""
     global AlienSessionInfo
     if AlienSessionInfo['cmd2func_map_client']: return
 
@@ -4496,7 +4449,7 @@ def getSessionVars(wb):
     ret_obj = SendMsg(wb, 'commandlist', [])
     # first executed commands, let's initialize the following (will re-read at each ProcessReceivedMessage)
     if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
-        print_err('Start session:: could not get command list, let\'s exit.')
+        print_err("Start session:: could not get command list, let's exit.")
         sys.exit(1)
     regex = re.compile(r'.*_csd$')
     AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not regex.match(cmd["commandlist"])]
@@ -4595,7 +4548,6 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n
 
     # for each command, save exitcode and RET of the command
-    exitcode = None
     for cmdline in cmdline_list:
         if not cmdline: continue
         if _DEBUG: logging.info(f'>>> RUN COMMAND: {cmdline}')
@@ -4605,7 +4557,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
                 cmdline = cmdline.replace(' -noout', '')
                 capture_out = False
             ret_obj = runShellCMD(cmdline, capture_out)
-            exitcode = retf_print(ret_obj, 'debug')
+            AlienSessionInfo['exitcode'] = retf_print(ret_obj, 'debug')
             continue
 
         # process the input and take care of pipe to shell
@@ -4669,7 +4621,7 @@ def JAlien(commands: str = '') -> int:
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
-    
+
     while True:
         INPUT = None
         prompt = f"AliEn[{AlienSessionInfo['user']}]:{AlienSessionInfo['currentdir']}"
@@ -4698,7 +4650,6 @@ def setup_logging():
     except Exception:
         print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to /tmp')
         _DEBUG_FILE = f'/tmp/{os.path.basename(_DEBUG_FILE)}'
-        pass
     try:
         logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     except Exception:
@@ -4724,7 +4675,7 @@ def main():
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
-    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0)) # remove the name of the script
+    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
     _JSON_OUT_GLOBAL = _JSON_OUT = get_arg(sys.argv, '-json')
     if not _DEBUG:
         _DEBUG = get_arg(sys.argv, '-debug')
@@ -4763,10 +4714,10 @@ def main():
 
     try:
         sys.exit(JAlien(cmd_string))
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         print_out("Received keyboard intrerupt, exiting..")
         sys.exit(1)
-    except Exception as e:
+    except Exception:
         logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
         logging.error("\n\n")
         print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {_DEBUG_FILE}
