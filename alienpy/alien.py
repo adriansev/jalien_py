@@ -85,8 +85,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '3c0c0e2'
-ALIENPY_VERSION_DATE = '20220529_235034'
+ALIENPY_VERSION_HASH = 'f80b4fa'
+ALIENPY_VERSION_DATE = '20220530_075740'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -1332,7 +1332,7 @@ options are the following :
 N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
 If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
 
-for the recursive copy of directories the following options (of the find command) can be used:
+For the recursive copy of directories the following options (of the find command) can be used:
 -glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
 -select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
 -name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
@@ -1343,7 +1343,15 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
 -l <count> : copy only <count> nr of files (for recursive copy)
--o <offset> : skip first <offset> files found in the src directory (for recursive copy)'''
+-o <offset> : skip first <offset> files found in the src directory (for recursive copy)
+
+Further filtering of the files can be applied with the following options:
+-mindepth/-maxdepth N : restrict results to N directories depth relative to the base/searched for directory.
+                        N.B. for in directory globbing (/path1/path2/*.sh : the base directory is /path1/path2)
+-minsize/-maxsize N : restrict results to at least/at most N bytes in size
+-min-ctime/-max-ctime UNIX_TIME: restrict results to at least/at most this UNIX_TIME (ms, 13 decimals integer)
+-user/-group string_name : restrict results to specified user/group
+'''
     return helpstr
 
 
@@ -1870,11 +1878,11 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
 
         if min_depth:
             min_depth = abs(int(min_depth)) + 1  # add +1 for the always present file component of relative_lfn
-            if len(relative_lfn.split('/')) < int(min_depth): return False
+            if len(relative_lfn.split('/')) < min_depth: return False
 
         if max_depth:
             max_depth = abs(int(max_depth)) + 1  # add +1 for the always present file component of relative_lfn
-            if len(relative_lfn.split('/')) > int(max_depth): return False
+            if len(relative_lfn.split('/')) > max_depth: return False
 
     if min_size and int(f_obj["size"]) < abs(int(min_size)): return False
     if max_size and int(f_obj["size"]) > abs(int(max_size)): return False
@@ -1883,16 +1891,23 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
 
     # the argument can be a string with a form like: '20.12.2016 09:38:42,76','%d.%m.%Y %H:%M:%S,%f'
     # see: https://docs.python.org/3.6/library/datetime.html#strftime-strptime-behavior
-    if min_ctime:
-        min_ctime = time_str2unixmili(min_ctime)
-        if int(f_obj["ctime"]) < min_ctime: return False
-
-    if max_ctime:
-        max_ctime = time_str2unixmili(max_ctime)
-        if int(f_obj["ctime"]) > max_ctime: return False
+    if min_ctime or max_ctime:
+        dict_time = f_obj.get("ctime", '')
+        if not dict_time: dict_time = f_obj.get("mtime", '')
+        if not dict_time or not dict_time.isdigit():
+            print_err('filter_file_prop::min/max-ctime - could not find time information in file dictionary, selection failed!')
+            return False
+        if min_ctime:
+            min_ctime = time_str2unixmili(min_ctime)
+            if int(dict_time) < min_ctime: return False
+        if max_ctime:
+            max_ctime = time_str2unixmili(max_ctime)
+            if int(dict_time) > max_ctime: return False
 
     if jobid:
-        if "jobid" not in f_obj: return False
+        if "jobid" not in f_obj:
+            print_err('filter_file_prop::jobid - could not find jobid information in file dictionary, selection failed!')
+            return False
         if f_obj["jobid"] != jobid: return False
 
     return True
