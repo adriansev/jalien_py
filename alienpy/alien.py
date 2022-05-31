@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '5a8073a'
-ALIENPY_VERSION_DATE = '20220530_220912'
+ALIENPY_VERSION_HASH = 'e6b8382'
+ALIENPY_VERSION_DATE = '20220531_052219'
 ALIENPY_VERSION_STR = '1.3.8'
 ALIENPY_EXECUTABLE = ''
 
@@ -2748,7 +2748,7 @@ if _HAS_XROOTD:
                 print_err(msg)
                 defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
                 if deltaT >= defined_reqtimeout:
-                    print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Set XRD_REQUESTTIMEOUT to a higher value')
+                    print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Contact developer for support.')
 
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
