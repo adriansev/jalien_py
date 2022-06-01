@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '54f4901'
-ALIENPY_VERSION_DATE = '20220531_052320'
+ALIENPY_VERSION_HASH = '8ebbb8b'
+ALIENPY_VERSION_DATE = '20220601_072130'
 ALIENPY_VERSION_STR = '1.3.9'
 ALIENPY_EXECUTABLE = ''
 
@@ -1505,7 +1505,7 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     statinfo = os.stat(norm_path)
     perm = oct(statinfo.st_mode)[-3:]
     uid = uid2name(statinfo.st_uid)
-    gid = uid2name(statinfo.st_gid)
+    gid = gid2name(statinfo.st_gid)
     ctime = str(statinfo.st_ctime)
     mtime = str(statinfo.st_mtime)
     guid = ''
