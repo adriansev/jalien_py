@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'b8e08d8'
-ALIENPY_VERSION_DATE = '20220601_072321'
+ALIENPY_VERSION_HASH = 'c0c42a8'
+ALIENPY_VERSION_DATE = '20220602_200741'
 ALIENPY_VERSION_STR = '1.4.0'
 ALIENPY_EXECUTABLE = ''
 
@@ -1125,21 +1125,26 @@ def gid2name(gid: Union[str, int]) -> str:
 
 
 def path_readable(filepath: str = '') -> bool:
+    """Resolve a file/path and check if it is readable"""
+    filepath = expand_path_local(filepath, True)
     if not filepath: return False
-    if not os.path.exists(filepath): return False
     return os.access(filepath, os.R_OK, follow_symlinks = True)
 
 
 def path_writable(filepath: str = '') -> bool:
+    """Resolve a file/path and check if it is writable"""
+    filepath = expand_path_local(filepath, True)
     if not filepath: return False
-    if not os.path.exists(filepath): return False
     return os.access(filepath, os.W_OK, follow_symlinks = True)
 
 
 def path_writable_any(filepath: str = '') -> bool:
-    """Will check for writeability each path in hierarchy"""
+    """Return true if any path in hierarchy is writable (starting with the longest path)"""
+    filepath = expand_path_local(filepath)  # do not use strict as the destination directory could not yet exists
     if not filepath: return False
-    return any(path_writable(p) for p in Path(filepath).parents)
+    paths_list = [p.as_posix() for p in Path(filepath).parents]
+    if Path(filepath).is_dir(): paths_list.insert(0, filepath)
+    return any(path_writable(p) for p in paths_list)
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -1483,16 +1488,18 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
     return access_list
 
 
-def expand_path_local(path_arg: str) -> str:
+def expand_path_local(path_arg: str, strict: bool = False) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     if not path_arg: return ''
     exp_path = None
     path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     try:
-        exp_path = Path(path_arg).expanduser().resolve().as_posix()
+        exp_path = Path(path_arg).expanduser().resolve(strict).as_posix()
     except RuntimeError:
-        print_err(f"Loop encountered along the resolution of {path_arg}")
-    if exp_path is None: return ''
+        print_err(f'Loop encountered along the resolution of {path_arg}')
+        return ''
+    except FileNotFoundError:
+        return ''
     if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
 
@@ -2201,7 +2208,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
     if slashend_src:
         if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
-        if not dst.endswith('/'): dst = f"{dst}/"
+        if not dst.endswith('/'): dst = f"{dst}/"  # if src is dir, dst must be dir
 
     if src_stat.type == 'd': isDstDir = isSrcDir = True  # is source is directory so destination must be
 
