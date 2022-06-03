@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '184a262'
-ALIENPY_VERSION_DATE = '20220602_202210'
+ALIENPY_VERSION_HASH = 'fd47655'
+ALIENPY_VERSION_DATE = '20220603_073915'
 ALIENPY_VERSION_STR = '1.4.1'
 ALIENPY_EXECUTABLE = ''
 
@@ -1124,18 +1124,27 @@ def gid2name(gid: Union[str, int]) -> str:
     return grp.getgrgid(int(gid)).gr_name
 
 
-def path_readable(filepath: str = '') -> bool:
-    """Resolve a file/path and check if it is readable"""
+def check_path_perm(filepath: str, mode) -> bool:
+    """Resolve a file/path and check if mode is valid"""
     filepath = expand_path_local(filepath, True)
     if not filepath: return False
-    return os.access(filepath, os.R_OK, follow_symlinks = True)
+    if not mode: mode = os.F_OK
+    have_access = False
+    try:
+        have_access = os.access(filepath, mode, follow_symlinks = True)
+    except Exception:
+        pass
+    return have_access
+
+
+def path_readable(filepath: str = '') -> bool:
+    """Resolve a file/path and check if it is readable"""
+    return check_path_perm(filepath, os.R_OK)
 
 
 def path_writable(filepath: str = '') -> bool:
     """Resolve a file/path and check if it is writable"""
-    filepath = expand_path_local(filepath, True)
-    if not filepath: return False
-    return os.access(filepath, os.W_OK, follow_symlinks = True)
+    return check_path_perm(filepath, os.W_OK)
 
 
 def path_writable_any(filepath: str = '') -> bool:
@@ -1491,14 +1500,11 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
 def expand_path_local(path_arg: str, strict: bool = False) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     if not path_arg: return ''
-    exp_path = None
+    exp_path = ''
     path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     try:
         exp_path = Path(path_arg).expanduser().resolve(strict).as_posix()
-    except RuntimeError:
-        print_err(f'Loop encountered along the resolution of {path_arg}')
-        return ''
-    except FileNotFoundError:
+    except Exception:
         return ''
     if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
     return exp_path
