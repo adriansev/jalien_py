@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'b95f20c'
-ALIENPY_VERSION_DATE = '20220815_165359'
+ALIENPY_VERSION_HASH = '6a0ddd4'
+ALIENPY_VERSION_DATE = '20220815_182552'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -2207,6 +2207,8 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         if not path_writable_any(dst_stat.path):
             return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
 
+    if not src_stat.type: return RET(2, '', f'Specified source {src_stat.path} not found!')
+
     src = src_stat.path
     dst = dst_stat.path
 
@@ -2264,7 +2266,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         else:  # directory to be listed
             results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
             if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
-                msg = f"No files found with: find {' '.join(find_args)} {'-r' if is_regex else ''} -a -s {src} {pattern}"
+                msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''}-a -s {src} {pattern}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
 
             for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
@@ -3026,7 +3028,7 @@ def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     return lfn.replace(f'{_TMPDIR}/', '').replace("%%", "/")
 
 
-def download_tmp(wb, lfn: str, overwrite: bool = False) -> str:
+def download_tmp(wb, lfn: str, overwrite: bool = False, verbose: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
     global AlienSessionInfo
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
@@ -3044,6 +3046,7 @@ def download_tmp(wb, lfn: str, overwrite: bool = False) -> str:
     if ret_obj.exitcode == 0 and os.path.isfile(tmpfile):
         AlienSessionInfo['templist'].append(tmpfile)
         return tmpfile
+    if verbose: print_err(f'{ret_obj.err}')
     return ''
 
 
@@ -3472,7 +3475,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
 
     specs = specs_split.split(lfn, maxsplit = 1)  # NO comma allowed in grid names (hopefully)
     lfn = specs.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-    tmp = download_tmp(wb, lfn)
+    tmp = download_tmp(wb, lfn, overwrite = False, verbose = False)
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
         ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
@@ -3529,14 +3532,14 @@ def DO_run(wb, args: Union[list, None] = None, external: bool = False) -> RET:
     list_of_lfns = [arg for arg in args if 'alien:' in arg]
     if not list_of_lfns: list_of_lfns = [args.pop(-1)]
 
-    tmp_list = [download_tmp(wb, lfn, overwrite) for lfn in list_of_lfns]  # list of temporary downloads
+    tmp_list = [download_tmp(wb, lfn, overwrite, verbose = True) for lfn in list_of_lfns]  # list of temporary downloads
     new_args = [arg for arg in args if arg not in list_of_lfns]  # command arguments without the files
     args = list(new_args)
     cmd = " ".join(args)
     files = " ".join(tmp_list)
     if tmp_list and all(os.path.isfile(tmp) for tmp in tmp_list):
         return runShellCMD(f'{cmd} {files}', capture_out, do_shell = True)
-    return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(tmp_list)}')
+    return RET(1, '', f'There was an error downloading the following files:\n{chr(10).join(list_of_lfns)}')
 
 
 def DO_exec(wb, args: Union[list, None] = None) -> RET:
