@@ -87,8 +87,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '07028a0'
-ALIENPY_VERSION_DATE = '20220603_074023'
+ALIENPY_VERSION_HASH = 'b95f20c'
+ALIENPY_VERSION_DATE = '20220815_165359'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3650,7 +3650,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     """Run shell command in subprocess; if exists, print stdout and stderr"""
     if not INPUT: return RET(1, '', 'No command to be run provided')
     sh_cmd = re.sub(r'^!', '', INPUT)
-    args = shlex.quote(sh_cmd) if do_shell else shlex.split(sh_cmd)
+    args = sh_cmd if do_shell else shlex.split(sh_cmd)
     capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
     status = exitcode = except_msg = None
     msg_out = msg_err = ''
@@ -3671,7 +3671,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
         if status.stdout: msg_out = status.stdout.strip()
         if status.stderr: msg_err = status.stderr.strip()
         exitcode = status.returncode
-    if except_msg: msg_err = f'{except_msg}{msg_err}'
+    if except_msg: msg_err = f'{except_msg}\n{msg_err}'
     return RET(exitcode, msg_out, msg_err)
 
 
