@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'e14aa28'
-ALIENPY_VERSION_DATE = '20220830_224450'
+ALIENPY_VERSION_HASH = '2741a6d'
+ALIENPY_VERSION_DATE = '20220830_233310'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3419,6 +3419,7 @@ def token(wb, args: Union[None, list] = None) -> int:
 def token_regen(wb, args: Union[None, list] = None):
     global AlienSessionInfo
     wb_usercert = None
+    if not args: args = []
     if not AlienSessionInfo['use_usercert']:
         wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
@@ -3435,6 +3436,7 @@ def token_regen(wb, args: Union[None, list] = None):
     wb_token_new = None
     try:
         wb_token_new = InitConnection(args)
+        ret_obj = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
     except Exception:
         logging.debug(traceback.format_exc())
     return wb_token_new
@@ -4599,7 +4601,12 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         else:
-            if wb is None: wb = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+            if wb is None:
+                # we are doing the connection recovery and exception treatment in AlienConnect()
+                if cmd == 'token-init' and not is_help(args):
+                    wb = InitConnection(args, use_usercert = True)
+                else:
+                    wb = InitConnection()
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
