@@ -57,7 +57,9 @@ except Exception:
     sys.exit(1)
 
 try:
-    import websockets
+    import websockets.client as wb_client
+    import websockets.exceptions as wb_exceptions
+    import websockets.version as wb_version
     from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 except Exception:
     print("websockets module could not be load", file=sys.stderr, flush = True)
@@ -689,7 +691,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         nr_tries += 1        
         try:
             result_list = __sendmsg_multi(wb, json_cmd_list)
-        except (websockets.ConnectionClosed, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
+        except (wb_exceptions.ConnectionClosed, wb_exceptions.ConnectionClosedError, wb_exceptions.ConnectionClosedOK) as e:
             if e.__cause__:
                 logging.exception(f'SendMsg:: failure because of {e.__cause__}')
             logging.exception(e)
@@ -4195,16 +4197,16 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     ctx = None
     #  client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
     deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4})
-    headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{websockets.__version__}')]
+    headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{wb_version.version}')]
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f'Request connection to : {fHostWSUrl}')
         socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
-            wb = await websockets.unix_connect(socket_filename, fHostWSUrl,
-                                               max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
-                                               ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
-                                               close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
+            wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
+                                              max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
+                                              ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
+                                              close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
         except Exception as e:
             msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
             logging.error(msg)
@@ -4240,7 +4242,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}')
             try:
                 if _DEBUG: init_begin = time.perf_counter()
-                wb = await websockets.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
+                wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
                                               max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
                                               ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
                                               close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
@@ -4672,9 +4674,7 @@ def setup_logging():
         print_err(f'Could not write the log file {_DEBUG_FILE}')
 
     logging.getLogger().setLevel(MSG_LVL)
-    logging.getLogger('websockets').setLevel(MSG_LVL)
-    # logging.getLogger('websockets.protocol').setLevel(MSG_LVL)
-    # logging.getLogger('websockets.client').setLevel(MSG_LVL)
+    logging.getLogger('wb_client').setLevel(MSG_LVL)
     if os.getenv('ALIENPY_DEBUG_CONCURENT'):
         logging.getLogger('concurrent').setLevel(MSG_LVL)
         logging.getLogger('concurrent.futures').setLevel(MSG_LVL)
