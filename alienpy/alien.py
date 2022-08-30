@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '6a0ddd4'
-ALIENPY_VERSION_DATE = '20220815_182552'
+ALIENPY_VERSION_HASH = 'e14aa28'
+ALIENPY_VERSION_DATE = '20220830_224450'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -1123,7 +1123,11 @@ def uid2name(uid: Union[str, int]) -> str:
 
 def gid2name(gid: Union[str, int]) -> str:
     """Convert numeric GUI to group name"""
-    return grp.getgrgid(int(gid)).gr_name
+    try:
+        group_info = grp.getgrgid(int(gid))
+        return group_info.gr_name
+    except:
+        return str(gid)
 
 
 def check_path_perm(filepath: str, mode) -> bool:
