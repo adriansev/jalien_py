@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '2741a6d'
-ALIENPY_VERSION_DATE = '20220830_233310'
+ALIENPY_VERSION_HASH = '845927a'
+ALIENPY_VERSION_DATE = '20220903_150153'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -2877,40 +2877,90 @@ def is_pfn_readable(pfn: str) -> bool:
     return bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE)
 
 
-def DO_pfnstatus(args: Union[list, None] = None) -> RET:
+def DO_pfn(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if is_help(args):
+        msg = 'Command format : pfn [lfn]\nIt will print only the list of associated pfns (simplified form of whereis)'
+        return RET(0, msg)
+    args.insert(0, '-r')
+    ret_obj = SendMsg(wb, 'whereis', args, opts = 'nomsg')
+    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
+    return ret_obj._replace(out = msg)
+
+
+def xrdstat2dict(xrdstat: tuple) -> dict:
+    """Convert a XRootD status answer to a dict"""
+    if not xrdstat: return {}
+    xrd_stat, xrd_info = xrdstat
+    xrdstat_dict = { 'status': xrd_stat.status, 'code': xrd_stat.code, 'errno': xrd_stat.errno, 'message': xrd_stat.message.strip(),
+                     'shellcode': xrd_stat.shellcode, 'error': xrd_stat.error, 'fatal': xrd_stat.fatal, 'ok': xrd_stat.ok }
+    if xrd_info:
+        xrdinfo_dict = {'size': xrd_info.size, 'flags': xrd_info.flags, 'modtime': xrd_info.modtime, 'modtimestr': xrd_info.modtimestr}
+    else:
+        xrdinfo_dict = {}
+    return {**xrdstat_dict, **xrdinfo_dict}
+
+
+def xrdstat_flags2dict(flags: int) -> dict:
+    """Convert the flags information of a XRootD file status to a dict"""
+    return { 'x_bit_set': bool(flags & xrd_client.flags.StatInfoFlags.X_BIT_SET),
+             'is_dir': bool(flags & xrd_client.flags.StatInfoFlags.IS_DIR),
+             'other': bool(flags & xrd_client.flags.StatInfoFlags.OTHER),
+             'offline': bool(flags & xrd_client.flags.StatInfoFlags.OFFLINE),
+             'is_readable': bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE),
+             'is_writable': bool(flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE),
+             'posc_pending': bool(flags & xrd_client.flags.StatInfoFlags.POSC_PENDING),
+             'backup_exists': bool(flags & xrd_client.flags.StatInfoFlags.BACKUP_EXISTS) }
+
+
+def DO_pfnstatus(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args or is_help(args):
-        msg = ('Command format: pfn_status <pfn>\n'
-               'It will return all flags reported by the xrootd server - this is direct access to server')
+        msg = ('Command format: pfn_status <pfn>|<lfn>\n'
+               'It will return all flags reported by the xrootd server - this is direct access to server\n'
+               'pfn is identified by prefix root://; if missing the argument will be taken to be a lfn')
         return RET(0, msg)
-    pfn = args.pop(0)
-    answer = xrd_stat(pfn)
-    response_stat = answer[0]
-    response_statinfo = answer[1]
-    if not response_stat.ok:
-        msg = (f'{response_stat.message}; code/status: {response_stat.code}/{response_stat.status}')
-        return RET(response_stat.shellcode, '', msg)
-    size = response_statinfo.size
-    modtime = response_statinfo.modtimestr
-    flags = response_statinfo.flags
-    x_bit_set = 1 if flags & xrd_client.flags.StatInfoFlags.X_BIT_SET else 0
-    is_dir = 1 if flags & xrd_client.flags.StatInfoFlags.IS_DIR else 0
-    other = 1 if flags & xrd_client.flags.StatInfoFlags.OTHER else 0
-    offline = 1 if flags & xrd_client.flags.StatInfoFlags.OFFLINE else 0
-    posc_pending = 1 if flags & xrd_client.flags.StatInfoFlags.POSC_PENDING else 0
-    is_readable = 1 if flags & xrd_client.flags.StatInfoFlags.IS_READABLE else 0
-    is_writable = 1 if flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE else 0
-    msg = (f'''Size: {size}\n'''
-           f'''Modification time: {modtime}\n'''
-           f'''Executable bit: {x_bit_set}\n'''
-           f'''Is directory: {is_dir}\n'''
-           f'''Not a file or directory: {other}\n'''
-           f'''File is offline (not on disk): {offline}\n'''
-           f'''File opened with POSC flag, not yet successfully closed: {posc_pending}\n'''
-           f'''Is readable: {is_readable}\n'''
-           f'''Is writable: {is_writable}''')
-    return RET(response_stat.shellcode, msg)
+    verbose = get_arg(args, '-v') or get_arg(args, '-verbose')
+    pfn_list = []
+    # create a list of all pfns to be queried
+    for arg in args:
+        if arg.startswith('root://'):
+            pfn_list.append({'lfn': '', 'pfn': arg})
+        else:
+            # we assume that it's a lfn
+            file_path = expand_path_grid(arg)
+            pfns_ret = DO_pfn(wb, [file_path])
+            pfn_list_found = [ {'lfn': file_path, 'pfn': str(item['pfn'])} for item in pfns_ret.ansdict['results'] if 'pfn' in item ]
+            pfn_list.extend(pfn_list_found)
+
+    msg_all = None
+    dict_results = { "results": [] }
+    for pfn in pfn_list:
+        get_pfn_info = xrdstat2dict(xrd_stat(pfn['pfn']))
+        if 'flags' in get_pfn_info:
+            pfn_flags = xrdstat_flags2dict(get_pfn_info['flags'])
+            get_pfn_info.pop('flags')
+        else:
+            pfn_flags = {}
+
+        pfn_info = {'lfn': pfn['lfn'], 'pfn': pfn['pfn'], **get_pfn_info, **pfn_flags}
+        dict_results['results'].append(pfn_info)
+        msg = None
+        if pfn["lfn"]: msg = f'LFN: {pfn["lfn"]}\n'
+        if pfn_info['ok']:
+            # ( f'{msg if msg else ""}'
+            msg = f'{msg if msg else ""}{pfn["pfn"]}\t\tSize: {pfn_info["size"]}\tR/W status:{int(pfn_info["is_readable"])}/{int(pfn_info["is_writable"])}\n'
+            if verbose: msg = ( f'{msg}'
+                                f'IS DIR/OTHER/OFFLINE: {int(pfn_info["is_dir"])}/{int(pfn_info["other"])}/{int(pfn_info["offline"])}\t'
+                                f'Modified: {pfn_info["modtimestr"]}\tPOSC pending: {int(pfn_info["posc_pending"])}\t\tBACKUP: {int(pfn_info["backup_exists"])}\n' )
+        else:
+            msg = ( f'{msg if msg else ""}'
+                    f'{pfn["pfn"]}\t\tMessage: {pfn_info["message"]}\tStatus/Code/ErrNo:{pfn_info["status"]}/{pfn_info["code"]}/{pfn_info["errno"]}\n' )
+
+        msg_all = f'{msg_all if msg_all else ""}{msg}'
+
+    return RET(0, msg_all, '', dict_results)
 
 
 def get_pfn_list(wb, lfn: str) -> list:
@@ -3321,18 +3371,6 @@ def DO_more(wb, args: Union[list, None] = None) -> RET:
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'more')
     return DO_run(wb, args, external = True)
-
-
-def DO_pfn(wb, args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    if is_help(args):
-        msg = 'Command format : pfn [lfn]\nIt will print only the list of associtated pfns (simplified form of whereis)'
-        return RET(0, msg)
-    cmd = 'whereis'
-    args.insert(0, '-r')
-    ret_obj = SendMsg(wb, cmd, args, opts = 'nomsg')
-    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
-    return ret_obj._replace(out = msg)
 
 
 def DO_lfn2uri(wb, args: Union[list, None] = None) -> RET:
@@ -4410,7 +4448,6 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['exitcode'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['$?'] = exitcode
     AlienSessionInfo['cmd2func_map_nowb']['version'] = DO_version
-    AlienSessionInfo['cmd2func_map_nowb']['pfn-status'] = DO_pfnstatus
     AlienSessionInfo['cmd2func_map_nowb']['queryML'] = DO_queryML
     AlienSessionInfo['cmd2func_map_nowb']['exit'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
@@ -4441,6 +4478,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['quota'] = DO_quota
     AlienSessionInfo['cmd2func_map_client']['token-init'] = DO_token_init
     AlienSessionInfo['cmd2func_map_client']['pfn'] = DO_pfn
+    AlienSessionInfo['cmd2func_map_client']['pfn-status'] = DO_pfnstatus
     AlienSessionInfo['cmd2func_map_client']['run'] = DO_run
     AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
     AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
