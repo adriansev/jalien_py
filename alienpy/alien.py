@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '20bbade'
-ALIENPY_VERSION_DATE = '20220904_160059'
+ALIENPY_VERSION_HASH = '4d52971'
+ALIENPY_VERSION_DATE = '20220904_223418'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3010,6 +3010,85 @@ def is_pfn_readable(pfn: str) -> bool:
         return False
 
 
+def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
+    global AlienSessionInfo
+    if args is None: args = []
+    if not args or is_help(args):
+        msg = ('Command format: xrd_ping [-c count] fqdn[:port] | SE name | SE id\n'
+               'It will use the XRootD connect/ping option to connect and return a RTT')
+        return RET(0, msg)
+
+    count = int(get_arg_value(args, '-c'))
+    if not count: count = 3
+
+    sum_rez = []
+    for se_name in args:
+        ret_obj = DO_getSE(wb, ['-srv', se_name])
+        if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+
+    # maybe user want to ping servers outside of ALICE redirectors list
+    if not sum_rez:
+        for arg in args: sum_rez.append({'seName': arg, 'endpointUrl': f'root://{arg}'})
+        
+    msg = f'XRootD ping(s): {count} time(s) to:'
+    for se in sum_rez:
+        se_name = se['seName']
+        se_fqdn = urlparse(se['endpointUrl']).netloc
+
+        results_list = []
+        for _i in range(count): results_list.append(xrdfs_ping(se_fqdn))
+
+        results = [ res['ping_time_ms'] for res in results_list if res['ok'] ]
+        if results:
+            rtt_min = min(results)
+            rtt_max = max(results)
+            rtt_avg = statistics.mean(results)
+            rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
+            msg = f'{msg}\n{se_name : <32} rtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}'
+        else:
+            msg = f'{msg}\n{se_name : <32} {results_list[-1]["message"]}'
+
+    return RET(0, msg)
+
+
+
+
+
+
+
+
+def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
+    global AlienSessionInfo
+    if args is None: args = []
+    if not args or is_help(args):
+        msg = ('Command format: xrd_config fqdn[:port] | SE name | SE id\n'
+               'It will use the XRootD query config to get the current server properties')
+        return RET(0, msg)
+
+
+
+
+
+
+
+
+
+def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
+    global AlienSessionInfo
+    if args is None: args = []
+    if not args or is_help(args):
+        msg = ('Command format: xrd_stats [-c count] fqdn[:port] | SE name | SE id\n'
+               'It will use the XRootD query stats option to get the server metrics')
+        return RET(0, msg)
+
+
+
+
+
+
+
+
+
 def DO_pfn(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if is_help(args):
@@ -4575,6 +4654,9 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['token-init'] = DO_token_init
     AlienSessionInfo['cmd2func_map_client']['pfn'] = DO_pfn
     AlienSessionInfo['cmd2func_map_client']['pfn-status'] = DO_pfnstatus
+    AlienSessionInfo['cmd2func_map_client']['xrd_ping'] = DO_xrd_ping
+    AlienSessionInfo['cmd2func_map_client']['xrd_config'] = DO_xrd_config
+    AlienSessionInfo['cmd2func_map_client']['xrd_stats'] = DO_xrd_stats
     AlienSessionInfo['cmd2func_map_client']['run'] = DO_run
     AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
     AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
