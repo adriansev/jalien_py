@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '845927a'
-ALIENPY_VERSION_DATE = '20220903_150153'
+ALIENPY_VERSION_HASH = '20bbade'
+ALIENPY_VERSION_DATE = '20220904_160059'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -2351,36 +2351,12 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
-def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
-    """XRootD cp function :: process list of arguments for a xrootd copy command"""
-    if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
-    if xrd_copy_command is None: xrd_copy_command = []
-    global AlienSessionInfo
-    if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
-
-    if not xrd_copy_command or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
-        help_msg = xrdcp_help()
-        return RET(0, help_msg)  # EX_USAGE /* command line usage error */
-
-    # XRootD copy parameters
-    # inittimeout: copy initialization timeout(int)
-    # tpctimeout: timeout for a third-party copy to finish(int)
-    # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
-    # :param checksummode: checksum mode to be used #:type    checksummode: string
-    # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
-    # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
-    hashtype = str('md5')
-    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-    streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
-    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
-    chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
-    overwrite = bool(False)  # overwrite target if it exists
-    cksum = bool(False)
-    timeout = int(0)
-    rate = int(0)
-
+def xrd_config_init():
+    """Initialize generic XRootD client vars/timeouts"""
+    if not _HAS_XROOTD: return
     # xrdcp parameters (used by ALICE tests)
     # http://xrootd.org/doc/man/xrdcp.1.html
+    # https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-100004.2
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
     # TODO these will not work for xrdcp subprocess; the env vars should also be set
@@ -2413,6 +2389,41 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+
+# Global XRootD preferences
+xrd_config_init()
+
+
+def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
+    """XRootD cp function :: process list of arguments for a xrootd copy command"""
+    if not _HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
+    if xrd_copy_command is None: xrd_copy_command = []
+    global AlienSessionInfo
+    if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
+
+    if not xrd_copy_command or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
+        help_msg = xrdcp_help()
+        return RET(0, help_msg)  # EX_USAGE /* command line usage error */
+
+    xrd_config_init()  # reset XRootD preferences to cp oriented settings
+
+    # XRootD copy parameters
+    # inittimeout: copy initialization timeout(int)
+    # tpctimeout: timeout for a third-party copy to finish(int)
+    # coerce: ignore file usage rules, i.e. apply `FORCE` flag to open() (bool)
+    # :param checksummode: checksum mode to be used #:type    checksummode: string
+    # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
+    # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
+    hashtype = str('md5')
+    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
+    streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
+    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
+    chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
+    overwrite = bool(False)  # overwrite target if it exists
+    cksum = bool(False)
+    timeout = int(0)
+    rate = int(0)
 
     if get_arg(xrd_copy_command, '-d'):
         if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Info')
@@ -2856,49 +2867,126 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     return handler.copy_failed_list  # lets see what failed and try to recover
 
 
-def xrd_stat(pfn: str):
+def xrdfs_q_config(fqdn_port: str) -> dict:
+    """Return a dictionary of xrdfs query config"""
     if not _HAS_XROOTD:
         print_err('python XRootD module not found')
         return None
-    url_components = urlparse(pfn)
-    endpoint = xrd_client.FileSystem(url_components.netloc)
-    return endpoint.stat(url_components.path)
+    endpoint = xrd_client.FileSystem(fqdn_port)
+    config_args_list = ['bind_max', 'chksum', 'pio_max', 'readv_ior_max', 'readv_iov_max', 'tpc', 'wan_port', 'wan_window', 'window', 'cms', 'role', 'sitename', 'version']
+    config_dict = {}
+    for cfg in config_args_list:
+        q_status, response = endpoint.query(7, cfg, timeout = 5)  # get the config metrics
+        status = xrd_response2dict(q_status)
+        if status['ok']:
+            response = response.decode('ascii').strip()
+            val = 'NOT_SET' if cfg == response else response
+            config_dict[cfg] = val
+        else:
+            print_err(f'Query error for {fqdn_port} : {status["message"]}')
+            break
+    return config_dict
 
 
-def get_pfn_flags(pfn: str):
-    answer = xrd_stat(pfn)
-    if not answer[0].ok: return None
-    return answer[1].flags
+def xrdfs_ping(fqdn_port: str):
+    """Return a dictionary of xrdfs ping, it will contain ping_time_ms key"""
+    if not _HAS_XROOTD:
+        print_err('python XRootD module not found')
+        return None
+    endpoint = xrd_client.FileSystem(fqdn_port)
+    result, _  = endpoint.ping(timeout = 2)  # ping the server 1st time to eliminate strange 1st time behaviour
+
+    time_begin = time.perf_counter()
+    result, _  = endpoint.ping(timeout = 2)  # ping the server
+    ping_ms = deltat_ms_perf(time_begin)
+
+    response_dict = xrd_response2dict(result)
+    response_dict['ping_time_ms'] = float(ping_ms)
+    return response_dict
 
 
-def is_pfn_readable(pfn: str) -> bool:
-    flags = get_pfn_flags(pfn)
-    if flags is None: return False
-    return bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE)
+def xrdfs_q_stats(fqdn_port: str, xml: bool = False):
+    if not _HAS_XROOTD:
+        print_err('python XRootD module not found')
+        return None
+    endpoint = xrd_client.FileSystem(fqdn_port)
+    q_status, response = endpoint.query(1, 'a')  # get the stats (ALL)
+    status = xrd_response2dict(q_status)
+    if not status['ok']:
+        print_err(f'xrdfs_q_stats:: query error to {fqdn_port} : {status["message"]}')
+        return ''
+
+    response = response.decode('ascii').strip().strip('\x00')
+
+    xmltodict_present = True
+    try:
+        import xmltodict
+    except Exception:
+        print_err('Could not import xmltodict')
+        xmltodict_present = False
+
+    # if xml is requested or xmltodict missing
+    if xml or not xmltodict_present:
+        xml_stats = ET.fromstring(response)
+        return ET.dump(xml_stats)
+
+    q_stats_dict = xmltodict.parse(response, attr_prefix = '')['statistics']
+    old_stats = q_stats_dict.pop('stats')
+
+    # it will mutate the input
+    def convert_dict(input_dict: dict, head_key: str = 'id'):
+        if isinstance(input_dict, dict):
+            if head_key in input_dict:
+                working_dict = dict(input_dict)
+                key_name = working_dict.pop('id')
+                new_dict = {key_name: working_dict}
+                input_dict.clear()
+                input_dict.update(new_dict)
+
+    for id_entry in old_stats:
+        convert_dict(id_entry)
+
+    # to search for a recursive solution
+    for i in old_stats:
+        if 'oss' in i: convert_dict(i['oss']['paths']['stats'])
+
+    merged_stats = {}
+    for i in old_stats: merged_stats.update(i)
+    q_stats_dict['stats'] = merged_stats
+
+    return q_stats_dict
 
 
-def DO_pfn(wb, args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    if is_help(args):
-        msg = 'Command format : pfn [lfn]\nIt will print only the list of associated pfns (simplified form of whereis)'
-        return RET(0, msg)
-    args.insert(0, '-r')
-    ret_obj = SendMsg(wb, 'whereis', args, opts = 'nomsg')
-    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
-    return ret_obj._replace(out = msg)
+def xrd_response2dict(response_status: xrd_client.responses.XRootDStatus) -> dict:
+    """Convert a XRootD response status answer to a dict"""
+    if not response_status: return {}
+    return { 'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
+             'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok }
+
+
+def xrd_statinfo2dict(response_statinfo: xrd_client.responses.StatInfo) -> dict:
+    """Convert a XRootD StatInfo answer to a dict"""
+    if not response_statinfo: return {}
+    return {'size': response_statinfo.size, 'flags': response_statinfo.flags, 'modtime': response_statinfo.modtime, 'modtimestr': response_statinfo.modtimestr}
+
 
 
 def xrdstat2dict(xrdstat: tuple) -> dict:
     """Convert a XRootD status answer to a dict"""
     if not xrdstat: return {}
     xrd_stat, xrd_info = xrdstat
-    xrdstat_dict = { 'status': xrd_stat.status, 'code': xrd_stat.code, 'errno': xrd_stat.errno, 'message': xrd_stat.message.strip(),
-                     'shellcode': xrd_stat.shellcode, 'error': xrd_stat.error, 'fatal': xrd_stat.fatal, 'ok': xrd_stat.ok }
-    if xrd_info:
-        xrdinfo_dict = {'size': xrd_info.size, 'flags': xrd_info.flags, 'modtime': xrd_info.modtime, 'modtimestr': xrd_info.modtimestr}
-    else:
-        xrdinfo_dict = {}
+    xrdstat_dict = xrd_response2dict(xrd_stat)
+    xrdinfo_dict = xrd_statinfo2dict(xrd_info)
     return {**xrdstat_dict, **xrdinfo_dict}
+
+
+def xrdfs_stat(pfn: str):
+    if not _HAS_XROOTD:
+        print_err('python XRootD module not found')
+        return None
+    url_components = urlparse(pfn)
+    endpoint = xrd_client.FileSystem(url_components.netloc)
+    return endpoint.stat(url_components.path)
 
 
 def xrdstat_flags2dict(flags: int) -> dict:
@@ -2911,6 +2999,26 @@ def xrdstat_flags2dict(flags: int) -> dict:
              'is_writable': bool(flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE),
              'posc_pending': bool(flags & xrd_client.flags.StatInfoFlags.POSC_PENDING),
              'backup_exists': bool(flags & xrd_client.flags.StatInfoFlags.BACKUP_EXISTS) }
+
+
+def is_pfn_readable(pfn: str) -> bool:
+    get_pfn_info = xrdstat2dict(xrdfs_stat(pfn))
+    if 'flags' in get_pfn_info:
+        pfn_flags = xrdstat_flags2dict(get_pfn_info['flags'])
+        return pfn_flags['is_readable']
+    else:
+        return False
+
+
+def DO_pfn(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if is_help(args):
+        msg = 'Command format : pfn [lfn]\nIt will print only the list of associated pfns (simplified form of whereis)'
+        return RET(0, msg)
+    args.insert(0, '-r')
+    ret_obj = SendMsg(wb, 'whereis', args, opts = 'nomsg')
+    msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
+    return ret_obj._replace(out = msg)
 
 
 def DO_pfnstatus(wb, args: Union[list, None] = None) -> RET:
@@ -2937,7 +3045,7 @@ def DO_pfnstatus(wb, args: Union[list, None] = None) -> RET:
     msg_all = None
     dict_results = { "results": [] }
     for pfn in pfn_list:
-        get_pfn_info = xrdstat2dict(xrd_stat(pfn['pfn']))
+        get_pfn_info = xrdstat2dict(xrdfs_stat(pfn['pfn']))
         if 'flags' in get_pfn_info:
             pfn_flags = xrdstat_flags2dict(get_pfn_info['flags'])
             get_pfn_info.pop('flags')
@@ -2982,15 +3090,14 @@ def DO_getSE(wb, args: list = None) -> RET:
     ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
     if ret_obj.exitcode != 0: return ret_obj
 
-    arg_select = None
+    arg_select = 'name'  # default return
+    get_arg(args, '-name')  # just remove it from args list
     if get_arg(args, '-id'): arg_select = 'id'
-    if get_arg(args, '-name'): arg_select = 'name'
     if get_arg(args, '-srv'): arg_select = 'srv'
-    if arg_select is None: arg_select = 'name'
 
     if not args:
-        se_list = [f"{se['seNumber']}\t{se['seName']}\t{se['endpointUrl'].replace('root://','')}" for se in ret_obj.ansdict["results"]]
-        return RET(0, '\n'.join(se_list))
+        se_list = [f"{se['seNumber'] : <6}{se['seName'] : <32}{urlparse(se['endpointUrl']).netloc.strip()}" for se in ret_obj.ansdict["results"]]
+        return RET(0, '\n'.join(se_list), '', ret_obj.ansdict)
 
     def match_name(se: Union[dict, None] = None, name: str = '') -> bool:
         if se is None or not name: return False
@@ -2998,52 +3105,41 @@ def DO_getSE(wb, args: list = None) -> RET:
         return name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold()
 
     se_name = args[-1].casefold()
-    se_list = []
     rez_list = []
-    for se in ret_obj.ansdict["results"]:
-        if match_name(se, se_name): se_list.append(se)
+    se_list = [ se for se in ret_obj.ansdict["results"] if match_name(se, se_name) ]
     if not se_list: return RET(1, '', f">{args[-1]}< label(s) not found in SE list")
 
     for se_info in se_list:
         srv_name = urlparse(se_info["endpointUrl"]).netloc.strip()
+        if arg_select == 'name': rez_list.append(se_info['seName'])
+        if arg_select == 'srv': rez_list.append(srv_name)
+
         if se_name.isdecimal():
-            if arg_select == 'name':
-                rez_list.append(se_info['seName'])
-            elif arg_select == 'srv':
-                rez_list.append(srv_name)
-            else:
-                rez_list.append(f"{se_info['seName']}    {srv_name}")
+            rez_list.append(f"{se_info['seName'] : <32}{srv_name}")
         else:
-            if arg_select == 'name':
-                rez_list.append(se_info['seName'])
-            elif arg_select == 'srv':
-                rez_list.append(srv_name)
-            elif arg_select == 'id':
+            if arg_select == 'id':
                 rez_list.append(se_info['seNumber'])
             else:
-                rez_list.append(f"{se_info['seNumber']}\t{se_info['seName']}\t\t{srv_name}")
+                rez_list.append(f"{se_info['seNumber'] : <6}{se_info['seName'] : <32}{srv_name}")
 
     if not rez_list: return RET(1, '', f"Empty result when searching for: {args[-1]}")
-    return RET(0, '\n'.join(rez_list))
-
-
-def get_qos(wb, se_str: str) -> str:
-    """Get qos tags for a given SE"""
-    if not wb: return ''
-    if '::' not in se_str: return ''  # the se name should have :: in it
-    ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
-    for se in ret_obj.ansdict["results"]:
-        if se["seName"].lower().replace('alice::', '') == se_str.lower().replace('alice::', ''):
-            return se["qos"]
-    return ''
+    return RET(0, '\n'.join(rez_list), '', {'results': se_list})
 
 
 def DO_SEqos(wb, args: list = None) -> RET:
-    if not wb: return []
+    if not wb: return RET()
     if not args or is_help(args):
         msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be ommited and capitalization does not matter)'
         return RET(0, msg)
-    return RET(0, get_qos(wb, args[0]))
+    sum_rez = []
+    for se_name in args:
+        ret_obj = DO_getSE(wb, [se_name])
+        if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+    if not sum_rez: return RET(1, '', f'No SE information found! -> {" ".join(args)}')
+    msg = None
+    for se in sum_rez:
+        msg = f'{msg if msg else ""}{se["seName"] : <32}{se["qos"]}\n'
+    return RET(0, msg, '', {'results': sum_rez})
 
 
 def get_lfn_meta(meta_fn: str) -> str:
