@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '4d52971'
-ALIENPY_VERSION_DATE = '20220904_223418'
+ALIENPY_VERSION_HASH = '3d473f4'
+ALIENPY_VERSION_DATE = '20220905_192522'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3169,8 +3169,8 @@ def DO_getSE(wb, args: list = None) -> RET:
     ret_obj = SendMsg(wb, 'listSEs', [], 'nomsg')
     if ret_obj.exitcode != 0: return ret_obj
 
-    arg_select = 'name'  # default return
-    get_arg(args, '-name')  # just remove it from args list
+    arg_select = ''  # default return
+    if get_arg(args, '-name'): arg_select = 'name'
     if get_arg(args, '-id'): arg_select = 'id'
     if get_arg(args, '-srv'): arg_select = 'srv'
 
@@ -3190,14 +3190,15 @@ def DO_getSE(wb, args: list = None) -> RET:
 
     for se_info in se_list:
         srv_name = urlparse(se_info["endpointUrl"]).netloc.strip()
-        if arg_select == 'name': rez_list.append(se_info['seName'])
-        if arg_select == 'srv': rez_list.append(srv_name)
-
-        if se_name.isdecimal():
-            rez_list.append(f"{se_info['seName'] : <32}{srv_name}")
+        if arg_select == 'name':
+            rez_list.append(se_info['seName'])
+        elif arg_select == 'srv':
+            rez_list.append(srv_name)
+        elif arg_select == 'id':
+            rez_list.append(se_info['seNumber'])
         else:
-            if arg_select == 'id':
-                rez_list.append(se_info['seNumber'])
+            if se_name.isdecimal():
+                rez_list.append(f"{se_info['seName'] : <32}{srv_name}")
             else:
                 rez_list.append(f"{se_info['seNumber'] : <6}{se_info['seName'] : <32}{srv_name}")
 
