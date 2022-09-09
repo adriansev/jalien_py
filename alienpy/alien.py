@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '3d473f4'
-ALIENPY_VERSION_DATE = '20220905_192522'
+ALIENPY_VERSION_HASH = 'c10de3f'
+ALIENPY_VERSION_DATE = '20220909_104438'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -1801,35 +1801,62 @@ def file2file_dict(fn: str) -> dict:
     return file_dict
 
 
-def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None]) -> bool:
+def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex) -> bool:
     """Return True if an file dict object pass the conditions in find_opts"""
     if not f_obj or not base_dir: return False
     if not find_opts: return True
     opts = find_opts.split() if isinstance(find_opts, str) else find_opts.copy()
+    lfn = get_lfn_key(f_obj)
+    if not base_dir.endswith('/'): base_dir = f'{base_dir}/'
+    relative_lfn = lfn.replace(base_dir, '')  # it will have N directories depth + 1 file components
 
-    min_depth = get_arg_value(opts, '-mindepth')
-    if min_depth:
-        if not min_depth.isdigit() or min_depth.startswith("-"):
-            print_err(f'filter_file_prop::mindepth arg not recognized: {" ".join(opts)}')
-            return False
+    # string/pattern exclusion
+    exclude_string = get_arg_value(opts, '-exclude')
+    if exclude_string:
+        if exclude_string in relative_lfn: return False  # this is filtering out the string from relative lfn
 
-    max_depth = get_arg_value(opts, '-maxdepth')
-    if max_depth:
-        if not max_depth.isdigit() or max_depth.startswith("-"):
-            print_err(f'filter_file_prop::maxdepth arg not recognized: {" ".join(opts)}')
-            return False
+    exclude_regex = get_arg_value(opts, '-exclude_re')
+    if exclude_regex and compiled_regex:
+        if compiled_regex.match(relative_lfn): return False
 
     min_size = get_arg_value(opts, '-minsize')
     if min_size:
         if not min_size.isdigit() or min_size.startswith("-"):
             print_err(f'filter_file_prop::minsize arg not recognized: {" ".join(opts)}')
             return False
+        if int(f_obj["size"]) < abs(int(min_size)): return False
 
     max_size = get_arg_value(opts, '-maxsize')
     if max_size:
         if not max_size.isdigit() or max_size.startswith("-"):
             print_err(f'filter_file_prop::maxsize arg not recognized: {" ".join(opts)}')
             return False
+        if int(f_obj["size"]) > abs(int(max_size)): return False
+
+    jobid = get_arg_value(opts, '-jobid')
+    if jobid:
+        if not jobid.isdigit() or jobid.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
+
+        if "jobid" not in f_obj:
+            print_err('filter_file_prop::jobid - could not find jobid information in file dictionary, selection failed!')
+            return False
+        if f_obj["jobid"] != jobid: return False
+
+    user = get_arg_value(opts, '-user')
+    if user:
+        if not user.isalpha() or user.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
+        if f_obj["owner"] != user: return False
+
+    group = get_arg_value(opts, '-group')
+    if group:
+        if not group.isalpha() or group.startswith("-"):
+            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
+            return False
+        if f_obj["gowner"] != group: return False
 
     min_ctime = get_arg_value(opts, '-min-ctime')
     if min_ctime:
@@ -1842,41 +1869,6 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
         if max_ctime.startswith("-"):
             print_err(f'filter_file_prop::max-ctime arg not recognized: {" ".join(opts)}')
             return False
-
-    jobid = get_arg_value(opts, '-jobid')
-    if jobid:
-        if not jobid.isdigit() or jobid.startswith("-"):
-            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-            return False
-
-    user = get_arg_value(opts, '-user')
-    if user:
-        if not user.isalpha() or user.startswith("-"):
-            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-            return False
-
-    group = get_arg_value(opts, '-group')
-    if group:
-        if not group.isalpha() or group.startswith("-"):
-            print_err(f'filter_file_prop::Missing argument in list:: {" ".join(opts)}')
-            return False
-
-    if min_depth or max_depth:
-        lfn = get_lfn_key(f_obj)
-        relative_lfn = lfn.replace(base_dir, '')  # it will have N directories + 1 file components
-
-        if min_depth:
-            min_depth = abs(int(min_depth)) + 1  # add +1 for the always present file component of relative_lfn
-            if len(relative_lfn.split('/')) < min_depth: return False
-
-        if max_depth:
-            max_depth = abs(int(max_depth)) + 1  # add +1 for the always present file component of relative_lfn
-            if len(relative_lfn.split('/')) > max_depth: return False
-
-    if min_size and int(f_obj["size"]) < abs(int(min_size)): return False
-    if max_size and int(f_obj["size"]) > abs(int(max_size)): return False
-    if user and f_obj["owner"] != user: return False
-    if group and f_obj["gowner"] != group: return False
 
     # the argument can be a string with a form like: '20.12.2016 09:38:42,76','%d.%m.%Y %H:%M:%S,%f'
     # see: https://docs.python.org/3.6/library/datetime.html#strftime-strptime-behavior
@@ -1893,11 +1885,21 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
             max_ctime = time_str2unixmili(max_ctime)
             if int(dict_time) > max_ctime: return False
 
-    if jobid:
-        if "jobid" not in f_obj:
-            print_err('filter_file_prop::jobid - could not find jobid information in file dictionary, selection failed!')
+    min_depth = get_arg_value(opts, '-mindepth')
+    if min_depth:
+        if not min_depth.isdigit() or min_depth.startswith("-"):
+            print_err(f'filter_file_prop::mindepth arg not recognized: {" ".join(opts)}')
             return False
-        if f_obj["jobid"] != jobid: return False
+        min_depth = abs(int(min_depth)) + 1  # add +1 for the always present file component of relative_lfn
+        if len(relative_lfn.split('/')) < min_depth: return False
+
+    max_depth = get_arg_value(opts, '-maxdepth')
+    if max_depth:
+        if not max_depth.isdigit() or max_depth.startswith("-"):
+            print_err(f'filter_file_prop::maxdepth arg not recognized: {" ".join(opts)}')
+            return False
+        max_depth = abs(int(max_depth)) + 1  # add +1 for the always present file component of relative_lfn
+        if len(relative_lfn.split('/')) > max_depth: return False
 
     return True
 
@@ -1959,6 +1961,14 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
         get_arg(find_args_list, '-d')
         get_arg(find_args_list, '-w')
         get_arg(find_args_list, '-wh')
+
+        exclude_string = get_arg_value(find_args_list, '-exclude')
+        if exclude_string:
+            filter_args_list.extend(['-exclude', exclude_string])
+
+        exclude_regex = get_arg_value(find_args_list, '-exclude_re')
+        if exclude_regex:
+            filter_args_list.extend(['-exclude_re', exclude_regex])
 
         min_depth = get_arg_value(find_args_list, '-mindepth')
         if min_depth:
@@ -2048,10 +2058,12 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     results_list = ret_obj.ansdict["results"]
     results_list_filtered = []
     # items that pass the conditions are the actual/final results
+
+    compiled_regex = re.compile(exclude_regex) if exclude_regex else None  # precompile the regex for exclusion
+
     for found_lfn_dict in results_list:  # parse results to apply filters
-        if not filter_file_prop(found_lfn_dict, search_dir, filter_args_list): continue
-        # at this point all filters were passed
-        results_list_filtered.append(found_lfn_dict)
+        if not filter_file_prop(found_lfn_dict, search_dir, filter_args_list, compiled_regex): continue
+        results_list_filtered.append(found_lfn_dict)  # at this point all filters were passed
 
     if not results_list_filtered:
         return RET(2, "", f"No files passed the filters :: {search_dir} /pattern: {pattern} /find_args: {find_args}")
