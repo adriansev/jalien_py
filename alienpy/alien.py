@@ -89,8 +89,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'c10de3f'
-ALIENPY_VERSION_DATE = '20220909_104438'
+ALIENPY_VERSION_HASH = '8515c06'
+ALIENPY_VERSION_DATE = '20220909_205055'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3063,26 +3063,44 @@ def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
     return RET(0, msg)
 
 
-
-
-
-
-
-
 def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args or is_help(args):
-        msg = ('Command format: xrd_config fqdn[:port] | SE name | SE id\n'
-               'It will use the XRootD query config to get the current server properties')
+        msg = ('Command format: xrd_config [-v | -verbose] fqdn[:port] | SE name | SE id\n'
+               'It will use the XRootD query config to get the current server properties\n'
+               'verbose mode will print more about the server configuration')
         return RET(0, msg)
+    verbose = get_arg(args, '-v') or get_arg(args, '-verbose')
 
+    sum_rez = []
+    for se_name in args:
+        ret_obj = DO_getSE(wb, ['-srv', se_name])
+        if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
 
+    # maybe user want to ping servers outside of ALICE redirectors list
+    if not sum_rez:
+        for arg in args: sum_rez.append({'seName': arg, 'endpointUrl': f'root://{arg}'})
 
+    config_list = []
+    msg_list = []
+    for se in sum_rez:
+        se_name = se['seName']
+        se_fqdn = urlparse(se['endpointUrl']).netloc
+        cfg = xrdfs_q_config(se_fqdn)
+        config_list.append(cfg)
 
+        msg = f'Site/XrdVer: {cfg["sitename"]}/{cfg["version"]} ; TPC status: {cfg["tpc"]} ; role: {cfg["role"]} ; CMS: {cfg["cms"]}'
+        if verbose:
+            msg = ( f'{msg}\n'
+                    f'Chksum type: {cfg["chksum"]} ; Bind max: {cfg["bind_max"]} ; PIO max: {cfg["pio_max"]} ; '
+                    f'Window/WAN window: {cfg["window"]}/{cfg["wan_window"]} ; readv_{{ior,iov}}_max: {cfg["readv_ior_max"]}/{cfg["readv_iov_max"]}' )
 
+        msg_list.append(msg)
 
-
+    results_dict = {'results': config_list}
+    msg_all = '\n'.join(msg_list)
+    return RET(0, msg_all, '', results_dict)
 
 
 def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
@@ -3092,6 +3110,18 @@ def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
         msg = ('Command format: xrd_stats [-c count] fqdn[:port] | SE name | SE id\n'
                'It will use the XRootD query stats option to get the server metrics')
         return RET(0, msg)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
