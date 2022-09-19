@@ -8,6 +8,7 @@ if sys.version_info[0] < 3:
 if sys.version_info[0] == 3 and sys.version_info[1] < 6:
     print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True); sys.exit(1)
 import atexit
+import ast
 import json
 import re
 import signal
@@ -34,7 +35,7 @@ import threading
 import grp
 import pwd
 # import stat
-import xml.dom.minidom
+import xml.dom.minidom as MD
 import xml.etree.ElementTree as ET
 import zipfile
 import difflib
@@ -47,13 +48,13 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
         import async_stagger
     except Exception:
-        print("async_stagger module could not be load", file=sys.stderr, flush = True)
+        print("async_stagger module could not be load", file = sys.stderr, flush = True)
         sys.exit(1)
 
 try:
     import OpenSSL
 except Exception:
-    print("websockets module could not be load", file=sys.stderr, flush = True)
+    print("websockets module could not be load", file = sys.stderr, flush = True)
     sys.exit(1)
 
 try:
@@ -62,7 +63,7 @@ try:
     import websockets.version as wb_version
     from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 except Exception:
-    print("websockets module could not be load", file=sys.stderr, flush = True)
+    print("websockets module could not be load", file = sys.stderr, flush = True)
     sys.exit(1)
 
 try:
@@ -72,10 +73,13 @@ except Exception:
     _HAS_XROOTD = False
 
 try:
-    import rich
+    # import rich
     from rich.pretty import pprint
+    _HAS_PPRINT = True
 except Exception:
-    print("rich module could not be load", file=sys.stderr, flush = True)
+    print("rich module could not be load", file = sys.stderr, flush = True)
+    _HAS_PPRINT = False
+
 
 try:
     import readline as rl
@@ -89,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '8515c06'
-ALIENPY_VERSION_DATE = '20220909_205055'
+ALIENPY_VERSION_HASH = 'a1e420b'
+ALIENPY_VERSION_DATE = '20220919_175406'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -477,17 +481,26 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
     if not time_arg:
         return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
     time_arg = str(time_arg)
-    if (time_arg.isdigit() or is_float(time_arg)) and (len(time_arg) != 10 or len(time_arg) != 13): return int(-1)
-    if is_float(time_arg) and len(time_arg) == 10:
-        return int(float(time_arg) * 1000)
-    if time_arg.isdigit() and len(time_arg) == 13:
-        return int(time_arg)
-    # asume that this is a strptime arguments in the form of: time_str, format_str
-    try:
-        time_obj = eval(f'datetime.datetime.strptime({time_arg})')
-        return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
-    except Exception:
-        return int(-1)
+
+    if time_arg.isdigit() or is_float(time_arg):
+        if is_float(time_arg) and len(time_arg) == 10:
+            return int(float(time_arg) * 1000)
+        elif time_arg.isdigit() and len(time_arg) == 13:
+            return int(time_arg)
+        else:
+            return int(-1)
+    else:
+        # asume that this is a strptime arguments in the form of: time_str, format_str
+        try:
+            time_obj = eval(f'datetime.datetime.strptime({time_arg})')
+            return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+        except Exception:
+            return int(-1)
+
+
+def unquote_str(arg):
+    if type(arg) == str: return ast.literal_eval(arg)
+    return arg
 
 
 #########################
@@ -760,14 +773,17 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
     return ret_obj
 
 
-def PrintDict(in_arg: Union[str, dict, list]):
+def PrintDict(in_arg: Union[str, dict, list], compact: bool = False):
     """Print a dictionary in a nice format"""
     if isinstance(in_arg, str):
         try:
             in_arg = json.loads(in_arg)
         except Exception as e:
             print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
-    print_out(json.dumps(in_arg, sort_keys = True, indent = 4))
+    if compact:
+        print_out(json.dumps(in_arg, sort_keys = False, indent = None, separators = (',', ':') ))
+    else:
+        print_out(json.dumps(in_arg, sort_keys = False, indent = 2 ))
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
@@ -1448,7 +1464,6 @@ def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] =
         return ''
     result = lfnAccessUrl(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
     if not result: return ''
-    # pprint(result)
     size_4meta = result['results'][0]['size']  # size SHOULD be the same for all replicas
     md5_4meta = result['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
     file_in_zip = None
@@ -2884,7 +2899,8 @@ def xrdfs_q_config(fqdn_port: str) -> dict:
     if not _HAS_XROOTD:
         print_err('python XRootD module not found')
         return None
-    endpoint = xrd_client.FileSystem(fqdn_port)
+    endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
+ 
     config_args_list = ['bind_max', 'chksum', 'pio_max', 'readv_ior_max', 'readv_iov_max', 'tpc', 'wan_port', 'wan_window', 'window', 'cms', 'role', 'sitename', 'version']
     config_dict = {}
     for cfg in config_args_list:
@@ -2905,7 +2921,7 @@ def xrdfs_ping(fqdn_port: str):
     if not _HAS_XROOTD:
         print_err('python XRootD module not found')
         return None
-    endpoint = xrd_client.FileSystem(fqdn_port)
+    endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
     result, _  = endpoint.ping(timeout = 2)  # ping the server 1st time to eliminate strange 1st time behaviour
 
     time_begin = time.perf_counter()
@@ -2917,11 +2933,11 @@ def xrdfs_ping(fqdn_port: str):
     return response_dict
 
 
-def xrdfs_q_stats(fqdn_port: str, xml: bool = False):
+def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, compact: bool = False):
     if not _HAS_XROOTD:
         print_err('python XRootD module not found')
         return None
-    endpoint = xrd_client.FileSystem(fqdn_port)
+    endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
     q_status, response = endpoint.query(1, 'a')  # get the stats (ALL)
     status = xrd_response2dict(q_status)
     if not status['ok']:
@@ -2929,18 +2945,22 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False):
         return ''
 
     response = response.decode('ascii').strip().strip('\x00')
+    # if xml is requested or xmltodict missing
+    if xml:
+        if xml_raw: return response
+        # xml_stats = ET.fromstring(response)
+        # return ET.dump(xml_stats)
+        xml_stats = MD.parseString(response)
+        indent = '  '
+        newl = '\n'
+        if compact: indent = newl = ''
+        return xml_stats.toprettyxml(indent = indent, newl = newl).replace('&quot;','"')
 
-    xmltodict_present = True
     try:
         import xmltodict
     except Exception:
-        print_err('Could not import xmltodict')
-        xmltodict_present = False
-
-    # if xml is requested or xmltodict missing
-    if xml or not xmltodict_present:
-        xml_stats = ET.fromstring(response)
-        return ET.dump(xml_stats)
+        print_err('Could not import xmltodict, cannot convert the xml output to a dict view. try -xml argument')
+        return None
 
     q_stats_dict = xmltodict.parse(response, attr_prefix = '')['statistics']
     old_stats = q_stats_dict.pop('stats')
@@ -2998,7 +3018,7 @@ def xrdfs_stat(pfn: str):
         return None
     url_components = urlparse(pfn)
     endpoint = xrd_client.FileSystem(url_components.netloc)
-    return endpoint.stat(url_components.path)
+    return endpoint.stat(f'{url_components.path}?xrd.wantprot=unix')
 
 
 def xrdstat_flags2dict(flags: int) -> dict:
@@ -3030,8 +3050,8 @@ def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
                'It will use the XRootD connect/ping option to connect and return a RTT')
         return RET(0, msg)
 
-    count = int(get_arg_value(args, '-c'))
-    if not count: count = 3
+    count_arg = get_arg_value(args, '-c')
+    count = int(count_arg) if count_arg else 3
 
     sum_rez = []
     for se_name in args:
@@ -3072,11 +3092,16 @@ def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
                'verbose mode will print more about the server configuration')
         return RET(0, msg)
     verbose = get_arg(args, '-v') or get_arg(args, '-verbose')
+    all_alice_sites = get_arg(args, '-a') or get_arg(args, '-all')
 
     sum_rez = []
-    for se_name in args:
-        ret_obj = DO_getSE(wb, ['-srv', se_name])
+    if all_alice_sites:
+        ret_obj = DO_getSE(wb, ['-srv'])
         if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+    else:
+        for se_name in args:
+            ret_obj = DO_getSE(wb, ['-srv', se_name])
+            if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
 
     # maybe user want to ping servers outside of ALICE redirectors list
     if not sum_rez:
@@ -3088,9 +3113,13 @@ def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
         se_name = se['seName']
         se_fqdn = urlparse(se['endpointUrl']).netloc
         cfg = xrdfs_q_config(se_fqdn)
+        if not cfg or 'sitename' not in cfg: continue
+        cfg['seName'] = se_name  # xrootd 'sitename' could be undefined
+        cfg['endpointUrl'] = se_fqdn
+        if cfg['sitename'] == "NOT_SET" or not cfg['sitename']: cfg['sitename'] = se['seName']
         config_list.append(cfg)
 
-        msg = f'Site/XrdVer: {cfg["sitename"]}/{cfg["version"]} ; TPC status: {cfg["tpc"]} ; role: {cfg["role"]} ; CMS: {cfg["cms"]}'
+        msg = f'Site/XrdVer: {cfg["sitename"] if cfg["sitename"] != "NOT_SET" or not cfg["sitename"] else cfg["seName"]}/{cfg["version"]} ; TPC status: {cfg["tpc"]} ; role: {cfg["role"]} ; CMS: {cfg["cms"]}'
         if verbose:
             msg = ( f'{msg}\n'
                     f'Chksum type: {cfg["chksum"]} ; Bind max: {cfg["bind_max"]} ; PIO max: {cfg["pio_max"]} ; '
@@ -3107,9 +3136,57 @@ def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
     if not args or is_help(args):
-        msg = ('Command format: xrd_stats [-c count] fqdn[:port] | SE name | SE id\n'
-               'It will use the XRootD query stats option to get the server metrics')
+        msg = ('Command format: xrd_stats [ -xml | -xmlraw | -compact  ]  fqdn[:port] | SE name | SE id\n'
+               'It will use the XRootD query stats option to get the server metrics\n'
+               '-xml : print xml output (native to xrootd)\n'
+               '-xmlraw : print rawxml output without any indentation\n'
+               '-compact : print the most compact version of the output, with minimal white space\n' )
         return RET(0, msg)
+    compact = get_arg(args, '-compact')
+    xml_out = get_arg(args, '-xml')
+    xml_raw = get_arg(args, '-xmlraw')
+    if xml_raw: xml_out = True
+    all_alice_sites = get_arg(args, '-a') or get_arg(args, '-all')
+
+    sum_rez = []
+    if all_alice_sites:
+        ret_obj = DO_getSE(wb, ['-srv'])
+        if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+    else:
+        for se_name in args:
+            ret_obj = DO_getSE(wb, ['-srv', se_name])
+            if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+
+    # maybe user want to ping servers outside of ALICE redirectors list
+    if not sum_rez:
+        for arg in args: sum_rez.append({'seName': arg, 'endpointUrl': f'root://{arg}'})
+
+    stats_list = []
+    msg_list = []
+    for se in sum_rez:
+        se_name = se['seName']
+        se_fqdn = urlparse(se['endpointUrl']).netloc
+        stats = xrdfs_q_stats(se_fqdn, xml = xml_out, xml_raw = xml_raw, compact = compact)
+        if not stats: continue
+
+        if xml_out:
+            stats_list.append('XML output only, no json content')
+            msg_list.append(f'{stats}')
+            continue  # if plain xml output stop processing
+
+        stats['seName'] = se_name  # xrootd 'sitename' could be undefined
+        stats['endpointUrl'] = se_fqdn
+        if stats['site'] == "NOT_SET" or not stats['site']: stats['site'] = se['seName']
+        stats_list.append(stats)
+        indent = None if compact else '  '
+        separators = (',', ':') if compact else (', ', ': ')
+        msg_list.append(json.dumps(stats, indent = indent, separators = separators).replace('\\"', ''))
+
+    results_dict = {'results': stats_list}
+    msg_all = '\n'.join(msg_list)
+    exitcode = 1 if not results_dict else 0
+    return RET(exitcode, msg_all, '', results_dict)
+
 
 
 
@@ -3267,19 +3344,19 @@ def DO_SEqos(wb, args: list = None) -> RET:
 def get_lfn_meta(meta_fn: str) -> str:
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return ''
-    return xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue
+    return MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue
 
 
 def get_size_meta(meta_fn: str) -> int:
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return int(0)
-    return int(xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)
+    return int(MD.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return ('', '')
-    content = xml.dom.minidom.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
+    content = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
 
@@ -3401,7 +3478,7 @@ def mk_xml_local(filepath_list: list):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
         f = ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())  # noqa:F841
     oxml = ET.tostring(xml_root, encoding = 'ascii')
-    dom = xml.dom.minidom.parseString(oxml)
+    dom = MD.parseString(oxml)
     return dom.toprettyxml()
 
 
