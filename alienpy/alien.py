@@ -4,9 +4,9 @@
 import os
 import sys
 if sys.version_info[0] < 3:
-    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True); sys.exit(1)
+    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True); sys.exit(1)
 if sys.version_info[0] == 3 and sys.version_info[1] < 6:
-    print("This packages requires a minimum of Python version 3.6", file=sys.stderr, flush = True); sys.exit(1)
+    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True); sys.exit(1)
 import atexit
 import ast
 import json
@@ -35,8 +35,8 @@ import threading
 import grp
 import pwd
 # import stat
-import xml.dom.minidom as MD
-import xml.etree.ElementTree as ET
+import xml.dom.minidom as MD  # noqa: N812
+import xml.etree.ElementTree as ET  # noqa: N817
 import zipfile
 import difflib
 
@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'a1e420b'
-ALIENPY_VERSION_DATE = '20220919_175406'
+ALIENPY_VERSION_HASH = 'd77d4c2'
+ALIENPY_VERSION_DATE = '20220919_200035'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -492,7 +492,7 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
     else:
         # asume that this is a strptime arguments in the form of: time_str, format_str
         try:
-            time_obj = eval(f'datetime.datetime.strptime({time_arg})')
+            time_obj = ast.literal_eval(f'datetime.datetime.strptime({time_arg})')
             return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
         except Exception:
             return int(-1)
@@ -606,7 +606,7 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     await wb.send(jsonmsg)
     result = await wb.recv()
     if time_begin: logging.debug(f'>>>__sendmsg time = {deltat_ms_perf(time_begin)} ms')
-    return result
+    return result  # noqa: R504
 
 
 @syncify
@@ -656,7 +656,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         try:
             result = __sendmsg(wb, jsonmsg)
         except Exception as e:
-            if e.__cause__:
+            if e.__cause__:  # noqa: PLW0125
                 logging.exception(f'SendMsg:: failure because of {e.__cause__}')
             logging.exception(e)
             wb = InitConnection()
@@ -673,7 +673,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
     if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_us_perf(time_begin_decode)} us")
-    return ret_obj
+    return ret_obj  # noqa: R504
 
 
 def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
@@ -701,7 +701,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     result_list = None
     while result_list is None:
         if nr_tries > 3: break
-        nr_tries += 1        
+        nr_tries += 1
         try:
             result_list = __sendmsg_multi(wb, json_cmd_list)
         except (wb_exceptions.ConnectionClosed, wb_exceptions.ConnectionClosedError, wb_exceptions.ConnectionClosedOK) as e:
@@ -723,7 +723,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
     if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin_decode)} ms")
-    return ret_obj_list
+    return ret_obj_list  # noqa: R504
 
 
 def retf_result2ret(result: Union[str, dict, None]) -> RET:
@@ -770,7 +770,7 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
             if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
         else:
             push2stack(short_current_dir)
-    return ret_obj
+    return ret_obj  # noqa: R504
 
 
 def PrintDict(in_arg: Union[str, dict, list], compact: bool = False):
@@ -781,9 +781,9 @@ def PrintDict(in_arg: Union[str, dict, list], compact: bool = False):
         except Exception as e:
             print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
     if compact:
-        print_out(json.dumps(in_arg, sort_keys = False, indent = None, separators = (',', ':') ))
+        print_out(json.dumps(in_arg, sort_keys = False, indent = None, separators = (',', ':')))
     else:
-        print_out(json.dumps(in_arg, sort_keys = False, indent = 2 ))
+        print_out(json.dumps(in_arg, sort_keys = False, indent = 2))
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
@@ -986,7 +986,7 @@ def pid_uid(pid: int) -> int:
                 if line.startswith('Uid:'): uid = int((line.split()[1]))
     except Exception:
         pass
-    return uid
+    return uid  # noqa: R504
 
 
 def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
@@ -1096,7 +1096,7 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     else:
         val = dq.popleft()
         if len(dq) > 1: dq.rotate(abs(pos) - 1)
-    return val
+    return val  # noqa: R504
 
 
 def list_remove_item(target_list: list, item_list):
@@ -1118,7 +1118,7 @@ def get_arg_value(target: list, item):
         if x == item:
             val = target.pop(target.index(x) + 1)
             target.pop(target.index(x))
-    return val
+    return val  # noqa: R504
 
 
 def get_arg_2values(target: list, item):
@@ -1142,7 +1142,7 @@ def gid2name(gid: Union[str, int]) -> str:
     try:
         group_info = grp.getgrgid(int(gid))
         return group_info.gr_name
-    except:
+    except Exception:
         return str(gid)
 
 
@@ -1156,7 +1156,7 @@ def check_path_perm(filepath: str, mode) -> bool:
         have_access = os.access(filepath, mode, follow_symlinks = True)
     except Exception:
         pass
-    return have_access
+    return have_access  # noqa: R504
 
 
 def path_readable(filepath: str = '') -> bool:
@@ -1315,7 +1315,7 @@ def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
                 print_out(msg)
             else:
                 print_err(msg)
-    sys.exit(int(code))
+    sys.exit(int(code))  # noqa: R503
 
 
 def xrdcp_help() -> str:
@@ -1375,7 +1375,7 @@ def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
 
 
-def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> int:
+def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , printout: str = ''
     """xrdcp based task that process a copyfile and it's arguments"""
     if not copy_job: return int(2)
     overwrite = xrd_cp_args.overwrite
@@ -1389,7 +1389,7 @@ def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '
     return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
 
-def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
+def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
     """XRootD copy command :: the actual XRootD copy process"""
     if not _HAS_XROOTD:
         print_err("XRootD not found or lower version thant 5.3.3")
@@ -1528,7 +1528,7 @@ def expand_path_local(path_arg: str, strict: bool = False) -> str:
     except Exception:
         return ''
     if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
-    return exp_path
+    return exp_path  # noqa: R504
 
 
 def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
@@ -1588,7 +1588,7 @@ def expand_path_grid(path_arg: str) -> str:
     if not exp_path.startswith('/'): exp_path = f'{AlienSessionInfo["currentdir"]}/{exp_path}'  # if not full path add current directory to the referenced path
     exp_path = os.path.normpath(exp_path)
     if is_dir: exp_path = f'{exp_path}/'
-    return exp_path
+    return exp_path  # noqa: R504
 
 
 def pathtype_grid(wb, path: str) -> str:
@@ -1666,26 +1666,25 @@ def format_dst_fn(src_dir, src_file, dst, parent):
         total_relative_path = src_file.replace(src_dir, '', 1)
         src_dir_path = Path(src_dir)
         src_dir_parts = src_dir_path.parts
-        if not src_dir.endswith('/'): src_dir_parts[:] = src_dir_parts[:-1]
+        if not src_dir.endswith('/'): src_dir_parts = src_dir_parts[:-1]
         src_dir = '/'.join(map(lambda x: str(x or ''), src_dir_parts))
         src_dir = src_dir.replace('//', '/')
         components_list = src_dir.split('/')
         components_list[0] = '/'  # first slash is lost in split
         file_components = len(components_list)  # it's directory'
-        if parent >= file_components: parent = file_components  # make sure maximum parent var point to first dir in path
+        parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
         parent_selection = components_list[(file_components - parent):]
         rootdir_src_dir = '/'.join(parent_selection)
         file_relative_name = f'{rootdir_src_dir}/{total_relative_path}'
     else:
         src_file_path = Path(src_file)
         file_components = len(src_file_path.parts) - 1 - 1  # without the file and up to slash
-        if parent >= file_components: parent = file_components  # make sure maximum parent var point to first dir in path
+        parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
         rootdir_src_file = src_file_path.parents[parent].as_posix()
         file_relative_name = src_file.replace(rootdir_src_file, '', 1)
 
     dst_file = f'{dst}/{file_relative_name}' if dst.endswith('/') else dst
-    dst_file = re.sub(r"\/{2,}", "/", dst_file)
-    return dst_file
+    return os.path.normpath(dst_file)
 
 
 def setDst(file: str = '', parent: int = 0) -> str:
@@ -1752,7 +1751,7 @@ def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
         regex = re.compile(regex_str.encode('unicode-escape').decode())  # try to no hit https://docs.python.org/3.6/howto/regex.html#the-backslash-plague
     except re.error:
         logging.error(f"regex validation failed:: {regex_str}")
-    return regex
+    return regex  # noqa: R504
 
 
 def name2regex(pattern_regex: str = '') -> str:
@@ -1791,7 +1790,7 @@ def name2regex(pattern_regex: str = '') -> str:
                 translated_pattern_regex = f'{translated_pattern_regex}' + '$'
             else:
                 translated_pattern_regex = f'{translated_pattern_regex}{re_all_end}' + '$'
-    return translated_pattern_regex
+    return translated_pattern_regex  # noqa: R504
 
 
 def file2file_dict(fn: str) -> dict:
@@ -1816,7 +1815,7 @@ def file2file_dict(fn: str) -> dict:
     return file_dict
 
 
-def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex) -> bool:
+def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex = None) -> bool:
     """Return True if an file dict object pass the conditions in find_opts"""
     if not f_obj or not base_dir: return False
     if not find_opts: return True
@@ -1827,12 +1826,10 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
 
     # string/pattern exclusion
     exclude_string = get_arg_value(opts, '-exclude')
-    if exclude_string:
-        if exclude_string in relative_lfn: return False  # this is filtering out the string from relative lfn
+    if exclude_string and exclude_string in relative_lfn: return False  # this is filtering out the string from relative lfn
 
     exclude_regex = get_arg_value(opts, '-exclude_re')
-    if exclude_regex and compiled_regex:
-        if compiled_regex.match(relative_lfn): return False
+    if exclude_regex and compiled_regex and compiled_regex.match(relative_lfn): return False
 
     min_size = get_arg_value(opts, '-minsize')
     if min_size:
@@ -1874,16 +1871,14 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
         if f_obj["gowner"] != group: return False
 
     min_ctime = get_arg_value(opts, '-min-ctime')
-    if min_ctime:
-        if min_ctime.startswith("-"):
-            print_err(f'filter_file_prop::min-ctime arg not recognized: {" ".join(opts)}')
-            return False
+    if min_ctime and min_ctime.startswith("-"):
+        print_err(f'filter_file_prop::min-ctime arg not recognized: {" ".join(opts)}')
+        return False
 
     max_ctime = get_arg_value(opts, '-max-ctime')
-    if max_ctime:
-        if max_ctime.startswith("-"):
-            print_err(f'filter_file_prop::max-ctime arg not recognized: {" ".join(opts)}')
-            return False
+    if max_ctime and max_ctime.startswith("-"):
+        print_err(f'filter_file_prop::max-ctime arg not recognized: {" ".join(opts)}')
+        return False
 
     # the argument can be a string with a form like: '20.12.2016 09:38:42,76','%d.%m.%Y %H:%M:%S,%f'
     # see: https://docs.python.org/3.6/library/datetime.html#strftime-strptime-behavior
@@ -1926,10 +1921,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     if not search_dir: return RET(-1, "", "No search directory specified")
 
     if find_args is None: find_args = []
-    if isinstance(find_args, str):
-        find_args_list = find_args.split() if find_args else []
-    else:
-        find_args_list = find_args.copy()
+    find_args_list = find_args.split() if isinstance(find_args, str) else find_args.copy()
 
     # lets process the pattern: extract it from src if is in the path globbing form
     is_single_file = False  # dir actually point to a file
@@ -1958,95 +1950,94 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789,PLC0123
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
-        if is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
-            if valid_regex(pattern) is None:
-                logging.error(f"list_files_grid:: {pattern} failed to re.compile")
-                return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
+        # it was explictly requested that pattern is regex
+        if is_regex and isinstance(pattern, str) and valid_regex(pattern) is None:
+            logging.error(f"list_files_grid:: {pattern} failed to re.compile")
+            return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
 
     # remove default from additional args
     filter_args_list = []
-    if find_args:
-        get_arg(find_args_list, '-a')
-        get_arg(find_args_list, '-s')
-        get_arg(find_args_list, '-f')
-        get_arg(find_args_list, '-d')
-        get_arg(find_args_list, '-w')
-        get_arg(find_args_list, '-wh')
+    get_arg(find_args_list, '-a')
+    get_arg(find_args_list, '-s')
+    get_arg(find_args_list, '-f')
+    get_arg(find_args_list, '-d')
+    get_arg(find_args_list, '-w')
+    get_arg(find_args_list, '-wh')
 
-        exclude_string = get_arg_value(find_args_list, '-exclude')
-        if exclude_string:
-            filter_args_list.extend(['-exclude', exclude_string])
+    exclude_string = get_arg_value(find_args_list, '-exclude')
+    if exclude_string:
+        filter_args_list.extend(['-exclude', exclude_string])
 
-        exclude_regex = get_arg_value(find_args_list, '-exclude_re')
-        if exclude_regex:
-            filter_args_list.extend(['-exclude_re', exclude_regex])
+    exclude_regex = get_arg_value(find_args_list, '-exclude_re')
+    if exclude_regex:
+        filter_args_list.extend(['-exclude_re', exclude_regex])
 
-        min_depth = get_arg_value(find_args_list, '-mindepth')
-        if min_depth:
-            if not min_depth.isdigit() or min_depth.startswith("-"):
-                print_err(f'list_files_grid::mindepth arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-mindepth', min_depth])
+    min_depth = get_arg_value(find_args_list, '-mindepth')
+    if min_depth:
+        if not min_depth.isdigit() or min_depth.startswith("-"):
+            print_err(f'list_files_grid::mindepth arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-mindepth', min_depth])
 
-        max_depth = get_arg_value(find_args_list, '-maxdepth')
-        if max_depth:
-            if not max_depth.isdigit() or max_depth.startswith("-"):
-                print_err(f'list_files_grid::maxdepth arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-maxdepth', max_depth])
+    max_depth = get_arg_value(find_args_list, '-maxdepth')
+    if max_depth:
+        if not max_depth.isdigit() or max_depth.startswith("-"):
+            print_err(f'list_files_grid::maxdepth arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-maxdepth', max_depth])
 
-        min_size = get_arg_value(find_args_list, '-minsize')
-        if min_size:
-            if not min_size.isdigit() or min_size.startswith("-"):
-                print_err(f'list_files_grid::minsize arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-minsize', min_size])
+    min_size = get_arg_value(find_args_list, '-minsize')
+    if min_size:
+        if not min_size.isdigit() or min_size.startswith("-"):
+            print_err(f'list_files_grid::minsize arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-minsize', min_size])
 
-        max_size = get_arg_value(find_args_list, '-maxsize')
-        if max_size:
-            if not max_size.isdigit() or max_size.startswith("-"):
-                print_err(f'list_files_grid::maxsize arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-maxsize', max_size])
+    max_size = get_arg_value(find_args_list, '-maxsize')
+    if max_size:
+        if not max_size.isdigit() or max_size.startswith("-"):
+            print_err(f'list_files_grid::maxsize arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-maxsize', max_size])
 
-        min_ctime = get_arg_value(find_args_list, '-min-ctime')
-        if min_ctime:
-            if min_ctime.startswith("-"):
-                print_err(f'list_files_grid::min-ctime arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-min-ctime', min_ctime])
+    min_ctime = get_arg_value(find_args_list, '-min-ctime')
+    if min_ctime:
+        if min_ctime.startswith("-"):
+            print_err(f'list_files_grid::min-ctime arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-min-ctime', min_ctime])
 
-        max_ctime = get_arg_value(find_args_list, '-max-ctime')
-        if max_ctime:
-            if max_ctime.startswith("-"):
-                print_err(f'list_files_grid::max-ctime arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-max-ctime', max_ctime])
+    max_ctime = get_arg_value(find_args_list, '-max-ctime')
+    if max_ctime:
+        if max_ctime.startswith("-"):
+            print_err(f'list_files_grid::max-ctime arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-max-ctime', max_ctime])
 
-        jobid = get_arg_value(find_args_list, '-jobid')
-        if jobid:
-            if not jobid.isdigit() or jobid.startswith("-"):
-                print_err(f'list_files_grid::jobid arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-jobid', jobid])
+    jobid = get_arg_value(find_args_list, '-jobid')
+    if jobid:
+        if not jobid.isdigit() or jobid.startswith("-"):
+            print_err(f'list_files_grid::jobid arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-jobid', jobid])
 
-        user = get_arg_value(find_args_list, '-user')
-        if user:
-            if not user.isalpha() or user.startswith("-"):
-                print_err(f'list_files_grid::user arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-user', user])
+    user = get_arg_value(find_args_list, '-user')
+    if user:
+        if not user.isalpha() or user.startswith("-"):
+            print_err(f'list_files_grid::user arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-user', user])
 
-        group = get_arg_value(find_args_list, '-group')
-        if group:
-            if not group.isalpha() or group.startswith("-"):
-                print_err(f'list_files_grid::group arg not recognized: {" ".join(find_args_list)}')
-            else:
-                filter_args_list.extend(['-group', group])
+    group = get_arg_value(find_args_list, '-group')
+    if group:
+        if not group.isalpha() or group.startswith("-"):
+            print_err(f'list_files_grid::group arg not recognized: {" ".join(find_args_list)}')
+        else:
+            filter_args_list.extend(['-group', group])
 
     # create and return the list object just for a single file
     if is_single_file:
@@ -2074,7 +2065,8 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     results_list_filtered = []
     # items that pass the conditions are the actual/final results
 
-    compiled_regex = re.compile(exclude_regex) if exclude_regex else None  # precompile the regex for exclusion
+    compiled_regex = None
+    if exclude_regex: compiled_regex = re.compile(exclude_regex)   # precompile the regex for exclusion
 
     for found_lfn_dict in results_list:  # parse results to apply filters
         if not filter_file_prop(found_lfn_dict, search_dir, filter_args_list, compiled_regex): continue
@@ -2151,7 +2143,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     results_list_filtered = []
     # items that pass the conditions are the actual/final results
     for found_lfn_dict in results_list:  # parse results to apply filters
-        if not filter_file_prop(found_lfn_dict, directory, filter_args_list): continue
+        if not filter_file_prop(found_lfn_dict, directory, filter_args_list, regex): continue
         # at this point all filters were passed
         results_list_filtered.append(found_lfn_dict)
 
@@ -2212,11 +2204,11 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
-        if is_regex and type(pattern) is str:  # it was explictly requested that pattern is regex
-            if valid_regex(pattern) is None:
-                msg = f"makelist_lfn:: {pattern} failed to re.compile"
-                logging.error(msg)
-                return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+        # it was explictly requested that pattern is regex
+        if is_regex and type(pattern) is str and valid_regex(pattern) is None:
+            msg = f"makelist_lfn:: {pattern} failed to re.compile"
+            logging.error(msg)
+            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
 
     slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
     # N.B.!!! the check will be wrong when the same relative path is present local and on grid
@@ -2268,7 +2260,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
         if not dst_stat.type:  # dst does not exists
             ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
-            if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result
+            if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result  # noqa: R504
 
     specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
     specs_list = specs_split.split(specs) if specs else []
@@ -2462,7 +2454,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Dump')
         XRD_EnvPut('XRD_LOGLEVEL', 'Dump')
 
-    XRD_LOG='xrdlog.txt'
+    XRD_LOG = 'xrdlog.txt'
     xrd_logfile_arg = get_arg_value(xrd_copy_command, '-xrdlog')
     if xrd_logfile_arg:
         if os.getenv('XRD_LOGFILE'): print_out(f'XRD_LOGFILE already set, it will be overwritten with {xrd_logfile_arg}')
@@ -2614,7 +2606,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             retf_print(retobj, "noout err")  # print error and continue with the other files
     else:
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
-        if retobj.exitcode != 0: return retobj  # if any error let's just return what we got
+        if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504
 
     if not copy_lfnlist:  # at this point if any errors, the processing was already stopped
         return RET(0)
@@ -2776,20 +2768,20 @@ if _HAS_XROOTD:
                     expire = '0'
                     self.succesful_writes.append(CommitInfo(replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5']))
                 else:  # isDownload
-                    if 'ALIENPY_NOXRDZIP' in os.environ:  # NOXRDZIP was requested
-                        if os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
-                            src_file_name = os.path.basename(xrdjob.lfn)
-                            dst_file_name = os.path.basename(xrdjob.dst)
-                            dst_file_path = os.path.dirname(xrdjob.dst)
-                            zip_name = f'{xrdjob.dst}_{uuid.uuid4()}.zip'
-                            os.replace(xrdjob.dst, zip_name)
-                            with zipfile.ZipFile(zip_name) as myzip:
-                                if src_file_name in myzip.namelist():
-                                    out_path = myzip.extract(src_file_name, path = dst_file_path)
-                                    if out_path and (src_file_name != dst_file_name): os.replace(src_file_name, dst_file_name)
-                                else:  # the downloaded file is actually a zip file
-                                    os.replace(zip_name, xrdjob.dst)
-                            if os.path.isfile(zip_name): os.remove(zip_name)
+                    # NOXRDZIP was requested
+                    if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
+                        src_file_name = os.path.basename(xrdjob.lfn)
+                        dst_file_name = os.path.basename(xrdjob.dst)
+                        dst_file_path = os.path.dirname(xrdjob.dst)
+                        zip_name = f'{xrdjob.dst}_{uuid.uuid4()}.zip'
+                        os.replace(xrdjob.dst, zip_name)
+                        with zipfile.ZipFile(zip_name) as myzip:
+                            if src_file_name in myzip.namelist():
+                                out_path = myzip.extract(src_file_name, path = dst_file_path)
+                                if out_path and (src_file_name != dst_file_name): os.replace(src_file_name, dst_file_name)
+                            else:  # the downloaded file is actually a zip file
+                                os.replace(zip_name, xrdjob.dst)
+                        if os.path.isfile(zip_name): os.remove(zip_name)
 
                 if not ('quiet' in self.printout or 'silent' in self.printout):
                     print_out(f"{job_status_info} >>> SPEED {speed_str}")
@@ -2900,7 +2892,7 @@ def xrdfs_q_config(fqdn_port: str) -> dict:
         print_err('python XRootD module not found')
         return None
     endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
- 
+
     config_args_list = ['bind_max', 'chksum', 'pio_max', 'readv_ior_max', 'readv_iov_max', 'tpc', 'wan_port', 'wan_window', 'window', 'cms', 'role', 'sitename', 'version']
     config_dict = {}
     for cfg in config_args_list:
@@ -2922,10 +2914,10 @@ def xrdfs_ping(fqdn_port: str):
         print_err('python XRootD module not found')
         return None
     endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
-    result, _  = endpoint.ping(timeout = 2)  # ping the server 1st time to eliminate strange 1st time behaviour
+    result, _ = endpoint.ping(timeout = 2)  # ping the server 1st time to eliminate strange 1st time behaviour
 
     time_begin = time.perf_counter()
-    result, _  = endpoint.ping(timeout = 2)  # ping the server
+    result, _ = endpoint.ping(timeout = 2)  # ping the server
     ping_ms = deltat_ms_perf(time_begin)
 
     response_dict = xrd_response2dict(result)
@@ -2954,7 +2946,7 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
         indent = '  '
         newl = '\n'
         if compact: indent = newl = ''
-        return xml_stats.toprettyxml(indent = indent, newl = newl).replace('&quot;','"')
+        return xml_stats.toprettyxml(indent = indent, newl = newl).replace('&quot;', '"')
 
     try:
         import xmltodict
@@ -2967,13 +2959,12 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
 
     # it will mutate the input
     def convert_dict(input_dict: dict, head_key: str = 'id'):
-        if isinstance(input_dict, dict):
-            if head_key in input_dict:
-                working_dict = dict(input_dict)
-                key_name = working_dict.pop('id')
-                new_dict = {key_name: working_dict}
-                input_dict.clear()
-                input_dict.update(new_dict)
+        if isinstance(input_dict, dict) and head_key in input_dict:
+            working_dict = dict(input_dict)
+            key_name = working_dict.pop('id')
+            new_dict = {key_name: working_dict}
+            input_dict.clear()
+            input_dict.update(new_dict)
 
     for id_entry in old_stats:
         convert_dict(id_entry)
@@ -2992,15 +2983,14 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
 def xrd_response2dict(response_status: xrd_client.responses.XRootDStatus) -> dict:
     """Convert a XRootD response status answer to a dict"""
     if not response_status: return {}
-    return { 'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
-             'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok }
+    return {'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
+            'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok}
 
 
 def xrd_statinfo2dict(response_statinfo: xrd_client.responses.StatInfo) -> dict:
     """Convert a XRootD StatInfo answer to a dict"""
     if not response_statinfo: return {}
     return {'size': response_statinfo.size, 'flags': response_statinfo.flags, 'modtime': response_statinfo.modtime, 'modtimestr': response_statinfo.modtimestr}
-
 
 
 def xrdstat2dict(xrdstat: tuple) -> dict:
@@ -3023,14 +3013,14 @@ def xrdfs_stat(pfn: str):
 
 def xrdstat_flags2dict(flags: int) -> dict:
     """Convert the flags information of a XRootD file status to a dict"""
-    return { 'x_bit_set': bool(flags & xrd_client.flags.StatInfoFlags.X_BIT_SET),
-             'is_dir': bool(flags & xrd_client.flags.StatInfoFlags.IS_DIR),
-             'other': bool(flags & xrd_client.flags.StatInfoFlags.OTHER),
-             'offline': bool(flags & xrd_client.flags.StatInfoFlags.OFFLINE),
-             'is_readable': bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE),
-             'is_writable': bool(flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE),
-             'posc_pending': bool(flags & xrd_client.flags.StatInfoFlags.POSC_PENDING),
-             'backup_exists': bool(flags & xrd_client.flags.StatInfoFlags.BACKUP_EXISTS) }
+    return {'x_bit_set': bool(flags & xrd_client.flags.StatInfoFlags.X_BIT_SET),
+            'is_dir': bool(flags & xrd_client.flags.StatInfoFlags.IS_DIR),
+            'other': bool(flags & xrd_client.flags.StatInfoFlags.OTHER),
+            'offline': bool(flags & xrd_client.flags.StatInfoFlags.OFFLINE),
+            'is_readable': bool(flags & xrd_client.flags.StatInfoFlags.IS_READABLE),
+            'is_writable': bool(flags & xrd_client.flags.StatInfoFlags.IS_WRITABLE),
+            'posc_pending': bool(flags & xrd_client.flags.StatInfoFlags.POSC_PENDING),
+            'backup_exists': bool(flags & xrd_client.flags.StatInfoFlags.BACKUP_EXISTS)}
 
 
 def is_pfn_readable(pfn: str) -> bool:
@@ -3061,7 +3051,7 @@ def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
     # maybe user want to ping servers outside of ALICE redirectors list
     if not sum_rez:
         for arg in args: sum_rez.append({'seName': arg, 'endpointUrl': f'root://{arg}'})
-        
+
     msg = f'XRootD ping(s): {count} time(s) to:'
     for se in sum_rez:
         se_name = se['seName']
@@ -3070,7 +3060,7 @@ def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
         results_list = []
         for _i in range(count): results_list.append(xrdfs_ping(se_fqdn))
 
-        results = [ res['ping_time_ms'] for res in results_list if res['ok'] ]
+        results = [res['ping_time_ms'] for res in results_list if res['ok']]
         if results:
             rtt_min = min(results)
             rtt_max = max(results)
@@ -3121,9 +3111,9 @@ def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
 
         msg = f'Site/XrdVer: {cfg["sitename"] if cfg["sitename"] != "NOT_SET" or not cfg["sitename"] else cfg["seName"]}/{cfg["version"]} ; TPC status: {cfg["tpc"]} ; role: {cfg["role"]} ; CMS: {cfg["cms"]}'
         if verbose:
-            msg = ( f'{msg}\n'
-                    f'Chksum type: {cfg["chksum"]} ; Bind max: {cfg["bind_max"]} ; PIO max: {cfg["pio_max"]} ; '
-                    f'Window/WAN window: {cfg["window"]}/{cfg["wan_window"]} ; readv_{{ior,iov}}_max: {cfg["readv_ior_max"]}/{cfg["readv_iov_max"]}' )
+            msg = (f'{msg}\n'
+                   f'Chksum type: {cfg["chksum"]} ; Bind max: {cfg["bind_max"]} ; PIO max: {cfg["pio_max"]} ; '
+                   f'Window/WAN window: {cfg["window"]}/{cfg["wan_window"]} ; readv_{{ior,iov}}_max: {cfg["readv_ior_max"]}/{cfg["readv_iov_max"]}')
 
         msg_list.append(msg)
 
@@ -3140,7 +3130,7 @@ def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
                'It will use the XRootD query stats option to get the server metrics\n'
                '-xml : print xml output (native to xrootd)\n'
                '-xmlraw : print rawxml output without any indentation\n'
-               '-compact : print the most compact version of the output, with minimal white space\n' )
+               '-compact : print the most compact version of the output, with minimal white space\n')
         return RET(0, msg)
     compact = get_arg(args, '-compact')
     xml_out = get_arg(args, '-xml')
@@ -3188,26 +3178,6 @@ def DO_xrd_stats(wb, args: Union[list, None] = None) -> RET:
     return RET(exitcode, msg_all, '', results_dict)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def DO_pfn(wb, args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if is_help(args):
@@ -3237,11 +3207,11 @@ def DO_pfnstatus(wb, args: Union[list, None] = None) -> RET:
             # we assume that it's a lfn
             file_path = expand_path_grid(arg)
             pfns_ret = DO_pfn(wb, [file_path])
-            pfn_list_found = [ {'lfn': file_path, 'pfn': str(item['pfn'])} for item in pfns_ret.ansdict['results'] if 'pfn' in item ]
+            pfn_list_found = [{'lfn': file_path, 'pfn': str(item['pfn'])} for item in pfns_ret.ansdict['results'] if 'pfn' in item]
             pfn_list.extend(pfn_list_found)
 
     msg_all = None
-    dict_results = { "results": [] }
+    dict_results = {"results": []}
     for pfn in pfn_list:
         get_pfn_info = xrdstat2dict(xrdfs_stat(pfn['pfn']))
         if 'flags' in get_pfn_info:
@@ -3257,12 +3227,12 @@ def DO_pfnstatus(wb, args: Union[list, None] = None) -> RET:
         if pfn_info['ok']:
             # ( f'{msg if msg else ""}'
             msg = f'{msg if msg else ""}{pfn["pfn"]}\t\tSize: {pfn_info["size"]}\tR/W status:{int(pfn_info["is_readable"])}/{int(pfn_info["is_writable"])}\n'
-            if verbose: msg = ( f'{msg}'
-                                f'IS DIR/OTHER/OFFLINE: {int(pfn_info["is_dir"])}/{int(pfn_info["other"])}/{int(pfn_info["offline"])}\t'
-                                f'Modified: {pfn_info["modtimestr"]}\tPOSC pending: {int(pfn_info["posc_pending"])}\t\tBACKUP: {int(pfn_info["backup_exists"])}\n' )
+            if verbose: msg = (f'{msg}'
+                               f'IS DIR/OTHER/OFFLINE: {int(pfn_info["is_dir"])}/{int(pfn_info["other"])}/{int(pfn_info["offline"])}\t'
+                               f'Modified: {pfn_info["modtimestr"]}\tPOSC pending: {int(pfn_info["posc_pending"])}\t\tBACKUP: {int(pfn_info["backup_exists"])}\n')
         else:
-            msg = ( f'{msg if msg else ""}'
-                    f'{pfn["pfn"]}\t\tMessage: {pfn_info["message"]}\tStatus/Code/ErrNo:{pfn_info["status"]}/{pfn_info["code"]}/{pfn_info["errno"]}\n' )
+            msg = (f'{msg if msg else ""}'
+                   f'{pfn["pfn"]}\t\tMessage: {pfn_info["message"]}\tStatus/Code/ErrNo:{pfn_info["status"]}/{pfn_info["code"]}/{pfn_info["errno"]}\n')
 
         msg_all = f'{msg_all if msg_all else ""}{msg}'
 
@@ -3304,7 +3274,7 @@ def DO_getSE(wb, args: list = None) -> RET:
 
     se_name = args[-1].casefold()
     rez_list = []
-    se_list = [ se for se in ret_obj.ansdict["results"] if match_name(se, se_name) ]
+    se_list = [se for se in ret_obj.ansdict["results"] if match_name(se, se_name)]
     if not se_list: return RET(1, '', f">{args[-1]}< label(s) not found in SE list")
 
     for se_info in se_list:
@@ -3443,7 +3413,7 @@ def queryML(args: list = None) -> RET:
 
     if args: predicate = args[0]
     url = f"{alimon}{predicate}{type_default}"
-    req = urlreq.urlopen(url)
+    req = urlreq.urlopen(url)  # noqa: PLR1732
     ansraw = req.read().decode()
 
     stdout = stderr = ansdict = None
@@ -3820,7 +3790,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
         ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
-        if ret_obj.exitcode != 0: return ret_obj
+        if ret_obj.exitcode != 0: return ret_obj  # noqa: R504
         md5_end = md5(tmp)
         if md5_begin != md5_end:
             uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
@@ -4091,7 +4061,7 @@ def check_ip_port(socket_object: tuple) -> bool:
             is_open = True
         except Exception:
             pass
-    return is_open
+    return is_open  # noqa: R504
 
 
 def check_port(address: str, port: Union[str, int]) -> list:
@@ -4212,8 +4182,7 @@ def lfn_list(wb, lfn: str = ''):
     else:
         listing = get_list_entries(wb, base_dir)
         list_lfns = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
-    # print_out(f'\n{list_lfns}\n')
-    return list_lfns
+    return list_lfns  # noqa: R504
 
 
 def wb_ping(wb) -> float:
@@ -4459,14 +4428,14 @@ def get_token_filenames() -> tuple:
     random_str = None
     if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)  # noqa: PLR1732
         temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         AlienSessionInfo['templist'].append(tokencert)
     if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
-        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)
+        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)  # noqa: PLR1732
         temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
@@ -4582,9 +4551,9 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
             try:
                 if _DEBUG: init_begin = time.perf_counter()
                 wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
-                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
-                                              ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
-                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
+                                             max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
+                                             ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
+                                             close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
                 if _DEBUG:
                     logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
             except Exception as e:
@@ -4691,9 +4660,8 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
             if _DEBUG: logging.debug(msg)
             if _TIME_CONNECT: print_out(msg)
 
-    if AlienSessionInfo['use_usercert']:  # if usercert connection
-        # always regenerate token if connected with usercert
-        if token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
+    # if usercert connection always regenerate token if connected with usercert
+    if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
     return wb
 
 
@@ -4896,7 +4864,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
     if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
         ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
-    return ret_obj
+    return ret_obj  # noqa: R504
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
