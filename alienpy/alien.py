@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'd77d4c2'
-ALIENPY_VERSION_DATE = '20220919_200035'
+ALIENPY_VERSION_HASH = '4e852d5'
+ALIENPY_VERSION_DATE = '20220919_204312'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -153,11 +153,12 @@ def _is_valid_xrootd() -> bool:
         _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_2 = xrd_ver_arr[1]
         return int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
-    else:  # version is not of x.y.z form, this is git based form
-        xrdver_git = xrd_ver_arr[0].split("-")
-        _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
-        _XRDVER_2 = xrdver_git[1]
-        return int(_XRDVER_1) > 20211113
+
+    # version is not of x.y.z form, this is git based form
+    xrdver_git = xrd_ver_arr[0].split("-")
+    _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
+    _XRDVER_2 = xrdver_git[1]
+    return int(_XRDVER_1) > 20211113
 
 
 # use only 5.3 versions and up - reference point
@@ -414,7 +415,7 @@ class AliEn:
         """Get the websocket, to be used in other functions"""
         return self.internal_wb
 
-    def help(self):  # pylint: disable=no-self-use
+    def help(self):
         """Print help message"""
         print_out('Methods of AliEn session:\n'
                   '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
@@ -485,17 +486,16 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
     if time_arg.isdigit() or is_float(time_arg):
         if is_float(time_arg) and len(time_arg) == 10:
             return int(float(time_arg) * 1000)
-        elif time_arg.isdigit() and len(time_arg) == 13:
+        if time_arg.isdigit() and len(time_arg) == 13:
             return int(time_arg)
-        else:
-            return int(-1)
-    else:
-        # asume that this is a strptime arguments in the form of: time_str, format_str
-        try:
-            time_obj = ast.literal_eval(f'datetime.datetime.strptime({time_arg})')
-            return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
-        except Exception:
-            return int(-1)
+        return int(-1)
+
+    # asume that this is a strptime arguments in the form of: time_str, format_str
+    try:
+        time_obj = ast.literal_eval(f'datetime.datetime.strptime({time_arg})')
+        return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+    except Exception:
+        return int(-1)
 
 
 def unquote_str(arg):
@@ -710,9 +710,9 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
             logging.exception(e)
             try:
                 wb = InitConnection()
-            except Exception as e:
+            except Exception as e_conn:
                 logging.error(f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}')
-                logging.exception(e)
+                logging.exception(e_conn)
         except Exception as e:
             logging.exception(e)
         if result_list is None: time.sleep(0.2)
@@ -3028,8 +3028,7 @@ def is_pfn_readable(pfn: str) -> bool:
     if 'flags' in get_pfn_info:
         pfn_flags = xrdstat_flags2dict(get_pfn_info['flags'])
         return pfn_flags['is_readable']
-    else:
-        return False
+    return False
 
 
 def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
