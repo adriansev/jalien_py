@@ -3,10 +3,10 @@
 
 import os
 import sys
-if sys.version_info[0] < 3:
-    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True); sys.exit(1)
-if sys.version_info[0] == 3 and sys.version_info[1] < 6:
-    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True); sys.exit(1)
+if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 6):
+    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True);
+    sys.exit(1)
+
 import atexit
 import ast
 import json
@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '98350aa'
-ALIENPY_VERSION_DATE = '20220920_191853'
+ALIENPY_VERSION_HASH = '1d48e03'
+ALIENPY_VERSION_DATE = '20220920_192243'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
