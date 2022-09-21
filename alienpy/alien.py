@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'bdcafb8'
-ALIENPY_VERSION_DATE = '20220921_203056'
+ALIENPY_VERSION_HASH = 'a0d5944'
+ALIENPY_VERSION_DATE = '20220921_211603'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -771,7 +771,11 @@ def start_asyncio():
     ready = threading.Event()
 
     def _cancel_all_tasks(loop_to_cancel):
-        to_cancel = asyncio.Task.all_tasks(loop_to_cancel) if sys.version_info[1] < 8 else asyncio.all_tasks(loop_to_cancel)
+        to_cancel = None
+        if sys.version_info[1] < 7:
+            to_cancel = asyncio.Task.all_tasks(loop_to_cancel)
+        else:
+            to_cancel = asyncio.all_tasks(loop_to_cancel)
         if not to_cancel: return
         for task in to_cancel: task.cancel()
         loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
@@ -781,7 +785,7 @@ def start_asyncio():
             if task.exception() is not None:
                 loop_to_cancel.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task})
 
-    def run(mainasync, *, debug=False):
+    def run(mainasync, *, debug = False):
         global _alienpy_global_asyncio_loop
         if asyncio.events._get_running_loop() is not None: raise RuntimeError('asyncio.run() cannot be called from a running event loop')  # pylint: disable=protected-access
         if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError(f'a coroutine was expected, got {mainasync!r}')
