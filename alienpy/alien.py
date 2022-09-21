@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'ef6732c'
-ALIENPY_VERSION_DATE = '20220921_194128'
+ALIENPY_VERSION_HASH = '589cd75'
+ALIENPY_VERSION_DATE = '20220921_202548'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -3829,8 +3829,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                 except Exception as e:
                     logging.exception(e)
                     return RET(1, '', f'Error writing {output_file}')
-            else:
-                return RET(0, xml_coll)
+            return RET(0, xml_coll)
         else:
             grid_args = []
             if ignore_missing: grid_args.append('-i')
@@ -3863,8 +3862,7 @@ def DO_2xml(wb, args: Union[list, None] = None) -> RET:
                 output_file = lfn_prefix_re.sub('', output_file)
                 with open(output_file, 'w', encoding = "ascii", errors = "replace") as f: f.write(xml_coll)
                 return RET(0)
-            else:
-                return RET(0, xml_coll)
+            return RET(0, xml_coll)
         else:
             grid_args = []
             if ignore_missing: grid_args.append('-i')
