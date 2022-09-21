@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'cca8361'
-ALIENPY_VERSION_DATE = '20220920_192609'
+ALIENPY_VERSION_HASH = '37f082c'
+ALIENPY_VERSION_DATE = '20220921_172108'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -125,13 +125,51 @@ _JSON_OUT_GLOBAL = _JSON_OUT
 _DEBUG = os.getenv('ALIENPY_DEBUG', '')
 _DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
 _TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
-_TMPDIR = os.getenv('TMPDIR', '/tmp')
 _DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
+_TMPDIR = os.getenv('TMPDIR', '/tmp')
+
+__TOKENCERT_NAME = f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'
+__TOKENKEY_NAME = f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem'
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'use_usercert': False, 'alias_cache': {},
-                    'pathq': deque([]), 'show_date': False, 'show_lpwd': False}
+                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
+                    'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
+                    'use_usercert': False, 'verified_cert': False, 'verified_token': False}
+
+
+#############################################
+###   ENABLE LOGGING BEFORE ANYTHIN ELSE
+#############################################
+def setup_logging():
+    global _DEBUG_FILE
+    logging.addLevelName(90, 'STDOUT')
+    logging.addLevelName(95, 'STDERR')
+    MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
+    line_fmt = '%(levelname)s:%(asctime)s %(message)s'
+    file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
+    try:
+        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    except Exception:
+        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to /tmp')
+        _DEBUG_FILE = f'/tmp/{os.path.basename(_DEBUG_FILE)}'
+    try:
+        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+    except Exception:
+        print_err(f'Could not write the log file {_DEBUG_FILE}')
+
+    logging.getLogger().setLevel(MSG_LVL)
+    logging.getLogger('wb_client').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_CONCURENT'):
+        logging.getLogger('concurrent').setLevel(MSG_LVL)
+        logging.getLogger('concurrent.futures').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_ASYNCIO'):
+        logging.getLogger('asyncio').setLevel(MSG_LVL)
+    if os.getenv('ALIENPY_DEBUG_STAGGER'):
+        logging.getLogger('async_stagger').setLevel(MSG_LVL)
+
+
+setup_logging()
 
 
 if _HAS_READLINE:
@@ -181,6 +219,11 @@ if _HAS_XROOTD:
     # Override the application name reported to the xrootd server.
     XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
     _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
+
+
+##############################################
+##   Start of data strucutures definitons
+##############################################
 
 
 class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
@@ -423,6 +466,238 @@ class AliEn:
                   '.wb() : return the session WebSocket to be used with other function within alien.py')
 
 
+##############################################
+##   Start of functions definitions
+##############################################
+
+
+def print_out(msg: str, toLog: bool = False):
+    if toLog:
+        logging.log(90, msg)
+    else:
+        print(msg, flush = True)
+
+
+def print_err(msg: str, toLog: bool = False):
+    if toLog:
+        logging.log(95, msg)
+    else:
+        print(msg, file=sys.stderr, flush = True)
+
+
+def expand_path_local(path_arg: str, strict: bool = False) -> str:
+    """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
+    if not path_arg: return ''
+    exp_path = None
+    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
+    try:
+        exp_path = Path(path_arg).expanduser().resolve(strict).as_posix()
+    except Exception:
+        return ''
+    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
+    return exp_path  # noqa: R504
+
+
+def check_path_perm(filepath: str, mode) -> bool:
+    """Resolve a file/path and check if mode is valid"""
+    filepath = expand_path_local(filepath, True)
+    if not filepath: return False
+    if not mode: mode = os.F_OK
+    have_access = False
+    try:
+        have_access = os.access(filepath, mode, follow_symlinks = True)
+    except Exception:
+        pass
+    return have_access  # noqa: R504
+
+
+def path_readable(filepath: str = '') -> bool:
+    """Resolve a file/path and check if it is readable"""
+    return check_path_perm(filepath, os.R_OK)
+
+
+def path_writable(filepath: str = '') -> bool:
+    """Resolve a file/path and check if it is writable"""
+    return check_path_perm(filepath, os.W_OK)
+
+
+def path_writable_any(filepath: str = '') -> bool:
+    """Return true if any path in hierarchy is writable (starting with the longest path)"""
+    filepath = expand_path_local(filepath)  # do not use strict as the destination directory could not yet exists
+    if not filepath: return False
+    paths_list = [p.as_posix() for p in Path(filepath).parents]
+    if Path(filepath).is_dir(): paths_list.insert(0, filepath)
+    return any(path_writable(p) for p in paths_list)
+
+
+def get_files_cert() -> tuple:
+    return os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem')
+
+
+def get_token_names(files: bool = False) -> tuple:
+    if files:
+        return  __TOKENCERT_NAME, __TOKENKEY_NAME
+    else:
+        return os.getenv('JALIEN_TOKEN_CERT', __TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', __TOKENKEY_NAME)
+
+
+def get_ca_path() -> str:
+    """Return either the CA path or file; bailout application if not found"""
+    system_ca_path = '/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
+
+    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
+    if x509file:
+        if _DEBUG: logging.debug(f'X509_CERT_FILE = {x509file}')
+        return x509file
+
+    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
+    if x509dir:
+        if _DEBUG: logging.debug(f'X509_CERT_DIR = {x509dir}')
+        return x509dir
+
+    capath_default = None
+    if os.path.exists(alice_cvmfs_ca_path_lx):
+        capath_default = alice_cvmfs_ca_path_lx
+    elif os.path.exists(alice_cvmfs_ca_path_macos):
+        capath_default = alice_cvmfs_ca_path_macos
+    else:
+        if os.path.exists(system_ca_path): capath_default = system_ca_path
+
+    if not capath_default:
+        msg = "No CA location or files specified or found!!! Connection will not be possible!!"
+        print_err(msg)
+        logging.info(msg)
+        sys.exit(2)
+    if _DEBUG: logging.debug(f'CApath = {capath_default}')
+    return capath_default
+
+
+def IsValidCert(fname: str) -> bool:
+    """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
+    try:
+        with open(fname, encoding="ascii", errors="replace") as f:
+            cert_bytes = f.read()
+    except Exception:
+        logging.error(f'IsValidCert:: Unable to open certificate file {fname}')
+        return False
+
+    try:
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+    except Exception:
+        logging.error(f'IsValidCert:: Unable to load certificate {fname}')
+        return False
+
+    x509_notafter = x509.get_notAfter()
+    utc_time = datetime.datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
+    time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
+    time_current = int(datetime.datetime.now().timestamp())
+    time_remaining = time_notafter - time_current
+    if time_remaining < 1:
+        logging.error(f'IsValidCert:: Expired certificate {fname}')
+    return time_remaining > 300
+
+
+def get_valid_tokens() -> tuple:
+    """Get the token filenames, including the temporary ones used as env variables"""
+    global AlienSessionInfo
+    tokencert, tokenkey = get_token_names()
+    random_str = None
+    cert_suffix = None
+    if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
+        random_str = str(uuid.uuid4())
+        cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)  # noqa: PLR1732
+        temp_cert.write(tokencert.encode(encoding = "ascii", errors = "replace"))
+        temp_cert.seek(0)
+        tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
+        AlienSessionInfo['templist'].append(tokencert)
+    if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
+        if random_str is None: random_str = str(uuid.uuid4())
+        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)  # noqa: PLR1732
+        temp_key.write(tokenkey.encode(encoding = "ascii", errors = "replace"))
+        temp_key.seek(0)
+        tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
+        AlienSessionInfo['templist'].append(tokenkey)
+        
+    if (IsValidCert(tokencert) and path_readable(tokenkey)):
+        AlienSessionInfo['verified_token'] = True
+        return (tokencert, tokenkey)
+    return (None, None)
+
+
+def get_valid_certs() -> tuple:
+    """Return valid names for user certificate or None"""
+    global AlienSessionInfo
+    usercert, userkey = get_files_cert()
+    if AlienSessionInfo['verified_cert']: return usercert, userkey
+
+    INVALID = False
+    if not (path_readable(usercert) and path_readable(userkey)):
+        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection will not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
+        logging.info(msg)
+        INVALID = True
+    if not IsValidCert(usercert):
+        msg = f'Invalid/expired user certificate!! Check the content of {usercert}'
+        logging.info(msg)
+        INVALID = True
+    AlienSessionInfo['verified_cert'] = True  # This means that we already checked
+    if INVALID: return None, None
+    return usercert, userkey
+
+
+##################################################
+# Check the presence of user certs and bailout before anything else
+__tokencert, __tokenkey = get_valid_tokens()
+__usercert, __userkey = get_valid_certs()
+if not __usercert and not __tokencert:
+    print_err(f'No valid user certificate or token found!! check {_DEBUG_FILE} for further information and contact the developer if the information is not clear.')
+    sys.exit(126)
+
+##################################################
+
+def get_valid_auth_cred(use_usercert: bool = False) -> tuple:
+    """Return tuple of valid cert files to be used for ssl context"""
+    global AlienSessionInfo, __tokencert, __tokenkey, __usercert, __userkey
+    __usercert, __userkey = get_valid_certs()
+    __tokencert, __tokenkey = get_valid_tokens()
+
+    # token auth
+    if not use_usercert and __tokencert: return __tokencert, __tokenkey
+
+    # usercert auth
+    AlienSessionInfo['use_usercert'] = True
+    return __usercert, __userkey
+
+
+def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
+    """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
+    cert, key = get_valid_auth_cred(use_usercert)
+    if not cert:
+        print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
+        os._exit(126)
+
+    if _DEBUG: logging.debug(f"\nCert = {cert}\nKey = {key}\nCreating SSL context .. ")
+    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
+    ctx = ssl.SSLContext(ssl_protocol)
+    ctx.options |= ssl.OP_NO_SSLv3
+    ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+    ctx.check_hostname = False
+    if _DEBUG: logging.debug("SSL context:: Load verify locations")
+    ca_verify_location = get_ca_path()
+    if os.path.isfile(ca_verify_location):
+        ctx.load_verify_locations(cafile = ca_verify_location)
+    else:
+        ctx.load_verify_locations(capath = ca_verify_location)
+    if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    if _DEBUG: logging.debug("\nSSL context done.")
+    return ctx
+
+
+
+
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
     print_out(f"\nCought signal {sig}, let\'s exit")
@@ -443,20 +718,6 @@ def is_guid(guid: str) -> bool:
 def run_function(function_name: str, *args, **kwargs):
     """Python code:: run some arbitrary function name (found in globals) with arbitrary arguments"""
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
-
-
-def print_out(msg: str, toLog: bool = False):
-    if toLog:
-        logging.log(90, msg)
-    else:
-        print(msg, flush = True)
-
-
-def print_err(msg: str, toLog: bool = False):
-    if toLog:
-        logging.log(95, msg)
-    else:
-        print(msg, file=sys.stderr, flush = True)
 
 
 def is_float(arg: Union[str, float, None]) -> bool:
@@ -724,6 +985,114 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     ret_obj_list = [retf_result2ret(result) for result in result_list]
     if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin_decode)} ms")
     return ret_obj_list  # noqa: R504
+
+
+@syncify
+async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
+    """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
+    QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
+    MSG_SIZE = None  # int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
+    PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
+    PING_INTERVAL = PING_TIMEOUT  # Ping frame is sent every ping_interval seconds
+    CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
+    # https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol
+    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
+
+    wb = None
+    ctx = None
+    #  client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
+    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4})
+    headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{wb_version.version}')]
+    if localConnect:
+        fHostWSUrl = 'ws://localhost/'
+        logging.info(f'Request connection to : {fHostWSUrl}')
+        socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
+        try:
+            wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
+                                              max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
+                                              ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
+                                              close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
+        except Exception as e:
+            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
+            logging.error(msg)
+            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+            return None
+    else:
+        fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
+        ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
+        logging.info(f"Request connection to : {host}:{port}{path}")
+
+        socket_endpoint = None
+        # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
+        # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
+        try:
+            if _DEBUG:
+                logging.debug(f"TRY ENDPOINT: {host}:{port}")
+                init_begin = time.perf_counter()
+            if os.getenv('ALIENPY_NO_STAGGER'):
+                socket_endpoint = socket.create_connection((host, int(port)))
+            else:
+                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
+            if _DEBUG:
+                logging.debug(f'TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
+        except Exception as e:
+            msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
+            logging.error(msg)
+            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+            return None
+
+        if socket_endpoint:
+            socket_endpoint_addr = socket_endpoint.getpeername()[0]
+            socket_endpoint_port = socket_endpoint.getpeername()[1]
+            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}')
+            try:
+                if _DEBUG: init_begin = time.perf_counter()
+                wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
+                                             max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
+                                             ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
+                                             close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
+                if _DEBUG:
+                    logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
+            except Exception as e:
+                msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
+                logging.error(msg)
+                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+                return None
+        if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
+    return wb
+
+
+def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
+    """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
+    wb = None
+    nr_tries = 0
+    init_begin = None
+    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
+    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
+    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
+
+    while wb is None:
+        nr_tries += 1
+        try:
+            wb = wb_create(host, str(port), path, use_usercert, localConnect)
+        except Exception as e:
+            logging.error(f'{e!r}')
+        if not wb:
+            if nr_tries >= connect_tries:
+                logging.error(f'We tried on {host}:{port}{path} {nr_tries} times')
+                break
+            time.sleep(connect_tries_interval)
+
+    if init_begin:
+        fail_msg = 'trials ' if not wb else ''
+        msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
+        if _DEBUG: logging.debug(msg)
+        if _TIME_CONNECT: print_out(msg)
+
+    if wb and localConnect:
+        pid_filename = f'{_TMPDIR}/jboxpy_{os.getuid()}.pid'
+        writePidFile(pid_filename)
+    return wb
 
 
 def retf_result2ret(result: Union[str, dict, None]) -> RET:
@@ -1146,38 +1515,6 @@ def gid2name(gid: Union[str, int]) -> str:
         return str(gid)
 
 
-def check_path_perm(filepath: str, mode) -> bool:
-    """Resolve a file/path and check if mode is valid"""
-    filepath = expand_path_local(filepath, True)
-    if not filepath: return False
-    if not mode: mode = os.F_OK
-    have_access = False
-    try:
-        have_access = os.access(filepath, mode, follow_symlinks = True)
-    except Exception:
-        pass
-    return have_access  # noqa: R504
-
-
-def path_readable(filepath: str = '') -> bool:
-    """Resolve a file/path and check if it is readable"""
-    return check_path_perm(filepath, os.R_OK)
-
-
-def path_writable(filepath: str = '') -> bool:
-    """Resolve a file/path and check if it is writable"""
-    return check_path_perm(filepath, os.W_OK)
-
-
-def path_writable_any(filepath: str = '') -> bool:
-    """Return true if any path in hierarchy is writable (starting with the longest path)"""
-    filepath = expand_path_local(filepath)  # do not use strict as the destination directory could not yet exists
-    if not filepath: return False
-    paths_list = [p.as_posix() for p in Path(filepath).parents]
-    if Path(filepath).is_dir(): paths_list.insert(0, filepath)
-    return any(path_writable(p) for p in paths_list)
-
-
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
     """dirs"""
     return DO_path_stack(wb, 'dirs', args)
@@ -1516,19 +1853,6 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
     if specs is None: specs = []
     for l2f in input_lfn_list: access_list.append(lfn2fileTokens(wb, l2f, specs, isWrite, strictspec, httpurl))
     return access_list
-
-
-def expand_path_local(path_arg: str, strict: bool = False) -> str:
-    """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
-    if not path_arg: return ''
-    exp_path = ''
-    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
-    try:
-        exp_path = Path(path_arg).expanduser().resolve(strict).as_posix()
-    except Exception:
-        return ''
-    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
-    return exp_path  # noqa: R504
 
 
 def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
@@ -4219,17 +4543,6 @@ def DO_ping(wb, args: Union[list, None] = None) -> RET:
     return RET(0, msg)
 
 
-def get_files_cert() -> list:
-    return os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem')
-
-
-def get_token_names(files: bool = False) -> tuple:
-    if files:
-        return f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem'
-    else:
-        return os.getenv('JALIEN_TOKEN_CERT', f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'), os.getenv('JALIEN_TOKEN_KEY', f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem')
-
-
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Delete the token{cert,key}.pem files")
@@ -4237,31 +4550,6 @@ def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if os.path.exists(tokencert): os.remove(tokencert)
     if os.path.exists(tokenkey): os.remove(tokenkey)
     return RET(0, "Token was destroyed! Re-connect for token re-creation.")
-
-
-def IsValidCert(fname: str) -> bool:
-    """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
-    try:
-        with open(fname, encoding="ascii", errors="replace") as f:
-            cert_bytes = f.read()
-    except Exception:
-        logging.error(f'IsValidCert:: Unable to open certificate file {fname}')
-        return False
-
-    try:
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
-    except Exception:
-        logging.error(f'IsValidCert:: Unable to load certificate {fname}')
-        return False
-
-    x509_notafter = x509.get_notAfter()
-    utc_time = datetime.datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
-    time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
-    time_current = int(datetime.datetime.now().timestamp())
-    time_remaining = time_notafter - time_current
-    if time_remaining < 1:
-        logging.error(f'IsValidCert:: Expired certificate {fname}')
-    return time_remaining > 300
 
 
 def CertInfo(fname: str) -> RET:
@@ -4295,7 +4583,7 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_filenames()
+    tokencert, tokenkey = get_token_names()
     return CertInfo(tokencert)
 
 
@@ -4344,7 +4632,7 @@ def DO_certverify(args: Union[list, None] = None) -> RET:
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_filenames()
+    tokencert, tokenkey = get_token_names()
     return CertVerify(tokencert)
 
 
@@ -4383,219 +4671,9 @@ def DO_certkeymatch(args: Union[list, None] = None) -> RET:
 
 def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    cert, key = get_token_filenames()
+    cert, key = get_token_names()
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user token with key token", "")
     return CertKeyMatch(cert, key)
-
-
-def get_ca_path() -> str:
-    """Return either the CA path or file; bailout application if not found"""
-    system_ca_path = '/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
-
-    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
-    if x509file:
-        if _DEBUG: logging.debug(f'X509_CERT_FILE = {x509file}')
-        return x509file
-
-    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
-    if x509dir:
-        if _DEBUG: logging.debug(f'X509_CERT_DIR = {x509dir}')
-        return x509dir
-
-    capath_default = None
-    if os.path.exists(alice_cvmfs_ca_path_lx):
-        capath_default = alice_cvmfs_ca_path_lx
-    elif os.path.exists(alice_cvmfs_ca_path_macos):
-        capath_default = alice_cvmfs_ca_path_macos
-    else:
-        if os.path.exists(system_ca_path): capath_default = system_ca_path
-
-    if not capath_default:
-        msg = "No CA location or files specified or found!!! Connection will not be possible!!"
-        print_err(msg)
-        logging.info(msg)
-        sys.exit(2)
-    if _DEBUG: logging.debug(f'CApath = {capath_default}')
-    return capath_default
-
-
-def get_token_filenames() -> tuple:
-    """Get the token filenames, including the temporary ones used as env variables"""
-    global AlienSessionInfo
-    tokencert, tokenkey = get_token_names()
-    random_str = None
-    if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
-        random_str = str(uuid.uuid4())
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)  # noqa: PLR1732
-        temp_cert.write(tokencert.encode(encoding="ascii", errors="replace"))
-        temp_cert.seek(0)
-        tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        AlienSessionInfo['templist'].append(tokencert)
-    if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
-        if random_str is None: random_str = str(uuid.uuid4())
-        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = f'_{str(os.getuid())}_{random_str}.pem', delete = False)  # noqa: PLR1732
-        temp_key.write(tokenkey.encode(encoding="ascii", errors="replace"))
-        temp_key.seek(0)
-        tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
-        AlienSessionInfo['templist'].append(tokenkey)
-    return (tokencert, tokenkey) if (IsValidCert(tokencert) and path_readable(tokenkey)) else (None, None)
-
-
-def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
-    """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
-    global AlienSessionInfo
-    # SSL SETTINGS
-    cert = key = None  # vars for discovered credentials
-    usercert, userkey = get_files_cert()
-    tokencert, tokenkey = get_token_filenames()
-
-    if not use_usercert and (tokencert and tokenkey):  # token auth
-        cert, key = tokencert, tokenkey
-        AlienSessionInfo['use_usercert'] = False
-    else:                                              # usercert auth
-        if not (path_readable(usercert) and path_readable(userkey)):
-            msg = "User certificate files NOT FOUND!!! Connection will not be possible!!"
-            print_err(msg)
-            logging.info(msg)
-            sys.exit(126)
-        cert, key = usercert, userkey
-        if not IsValidCert(cert):
-            msg = f'Invalid user certificate!! Check the content of {cert}'
-            print_err(msg)
-            logging.info(msg)
-            sys.exit(129)
-        AlienSessionInfo['use_usercert'] = True
-
-    if _DEBUG: logging.debug(f"\nCert = {cert}\nKey = {key}\nCreating SSL context .. ")
-    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
-    ctx = ssl.SSLContext(ssl_protocol)
-    # try:
-    #    ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # Server uses only 80bit (sigh); set SECLEVEL only for newer than EL7
-    # except ssl.SSLError:
-    #    pass
-    ctx.options |= ssl.OP_NO_SSLv3
-    ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
-    ctx.check_hostname = False
-    if _DEBUG: logging.debug("SSL context:: Load verify locations")
-    ca_verify_location = get_ca_path()
-    if os.path.isfile(ca_verify_location):
-        ctx.load_verify_locations(cafile = ca_verify_location)
-    else:
-        ctx.load_verify_locations(capath = ca_verify_location)
-    if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
-    if _DEBUG: logging.debug("\nSSL context done.")
-    return ctx
-
-
-@syncify
-async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
-    """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
-    QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
-    MSG_SIZE = None  # int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
-    PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
-    PING_INTERVAL = PING_TIMEOUT  # Ping frame is sent every ping_interval seconds
-    CLOSE_TIMEOUT = int(10)  # maximum wait time in seconds for completing the closing handshake and terminating the TCP connection
-    # https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol
-    # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
-
-    wb = None
-    ctx = None
-    #  client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
-    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 4})
-    headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{wb_version.version}')]
-    if localConnect:
-        fHostWSUrl = 'ws://localhost/'
-        logging.info(f'Request connection to : {fHostWSUrl}')
-        socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
-        try:
-            wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
-                                              max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
-                                              ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
-                                              close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
-        except Exception as e:
-            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
-            logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
-            return None
-    else:
-        fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
-        ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
-        logging.info(f"Request connection to : {host}:{port}{path}")
-
-        socket_endpoint = None
-        # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
-        # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
-        try:
-            if _DEBUG:
-                logging.debug(f"TRY ENDPOINT: {host}:{port}")
-                init_begin = time.perf_counter()
-            if os.getenv('ALIENPY_NO_STAGGER'):
-                socket_endpoint = socket.create_connection((host, int(port)))
-            else:
-                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
-            if _DEBUG:
-                logging.debug(f'TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
-        except Exception as e:
-            msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
-            logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
-            return None
-
-        if socket_endpoint:
-            socket_endpoint_addr = socket_endpoint.getpeername()[0]
-            socket_endpoint_port = socket_endpoint.getpeername()[1]
-            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}')
-            try:
-                if _DEBUG: init_begin = time.perf_counter()
-                wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
-                                             max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
-                                             ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
-                                             close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
-                if _DEBUG:
-                    logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
-            except Exception as e:
-                msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
-                logging.error(msg)
-                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
-                return None
-        if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
-    return wb
-
-
-def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
-    """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
-    wb = None
-    nr_tries = 0
-    init_begin = None
-    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
-    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
-    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
-
-    while wb is None:
-        nr_tries += 1
-        try:
-            wb = wb_create(host, str(port), path, use_usercert, localConnect)
-        except Exception as e:
-            logging.error(f'{e!r}')
-        if not wb:
-            if nr_tries >= connect_tries:
-                logging.error(f'We tried on {host}:{port}{path} {nr_tries} times')
-                break
-            time.sleep(connect_tries_interval)
-
-    if init_begin:
-        fail_msg = 'trials ' if not wb else ''
-        msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
-        if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print_out(msg)
-
-    if wb and localConnect:
-        pid_filename = f'{_TMPDIR}/jboxpy_{os.getuid()}.pid'
-        writePidFile(pid_filename)
-    return wb
 
 
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
@@ -4971,34 +5049,6 @@ def JAlien(commands: str = '') -> int:
     return AlienSessionInfo['exitcode']  # exit with the last command exitcode run in interactive mode
 
 
-def setup_logging():
-    global _DEBUG_FILE
-    logging.addLevelName(90, 'STDOUT')
-    logging.addLevelName(95, 'STDERR')
-    MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
-    line_fmt = '%(levelname)s:%(asctime)s %(message)s'
-    file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
-    try:
-        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
-    except Exception:
-        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to /tmp')
-        _DEBUG_FILE = f'/tmp/{os.path.basename(_DEBUG_FILE)}'
-    try:
-        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
-    except Exception:
-        print_err(f'Could not write the log file {_DEBUG_FILE}')
-
-    logging.getLogger().setLevel(MSG_LVL)
-    logging.getLogger('wb_client').setLevel(MSG_LVL)
-    if os.getenv('ALIENPY_DEBUG_CONCURENT'):
-        logging.getLogger('concurrent').setLevel(MSG_LVL)
-        logging.getLogger('concurrent.futures').setLevel(MSG_LVL)
-    if os.getenv('ALIENPY_DEBUG_ASYNCIO'):
-        logging.getLogger('asyncio').setLevel(MSG_LVL)
-    if os.getenv('ALIENPY_DEBUG_STAGGER'):
-        logging.getLogger('async_stagger').setLevel(MSG_LVL)
-
-
 def main():
     global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, _DEBUG
     signal.signal(signal.SIGINT, signal_handler)
@@ -5012,7 +5062,6 @@ def main():
         _DEBUG = get_arg(sys.argv, '-debug')
         if _DEBUG: print_out(f'Debug enabled, logfile is: {_DEBUG_FILE}')
 
-    setup_logging()
     if _DEBUG:
         ret_obj = DO_version()
         logging.debug(f'{ret_obj.out}\n')
