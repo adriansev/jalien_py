@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '7eef617'
-ALIENPY_VERSION_DATE = '20220921_211706'
+ALIENPY_VERSION_HASH = 'd98a42a'
+ALIENPY_VERSION_DATE = '20220921_231710'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -126,10 +126,10 @@ _DEBUG = os.getenv('ALIENPY_DEBUG', '')
 _DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
 _TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 _DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
-_TMPDIR = os.getenv('TMPDIR', '/tmp')
+__TMPDIR = tempfile.gettempdir()
 
-__TOKENCERT_NAME = f'{_TMPDIR}/tokencert_{str(os.getuid())}.pem'
-__TOKENKEY_NAME = f'{_TMPDIR}/tokenkey_{str(os.getuid())}.pem'
+__TOKENCERT_NAME = f'{__TMPDIR}/tokencert_{str(os.getuid())}.pem'
+__TOKENKEY_NAME = f'{__TMPDIR}/tokenkey_{str(os.getuid())}.pem'
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
@@ -151,8 +151,8 @@ def setup_logging():
     try:
         logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     except Exception:
-        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to /tmp')
-        _DEBUG_FILE = f'/tmp/{os.path.basename(_DEBUG_FILE)}'
+        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to detected tmp dir')
+        _DEBUG_FILE = f'{__TMPDIR}/{os.path.basename(_DEBUG_FILE)}'
     try:
         logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     except Exception:
@@ -1009,7 +1009,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info(f'Request connection to : {fHostWSUrl}')
-        socket_filename = f'{_TMPDIR}/jboxpy_{str(os.getuid())}.sock'
+        socket_filename = f'{__TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
                                               max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
@@ -1103,7 +1103,7 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         if _TIME_CONNECT: print_out(msg)
 
     if wb and localConnect:
-        pid_filename = f'{_TMPDIR}/jboxpy_{os.getuid()}.pid'
+        pid_filename = f'{__TMPDIR}/jboxpy_{os.getuid()}.pid'
         writePidFile(pid_filename)
     return wb
 
@@ -2971,7 +2971,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     my_cp_args = XrdCpArgs(overwrite, batch, tpc, hashtype, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(wb, xrdcopy_job_list, my_cp_args, printout)
+    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list, my_cp_args)
     copy_jobs_nr = len(xrdcopy_job_list)
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
@@ -3676,12 +3676,12 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
     if not ext: ext = f'_{str(os.getuid())}.alienpy_tmp'
-    return f'{_TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
+    return f'{__TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
-    return lfn.replace(f'{_TMPDIR}/', '').replace("%%", "/")
+    return lfn.replace(f'{__TMPDIR}/', '').replace("%%", "/")
 
 
 def download_tmp(wb, lfn: str, overwrite: bool = False, verbose: bool = False) -> str:
@@ -4693,7 +4693,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
-    jclient_env = f'{_TMPDIR}/jclient_token_{str(os.getuid())}'
+    jclient_env = f'{__TMPDIR}/jclient_token_{str(os.getuid())}'
 
     if __ALIEN_WB: wb_close(__ALIEN_WB, code = 1000, reason = 'Close previous websocket')
 
@@ -4956,7 +4956,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
-    global AlienSessionInfo, _JSON_OUT, _JSON_OUT_GLOBAL
+    global AlienSessionInfo, _JSON_OUT
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
@@ -4986,7 +4986,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         cmd = args.pop(0)
 
         _JSON_OUT = _JSON_OUT_GLOBAL  # if globally enabled then enable per command
-        if get_arg(args, '-json'): _JSON_OUT = True  # if enabled for this command
+        _JSON_OUT = get_arg(args, '-json')  # if enabled for this command
         print_opts = 'debug json' if _JSON_OUT else 'debug'
         if _JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
 
