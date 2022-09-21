@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '37f082c'
-ALIENPY_VERSION_DATE = '20220921_172108'
+ALIENPY_VERSION_HASH = 'ef6732c'
+ALIENPY_VERSION_DATE = '20220921_194128'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -1044,15 +1044,25 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         if socket_endpoint:
             socket_endpoint_addr = socket_endpoint.getpeername()[0]
             socket_endpoint_port = socket_endpoint.getpeername()[1]
-            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}')
+            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}:{socket_endpoint_port}')
             try:
                 if _DEBUG: init_begin = time.perf_counter()
                 wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
                                              ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
+
                 if _DEBUG:
                     logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
+
+            except wb_exceptions.InvalidStatusCode as e:
+                msg = f'Invalid status code {e.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
+                logging.error(msg)
+                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+                if int(e.status_code) == 401:
+                    print_err('The status code indicate that your certificate is not authorized.\nCheck the correct certificate registration into ALICE VO')
+                    os._exit(129)
+                return None
             except Exception as e:
                 msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
                 logging.error(msg)
