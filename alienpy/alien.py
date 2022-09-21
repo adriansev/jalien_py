@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '589cd75'
-ALIENPY_VERSION_DATE = '20220921_202548'
+ALIENPY_VERSION_HASH = 'bdcafb8'
+ALIENPY_VERSION_DATE = '20220921_203056'
 ALIENPY_VERSION_STR = '1.4.2'
 ALIENPY_EXECUTABLE = ''
 
@@ -537,8 +537,7 @@ def get_files_cert() -> tuple:
 def get_token_names(files: bool = False) -> tuple:
     if files:
         return  __TOKENCERT_NAME, __TOKENKEY_NAME
-    else:
-        return os.getenv('JALIEN_TOKEN_CERT', __TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', __TOKENKEY_NAME)
+    return os.getenv('JALIEN_TOKEN_CERT', __TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', __TOKENKEY_NAME)
 
 
 def get_ca_path() -> str:
@@ -620,7 +619,7 @@ def get_valid_tokens() -> tuple:
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
         AlienSessionInfo['templist'].append(tokenkey)
-        
+
     if (IsValidCert(tokencert) and path_readable(tokenkey)):
         AlienSessionInfo['verified_token'] = True
         return (tokencert, tokenkey)
@@ -2712,7 +2711,6 @@ def xrd_config_init():
     # https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-100004.2
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
-    # TODO these will not work for xrdcp subprocess; the env vars should also be set
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s; default 15
 
