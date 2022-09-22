@@ -12,3 +12,5 @@ enabled = true
 
   [analyzers.meta]
   runtime_version = "3.x.x"
+  skip_doc_coverage = ["module", "magic", "init", "class", "nonpublic"]
+
