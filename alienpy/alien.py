@@ -41,7 +41,7 @@ import zipfile
 import difflib
 
 # External imports
-import requests
+# import requests
 
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'd98a42a'
-ALIENPY_VERSION_DATE = '20220921_231710'
+ALIENPY_VERSION_HASH = '32756ca'
+ALIENPY_VERSION_DATE = '20220922_100945'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -759,7 +759,7 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
 
 
 def unquote_str(arg):
-    if type(arg) == str: return ast.literal_eval(arg)
+    if type(arg) is str: return ast.literal_eval(arg)
     return arg
 
 
@@ -968,7 +968,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         nr_tries += 1
         try:
             result_list = __sendmsg_multi(wb, json_cmd_list)
-        except (wb_exceptions.ConnectionClosed, wb_exceptions.ConnectionClosedError, wb_exceptions.ConnectionClosedOK) as e:
+        except wb_exceptions.ConnectionClosed as e:
             if e.__cause__:
                 logging.exception(f'SendMsg:: failure because of {e.__cause__}')
             logging.exception(e)
@@ -2287,7 +2287,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789,PLC0123
+        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789,PLC0123
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
@@ -2443,7 +2443,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             regex = pattern
             is_regex = True
         elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
@@ -2537,7 +2537,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         src_glob = True
         arg_src, pattern = extract_glob_pattern(arg_src)
     else:  # pattern is specified by argument
-        if type(pattern) == REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        if type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 

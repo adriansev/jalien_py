@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import shutil
-import os
+# import os
 import sys
 
 try:

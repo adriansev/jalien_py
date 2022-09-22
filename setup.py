@@ -28,7 +28,7 @@ else:
 
 # ALICE needs gnureadline as the python built does not have built-in readline for macos reasons
 # also the xrootd is built in a separate recipe
-if "ALIBUILD" in os.environ.keys():
+if "ALIBUILD" in os.environ:
     selected_requirements = base_requirements + alibuild_requirements
 else:
     selected_requirements = base_requirements + local_requirements
