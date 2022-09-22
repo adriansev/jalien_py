@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import sys
+
 try:
     from alienpy import alien
 except Exception as e:

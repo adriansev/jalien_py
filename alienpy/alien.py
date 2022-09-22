@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '32756ca'
-ALIENPY_VERSION_DATE = '20220922_100945'
+ALIENPY_VERSION_HASH = '4c2abf5'
+ALIENPY_VERSION_DATE = '20220922_102231'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -3747,7 +3747,7 @@ def queryML(args: list = None) -> RET:
         args.remove('json')
 
     if args: predicate = args[0]
-    url = f"{alimon}{predicate}{type_default}"
+    url = f'{alimon}{predicate}{type_default}'
     exitcode = stdout = stderr = ansdict = ansraw = None
 
     url_req = urlreq.Request(url)
