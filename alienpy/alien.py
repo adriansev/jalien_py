@@ -81,6 +81,7 @@ except Exception:
     print("rich module could not be load", file = sys.stderr, flush = True)
 
 
+_HAS_READLINE = False
 try:
     import readline as rl
     _HAS_READLINE = True
@@ -89,12 +90,12 @@ except ImportError:
         import gnureadline as rl
         _HAS_READLINE = True
     except ImportError:
-        _HAS_READLINE = False
+        pass
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '102887f'
-ALIENPY_VERSION_DATE = '20220923_074313'
+ALIENPY_VERSION_HASH = '00c069f'
+ALIENPY_VERSION_DATE = '20220923_082951'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -850,8 +851,7 @@ async def IsWbConnected(wb) -> bool:
         pong_waiter = await wb.ping()
         await pong_waiter
     except Exception as e:
-        logging.debug('WB ping/pong failed!!!')
-        logging.exception(e)
+        logging.exception('WB ping/pong failed!!!')
         return False
     if time_begin: logging.error(f">>>IsWbConnected time = {deltat_ms_perf(time_begin)} ms")
     return True
@@ -933,9 +933,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         try:
             result = __sendmsg(wb, jsonmsg)
         except Exception as e:
-            if e.__cause__:  # noqa: PLW0125
-                logging.exception(f'SendMsg:: failure because of {e.__cause__}')
-            logging.exception(e)
+            logging.exception('SendMsg:: Error sending: %s\nBecause of %s', jsonmsg, e.__cause__)
             wb = InitConnection()
         if result is None: time.sleep(0.2)
 
@@ -982,16 +980,13 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         try:
             result_list = __sendmsg_multi(wb, json_cmd_list)
         except wb_exceptions.ConnectionClosed as e:
-            if e.__cause__:
-                logging.exception(f'SendMsg:: failure because of {e.__cause__}')
-            logging.exception(e)
+            logging.exception('SendMsgMulti:: failure because of %s', e.__cause__)
             try:
                 wb = InitConnection()
-            except Exception as e_conn:
-                logging.error(f'SendMsg:: Could not recover connection when disconnected!! Check {_DEBUG_FILE}')
-                logging.exception(e_conn)
+            except Exception:
+                logging.exception('SendMsgMulti:: Could not recover connection when disconnected!!')
         except Exception as e:
-            logging.exception(e)
+            logging.exception('SendMsgMulti:: Abnormal connection status!!!')
         if result_list is None: time.sleep(0.2)
 
     if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
