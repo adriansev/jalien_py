@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '32432ca'
-ALIENPY_VERSION_DATE = '20220923_063625'
+ALIENPY_VERSION_HASH = '38f82f1'
+ALIENPY_VERSION_DATE = '20220923_064438'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -4615,12 +4615,16 @@ def CertVerify(fname: str) -> RET:
 
     x509store = OpenSSL.crypto.X509Store()
     x509store.set_flags(OpenSSL.crypto.X509StoreFlags.ALLOW_PROXY_CERTS)
+
     ca_verify_location = get_ca_path()
+    cafile = capath = None
+    if os.path.isfile(ca_verify_location):
+        cafile = ca_verify_location
+    else:
+        capath = ca_verify_location
+
     try:
-        if os.path.isfile(ca_verify_location):
-            x509store.load_locations(cafile = ca_verify_location)
-        else:
-            x509store.load_locations(None, capath = ca_verify_location)
+        x509store.load_locations(cafile = cafile, capath = capath)
     except Exception:
         logging.debug(traceback.format_exc())
         return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */
@@ -4653,12 +4657,16 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
     context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
     context.use_privatekey(x509key)
     context.use_certificate(x509cert)
+
     ca_verify_location = get_ca_path()
+    cafile = capath = None
+    if os.path.isfile(ca_verify_location):
+        cafile = ca_verify_location
+    else:
+        capath = ca_verify_location
+
     try:
-        if os.path.isfile(ca_verify_location):
-            context.load_verify_locations(cafile = ca_verify_location)
-        else:
-            context.load_verify_locations(None, capath = ca_verify_location)
+        context.load_verify_locations(cafile = cafile, capath = capath)
     except Exception:
         logging.debug(traceback.format_exc())
         return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */    
