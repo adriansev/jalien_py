@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'a84f5be'
-ALIENPY_VERSION_DATE = '20220923_165900'
+ALIENPY_VERSION_HASH = 'af3ecd8'
+ALIENPY_VERSION_DATE = '20220923_170623'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -4662,7 +4662,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         logging.debug(traceback.format_exc())
         return RET(5, "", f'Could not load key >>>{key_fname}<<<')  # EIO /* I/O error */
 
-    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)  # skipcq: PTC-W6001
     ctx.verify_mode = ssl.CERT_REQUIRED
     ctx.use_privatekey(x509key)
     ctx.use_certificate(x509cert)
