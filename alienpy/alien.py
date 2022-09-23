@@ -66,19 +66,19 @@ except Exception:
     print("websockets module could not be load", file = sys.stderr, flush = True)
     sys.exit(1)
 
+_HAS_XROOTD = False
 try:
     from XRootD import client as xrd_client
     _HAS_XROOTD = True
 except Exception:
-    _HAS_XROOTD = False
+    print("XRootD module could not be load", file = sys.stderr, flush = True)
 
+_HAS_PPRINT = False
 try:
-    # import rich
     from rich.pretty import pprint
     _HAS_PPRINT = True
 except Exception:
     print("rich module could not be load", file = sys.stderr, flush = True)
-    _HAS_PPRINT = False
 
 
 try:
@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '38f82f1'
-ALIENPY_VERSION_DATE = '20220923_064438'
+ALIENPY_VERSION_HASH = '102887f'
+ALIENPY_VERSION_DATE = '20220923_074313'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -141,6 +141,20 @@ AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandli
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE
 #############################################
+def print_out(msg: str, toLog: bool = False):
+    if toLog:
+        logging.log(90, msg)
+    else:
+        print(msg, flush = True)
+
+
+def print_err(msg: str, toLog: bool = False):
+    if toLog:
+        logging.log(95, msg)
+    else:
+        print(msg, file = sys.stderr, flush = True)
+
+
 def setup_logging():
     global _DEBUG_FILE
     logging.addLevelName(90, 'STDOUT')
@@ -153,10 +167,10 @@ def setup_logging():
     except Exception:
         print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to detected tmp dir')
         _DEBUG_FILE = f'{__TMPDIR}/{os.path.basename(_DEBUG_FILE)}'
-    try:
-        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
-    except Exception:
-        print_err(f'Could not write the log file {_DEBUG_FILE}')
+        try:
+            logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+        except Exception:
+            print_err(f'Could not write the log file {_DEBUG_FILE}')
 
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('wb_client').setLevel(MSG_LVL)
@@ -470,22 +484,6 @@ class AliEn:
 ##############################################
 ##   Start of functions definitions
 ##############################################
-
-
-def print_out(msg: str, toLog: bool = False):
-    if toLog:
-        logging.log(90, msg)
-    else:
-        print(msg, flush = True)
-
-
-def print_err(msg: str, toLog: bool = False):
-    if toLog:
-        logging.log(95, msg)
-    else:
-        print(msg, file=sys.stderr, flush = True)
-
-
 def expand_path_local(path_arg: str, strict: bool = False) -> str:
     """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
     if not path_arg: return ''
@@ -685,17 +683,31 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
     if _DEBUG: logging.debug("SSL context:: Load verify locations")
+
     ca_verify_location = get_ca_path()
+    cafile = capath = None
     if os.path.isfile(ca_verify_location):
-        ctx.load_verify_locations(cafile = ca_verify_location)
+        cafile = ca_verify_location
     else:
-        ctx.load_verify_locations(capath = ca_verify_location)
-    if _DEBUG: logging.debug("SSL context:: Load certificate chain (cert/key)")
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
-    if _DEBUG: logging.debug("\nSSL context done.")
+        capath = ca_verify_location
+
+    try:
+        ctx.load_verify_locations(cafile = cafile, capath = capath)
+    except Exception:
+        logging.exception('Could not load verify location >>> %s <<<\n', ca_verify_location)  # EIO /* I/O error */
+        print_err(f'Verify location could not be loaded!!! check content of >>> {ca_verify_location} <<< and the log')
+        os._exit(126)
+
+    if _DEBUG: logging.debug('SSL context:: Loading cert,key pair\n%s\n%s', cert, key)
+    try:
+        ctx.load_cert_chain(certfile = cert, keyfile = key)
+    except Exception:
+        logging.exception('Could not load certificates!!!\n')  # EIO /* I/O error */
+        print_err('Error loading certificate pair!! Check the content of {_DEBUG_FILE}')
+        os._exit(126)
+
+    if _DEBUG: logging.debug('... SSL context done.')
     return ctx
-
-
 
 
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
@@ -5091,11 +5103,13 @@ def main():
     _JSON_OUT_GLOBAL = _JSON_OUT = get_arg(sys.argv, '-json')
     if not _DEBUG:
         _DEBUG = get_arg(sys.argv, '-debug')
-        if _DEBUG: print_out(f'Debug enabled, logfile is: {_DEBUG_FILE}')
+        if _DEBUG:
+            print_out(f'Debug enabled, logfile is: {_DEBUG_FILE}')
+            setup_logging()
 
     if _DEBUG:
         ret_obj = DO_version()
-        logging.debug(f'{ret_obj.out}\n')
+        logging.debug('%s\n', ret_obj.out)
 
     arg_list_expanded = []
     for arg in sys.argv:
