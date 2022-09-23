@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '4c2abf5'
-ALIENPY_VERSION_DATE = '20220922_102231'
+ALIENPY_VERSION_HASH = 'a24bbec'
+ALIENPY_VERSION_DATE = '20220923_063133'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -1829,7 +1829,7 @@ def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] =
     if not metafile:
         print_err(f"Could not create the download metafile for {lfn}")
         return ''
-    subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'))  # keep it in local directory
+    subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'), check = False)  # keep it in local directory
     metafile = os.path.realpath(os.path.basename(metafile))
     return f'{metafile}?xrdcl.unzip={file_in_zip}' if (file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ) else f'{metafile}'
 
@@ -3140,7 +3140,7 @@ if _HAS_XROOTD:
             if not xrdjob.isUpload:
                 meta_path, sep, url_opts = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
-                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'))
+                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)
                 else:
                     os.remove(meta_path)  # remove the created metalink
 
@@ -4632,20 +4632,6 @@ def CertVerify(fname: str) -> RET:
         return RET(1, '', f'SSL Verification {PrintColor(COLORS.BIRed)}failed{PrintColor(COLORS.ColorReset)} for {fname}')
 
 
-def DO_certverify(args: Union[list, None] = None) -> RET:
-    if args is None: args = []
-    cert, key = get_files_cert()
-    if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
-    return CertVerify(cert)
-
-
-def DO_tokenverify(args: Union[list, None] = None) -> RET:
-    if not args: args = []
-    if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_names()
-    return CertVerify(tokencert)
-
-
 def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
     """Check if Certificate and key match"""
     try:
@@ -4665,11 +4651,35 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
     context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
     context.use_privatekey(x509key)
     context.use_certificate(x509cert)
+    ca_verify_location = get_ca_path()
+    try:
+        if os.path.isfile(ca_verify_location):
+            context.load_verify_locations(cafile = ca_verify_location)
+        else:
+            context.load_verify_locations(None, capath = ca_verify_location)
+    except Exception:
+        logging.debug(traceback.format_exc())
+        return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */    
+    
     try:
         context.check_privatekey()
         return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}')
     except OpenSSL.SSL.Error:
         return RET(0, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}')
+
+
+def DO_certverify(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    cert, key = get_files_cert()
+    if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
+    return CertVerify(cert)
+
+
+def DO_tokenverify(args: Union[list, None] = None) -> RET:
+    if not args: args = []
+    if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
+    tokencert, tokenkey = get_token_names()
+    return CertVerify(tokencert)
 
 
 def DO_certkeymatch(args: Union[list, None] = None) -> RET:
@@ -4960,7 +4970,8 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
-        for alias in AlienSessionInfo['alias_cache']: cmd_chain = cmd_chain.replace(alias, AlienSessionInfo['alias_cache'][alias])
+        for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_chain = cmd_chain.replace(alias, alias_value)
+
     cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n
 
     # for each command, save exitcode and RET of the command
