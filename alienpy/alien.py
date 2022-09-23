@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '00c069f'
-ALIENPY_VERSION_DATE = '20220923_082951'
+ALIENPY_VERSION_HASH = '7f4a529'
+ALIENPY_VERSION_DATE = '20220923_152003'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -474,7 +474,7 @@ class AliEn:
         return self.internal_wb
 
     @staticmethod
-    def help(self):
+    def help():
         """Print help message"""
         print_out('Methods of AliEn session:\n'
                   '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
@@ -850,7 +850,7 @@ async def IsWbConnected(wb) -> bool:
     try:
         pong_waiter = await wb.ping()
         await pong_waiter
-    except Exception as e:
+    except Exception:
         logging.exception('WB ping/pong failed!!!')
         return False
     if time_begin: logging.error(f">>>IsWbConnected time = {deltat_ms_perf(time_begin)} ms")
@@ -985,7 +985,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
                 wb = InitConnection()
             except Exception:
                 logging.exception('SendMsgMulti:: Could not recover connection when disconnected!!')
-        except Exception as e:
+        except Exception:
             logging.exception('SendMsgMulti:: Abnormal connection status!!!')
         if result_list is None: time.sleep(0.2)
 
@@ -1736,13 +1736,13 @@ def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
 def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , printout: str = ''
     """xrdcp based task that process a copyfile and it's arguments"""
     if not copy_job: return int(2)
-    overwrite = xrd_cp_args.overwrite
-    batch = xrd_cp_args.batch
-    tpc = xrd_cp_args.tpc
+    # overwrite = xrd_cp_args.overwrite
+    # batch = xrd_cp_args.batch
+    # tpc = xrd_cp_args.tpc
     # hashtype = xrd_cp_args.hashtype
-    cksum = xrd_cp_args.cksum
-    timeout = xrd_cp_args.timeout
-    rate = xrd_cp_args.rate
+    # cksum = xrd_cp_args.cksum
+    # timeout = xrd_cp_args.timeout
+    # rate = xrd_cp_args.rate
     cmdline = f'{copy_job.src} {copy_job.dst}'
     return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
@@ -1755,9 +1755,9 @@ def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout
     if not xrd_cp_args:
         print_err("cp arguments are not set, XrdCpArgs tuple missing")
         return []
-    overwrite = xrd_cp_args.overwrite
-    batch = xrd_cp_args.batch
-    makedir = xrd_cp_args.makedir
+    # overwrite = xrd_cp_args.overwrite
+    # batch = xrd_cp_args.batch
+    # makedir = xrd_cp_args.makedir
 
     # ctx = mp.get_context('forkserver')
     # q = ctx.JoinableQueue()
@@ -1767,7 +1767,7 @@ def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout
     # p.join()
     for copy_job in job_list:
         if _DEBUG: logging.debug(f'\nadd copy job with\nsrc: {copy_job.src}\ndst: {copy_job.dst}\n')
-        xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
+        # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
         if _DEBUG: print_out(copy_job)
     return []
 
@@ -2528,7 +2528,7 @@ def path_type(path_arg: str) -> tuple:
 
 def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
-    isSrcDir = isDstDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
+    isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
 
     # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
     src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
@@ -2588,8 +2588,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
         if not dst.endswith('/'): dst = f"{dst}/"  # if src is dir, dst must be dir
 
-    if src_stat.type == 'd': isDstDir = isSrcDir = True  # is source is directory so destination must be
-
+    isSrcDir = (src_stat.type == 'd')
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
     # prepare destination locations
@@ -3146,7 +3145,7 @@ if _HAS_XROOTD:
                     print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Contact developer for support.')
 
             if not xrdjob.isUpload:
-                meta_path, sep, url_opts = str(xrdjob.src).partition("?")
+                meta_path, __, url_opts = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
                     subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)
                 else:
@@ -3158,7 +3157,7 @@ if _HAS_XROOTD:
             pass
 
         @staticmethod
-        def should_cancel(self, jobId):
+        def should_cancel():  # self, jobId
             return False
 
 
@@ -4082,9 +4081,9 @@ def token_regen(wb, args: Union[None, list] = None):
     wb_token_new = None
     try:
         wb_token_new = InitConnection(args)
-        ret_obj = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
+        __ = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
     except Exception:
-        logging.debug(traceback.format_exc())
+        logging.exception('token_regen:: error re-initializing connection')
     return wb_token_new
 
 
@@ -4101,7 +4100,7 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
         return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
     wb = token_regen(wb, args)
-    tokencert, tokenkey = get_token_names()
+    tokencert, __ = get_token_names()
     return CertInfo(tokencert)
 
 
@@ -4594,7 +4593,7 @@ def CertInfo(fname: str) -> RET:
 
 def DO_certinfo(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    cert, key = get_files_cert()
+    cert, __ = get_files_cert()
     if len(args) > 0 and is_help(args): return RET(0, "Print user certificate information", "")
     return CertInfo(cert)
 
@@ -4602,7 +4601,7 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_names()
+    tokencert, __ = get_token_names()
     return CertInfo(tokencert)
 
 
@@ -4687,7 +4686,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
 
 def DO_certverify(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    cert, key = get_files_cert()
+    cert, __ = get_files_cert()
     if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
     return CertVerify(cert)
 
@@ -4695,7 +4694,7 @@ def DO_certverify(args: Union[list, None] = None) -> RET:
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, tokenkey = get_token_names()
+    tokencert, __ = get_token_names()
     return CertVerify(tokencert)
 
 
@@ -5005,7 +5004,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             continue
 
         # process the input and take care of pipe to shell
-        input_alien, sep, pipe_to_shell_cmd = cmdline.partition('|')
+        input_alien, __, pipe_to_shell_cmd = cmdline.partition('|')
         if not input_alien:
             print_out("AliEn command before the | token was not found")
             continue
