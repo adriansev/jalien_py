@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '7609876'
-ALIENPY_VERSION_DATE = '20220923_164321'
+ALIENPY_VERSION_HASH = 'a84f5be'
+ALIENPY_VERSION_DATE = '20220923_165900'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -548,12 +548,12 @@ def get_ca_path() -> str:
 
     x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
     if x509file:
-        if _DEBUG: logging.debug(f'X509_CERT_FILE = {x509file}')
+        if _DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
         return x509file
 
     x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
     if x509dir:
-        if _DEBUG: logging.debug(f'X509_CERT_DIR = {x509dir}')
+        if _DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
         return x509dir
 
     capath_default = None
@@ -846,14 +846,14 @@ async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
     time_begin = time.perf_counter() if _DEBUG_TIMING else None
     if _DEBUG:
-        logging.info(f"Called from: {sys._getframe().f_back.f_code.co_name}")  # pylint: disable=protected-access
+        logging.info('Called from: %s', sys._getframe().f_back.f_code.co_name)  # pylint: disable=protected-access
     try:
         pong_waiter = await wb.ping()
         await pong_waiter
     except Exception:
         logging.exception('WB ping/pong failed!!!')
         return False
-    if time_begin: logging.error(f">>>IsWbConnected time = {deltat_ms_perf(time_begin)} ms")
+    if time_begin: logging.error('>>>IsWbConnected time = %s ms', deltat_ms_perf(time_begin))
     return True
 
 
@@ -1055,7 +1055,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
         if socket_endpoint:
             socket_endpoint_addr = socket_endpoint.getpeername()[0]
             socket_endpoint_port = socket_endpoint.getpeername()[1]
-            logging.info(f'GOT SOCKET TO: {socket_endpoint_addr}:{socket_endpoint_port}')
+            logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
             try:
                 if _DEBUG: init_begin = time.perf_counter()
                 wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
@@ -3102,7 +3102,7 @@ if _HAS_XROOTD:
             job_status_info = f"jobID: {jobId}/{self.jobs} >>> STATUS {status}"
 
             deltaT = datetime.datetime.now().timestamp() - float(job_info['start'])
-            if os.getenv('XRD_LOGLEVEL'): logging.debug(f'XRD copy job time:: {xrdjob.lfn} -> {deltaT}')
+            if os.getenv('XRD_LOGLEVEL'): logging.debug('XRD copy job time:: %s -> %s', xrdjob.lfn, deltaT)
 
             if results['status'].ok:
                 speed = float(job_info['bytes_total']) / deltaT
@@ -3140,7 +3140,7 @@ if _HAS_XROOTD:
                 else:
                     msg = f"{job_status_info} : {xrdjob.lfn}\n{xrd_resp_msg}"
                 if _DEBUG: msg = f'{msg}\n{failed_after}'
-                logging.error(f"\n{codes_info}\n{msg}")
+                logging.error('\n%s\n%s', codes_info, msg)
                 print_err(msg)
                 defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
                 if deltaT >= defined_reqtimeout:
@@ -3206,7 +3206,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     process = xrd_client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
-        if _DEBUG: logging.debug(f'\nadd copy job with\nsrc: {copy_job.src}\ndst: {copy_job.dst}\n')
+        if _DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         if cksum:
             if copy_job.isUpload:
                 # WIP: checksumming with md5 for uploading breaks, keep it on auto
@@ -4996,7 +4996,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     # for each command, save exitcode and RET of the command
     for cmdline in cmdline_list:
         if not cmdline: continue
-        if _DEBUG: logging.info(f'>>> RUN COMMAND: {cmdline}')
+        if _DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
         if cmdline.startswith('!'):  # if shell command, just run it and return
             capture_out = True
             if '-noout' in cmdline:
