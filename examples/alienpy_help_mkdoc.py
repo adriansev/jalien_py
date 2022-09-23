@@ -6,10 +6,10 @@ import sys
 
 try:
     from alienpy import alien
-except Exception as e:
+except Exception:
     try:
         from xjalienfs import alien
-    except Exception as e:
+    except Exception:
         print("Can't load alienpy, exiting...")
         sys.exit(1)
 
@@ -45,6 +45,6 @@ def help2markup(cmd: str):
 
 
 alien.print_out('# alien.py Command reference guide')
-for cmd in alien.AlienSessionInfo['commandlist']: help2markup(cmd)
+for c in alien.AlienSessionInfo['commandlist']: help2markup(c)
 print()
 
