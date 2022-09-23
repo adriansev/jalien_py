@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'a24bbec'
-ALIENPY_VERSION_DATE = '20220923_063133'
+ALIENPY_VERSION_HASH = '32432ca'
+ALIENPY_VERSION_DATE = '20220923_063625'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -458,6 +458,7 @@ class AliEn:
         """Get the websocket, to be used in other functions"""
         return self.internal_wb
 
+    @staticmethod
     def help(self):
         """Print help message"""
         print_out('Methods of AliEn session:\n'
@@ -3149,6 +3150,7 @@ if _HAS_XROOTD:
             # self.job_list[jobId - 1]['bytes_processed'] = processed
             pass
 
+        @staticmethod
         def should_cancel(self, jobId):
             return False
 
