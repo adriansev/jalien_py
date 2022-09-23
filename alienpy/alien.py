@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'dc53ed3'
-ALIENPY_VERSION_DATE = '20220923_153155'
+ALIENPY_VERSION_HASH = '7609876'
+ALIENPY_VERSION_DATE = '20220923_164321'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -569,7 +569,7 @@ def get_ca_path() -> str:
         print_err(msg)
         logging.info(msg)
         sys.exit(2)
-    if _DEBUG: logging.debug(f'CApath = {capath_default}')
+    if _DEBUG: logging.debug('CApath = %s', capath_default)
     return capath_default
 
 
@@ -579,13 +579,13 @@ def IsValidCert(fname: str) -> bool:
         with open(fname, encoding="ascii", errors="replace") as f:
             cert_bytes = f.read()
     except Exception:
-        logging.error(f'IsValidCert:: Unable to open certificate file {fname}')
+        logging.error('IsValidCert:: Unable to open certificate file %s', fname)
         return False
 
     try:
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception:
-        logging.error(f'IsValidCert:: Unable to load certificate {fname}')
+        logging.error('IsValidCert:: Unable to load certificate %s', fname)
         return False
 
     x509_notafter = x509.get_notAfter()
@@ -594,7 +594,7 @@ def IsValidCert(fname: str) -> bool:
     time_current = int(datetime.datetime.now().timestamp())
     time_remaining = time_notafter - time_current
     if time_remaining < 1:
-        logging.error(f'IsValidCert:: Expired certificate {fname}')
+        logging.error('IsValidCert:: Expired certificate %s', fname)
     return time_remaining > 300
 
 
@@ -677,7 +677,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
 
-    if _DEBUG: logging.debug(f"\nCert = {cert}\nKey = {key}\nCreating SSL context .. ")
+    if _DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
     ctx = ssl.SSLContext(ssl_protocol)
     ctx.options |= ssl.OP_NO_SSLv3
@@ -882,7 +882,7 @@ async def __sendmsg(wb, jsonmsg: str) -> str:
     if _DEBUG_TIMING: time_begin = time.perf_counter()
     await wb.send(jsonmsg)
     result = await wb.recv()
-    if time_begin: logging.debug(f'>>>__sendmsg time = {deltat_ms_perf(time_begin)} ms')
+    if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
     return result  # noqa: R504
 
 
@@ -899,7 +899,7 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
         result = await wb.recv()
         result_list.append(result)
 
-    if time_begin: logging.debug(f">>>__sendmsg time = {deltat_ms_perf(time_begin)} ms")
+    if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
     return result_list
 
 
@@ -937,7 +937,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
             wb = InitConnection()
         if result is None: time.sleep(0.2)
 
-    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms_perf(time_begin)} ms")
+    if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
     if not result:
         msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {_DEBUG_FILE}"
         print_err(msg)
@@ -947,7 +947,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if 'rawstr' in opts: return result
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
-    if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_us_perf(time_begin_decode)} us")
+    if time_begin_decode: logging.debug('SendMsg::Result decoded: %s us', deltat_us_perf(time_begin_decode))
     return ret_obj  # noqa: R504
 
 
@@ -989,12 +989,12 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
             logging.exception('SendMsgMulti:: Abnormal connection status!!!')
         if result_list is None: time.sleep(0.2)
 
-    if time_begin: logging.debug(f"SendMsg::Result received: {deltat_ms(time_begin)} ms")
+    if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms(time_begin))
     if not result_list: return []
     if 'rawstr' in opts: return result_list
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
-    if time_begin_decode: logging.debug(f"SendMsg::Result decoded: {deltat_ms(time_begin_decode)} ms")
+    if time_begin_decode: logging.debug('SendMsg::Result decoded: %s ms', deltat_ms(time_begin_decode))
     return ret_obj_list  # noqa: R504
 
 
@@ -1016,7 +1016,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     headers_list = [('User-Agent', f'alien.py/{ALIENPY_VERSION_STR} websockets/{wb_version.version}')]
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
-        logging.info(f'Request connection to : {fHostWSUrl}')
+        logging.info('Request connection to : %s', fHostWSUrl)
         socket_filename = f'{__TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
@@ -1031,21 +1031,21 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
         ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
-        logging.info(f"Request connection to : {host}:{port}{path}")
+        logging.info('Request connection to: %s:%s%s', host, port, path)
 
         socket_endpoint = None
         # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
         # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
         try:
             if _DEBUG:
-                logging.debug(f"TRY ENDPOINT: {host}:{port}")
+                logging.debug('TRY ENDPOINT: %s:%s', host, port)
                 init_begin = time.perf_counter()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
             if _DEBUG:
-                logging.debug(f'TCP SOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
+                logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
         except Exception as e:
             msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
             logging.error(msg)
@@ -1064,7 +1064,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
 
                 if _DEBUG:
-                    logging.debug(f'WEBSOCKET DELTA: {deltat_ms_perf(init_begin)} ms')
+                    logging.debug('WEBSOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
 
             except wb_exceptions.InvalidStatusCode as e:
                 msg = f'Invalid status code {e.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
@@ -1079,7 +1079,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
                 logging.error(msg)
                 print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
                 return None
-        if wb: logging.info(f"CONNECTED: {wb.remote_address[0]}:{wb.remote_address[1]}")
+        if wb: logging.info('CONNECTED: %s:%s', wb.remote_address[0], wb.remote_address[1])
     return wb
 
 
@@ -1096,11 +1096,11 @@ def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path:
         nr_tries += 1
         try:
             wb = wb_create(host, str(port), path, use_usercert, localConnect)
-        except Exception as e:
-            logging.error(f'{e!r}')
+        except Exception:
+            logging.exception('wb_create_tryout:: exception when wb_create')
         if not wb:
             if nr_tries >= connect_tries:
-                logging.error(f'We tried on {host}:{port}{path} {nr_tries} times')
+                logging.error('We tried on %s:%s%s %s times', host, port, path, nr_tries)
                 break
             time.sleep(connect_tries_interval)
 
@@ -1385,8 +1385,8 @@ def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
 def writePidFile(filename: str):
     try:
         with open(filename, 'w', encoding="ascii", errors="replace") as f: f.write(str(os.getpid()))
-    except Exception as e:
-        logging.error(f'{e!r}')
+    except Exception:
+        logging.exception('Error writing the pid file: %s', filename)
 
 
 def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")
@@ -1766,7 +1766,7 @@ def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout
     # print(q.get())
     # p.join()
     for copy_job in job_list:
-        if _DEBUG: logging.debug(f'\nadd copy job with\nsrc: {copy_job.src}\ndst: {copy_job.dst}\n')
+        if _DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
         if _DEBUG: print_out(copy_job)
     return []
@@ -2095,7 +2095,7 @@ def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
     try:
         regex = re.compile(regex_str.encode('unicode-escape').decode())  # try to no hit https://docs.python.org/3.6/howto/regex.html#the-backslash-plague
     except re.error:
-        logging.error(f"regex validation failed:: {regex_str}")
+        logging.error('regex validation failed:: %s', regex_str)
     return regex  # noqa: R504
 
 
@@ -2301,8 +2301,9 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
 
         # it was explictly requested that pattern is regex
         if is_regex and isinstance(pattern, str) and valid_regex(pattern) is None:
-            logging.error(f"list_files_grid:: {pattern} failed to re.compile")
-            return RET(-1, "", f"list_files_grid:: {pattern} failed to re.compile")
+            msg = f'list_files_grid:: {pattern} failed to re.compile'
+            logging.error(msg)
+            return RET(-1, '', msg)
 
     # remove default from additional args
     filter_args_list = []
@@ -2398,11 +2399,11 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
         ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
 
     if ret_obj.exitcode != 0:
-        logging.error(f"list_files_grid error:: {dir} {pattern} {find_args}")
+        logging.error('list_files_grid error:: %s %s %s', search_dir, pattern, find_args)
         return ret_obj
     if 'results' not in ret_obj.ansdict or not ret_obj.ansdict["results"]:
-        logging.error(f"list_files_grid exitcode==0 but no results(!!!):: {dir} /pattern: {pattern} /find_args: {find_args}")
-        return RET(2, "", f"No files found in :: {dir} /pattern: {pattern} /find_args: {find_args}")
+        logging.error('list_files_grid exitcode==0 but no results(!!!):: %s /pattern: %s /find_args: %s', search_dir, pattern, find_args)
+        return RET(2, '', f'No files found in :: {search_dir} /pattern: {pattern} /find_args: {find_args}')
 
     exitcode = ret_obj.exitcode
     stderr = ret_obj.err
@@ -2428,7 +2429,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
 
 def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
-    if not dir: return RET(2, "", "No search directory specified")
+    if not search_dir: return RET(2, "", "No search directory specified")
 
     # let's process the pattern: extract it from src if is in the path globbing form
     regex = None
@@ -2457,8 +2458,9 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
         elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
             regex = valid_regex(pattern)
             if regex is None:
-                logging.error(f'list_files_grid:: {pattern} failed to re.compile')
-                return RET(-1, '', f'list_files_grid:: {pattern} failed to re.compile')
+                msg = f'list_files_grid:: {pattern} failed to re.compile'
+                logging.error(msg)
+                return RET(-1, '', msg)
 
     directory = None  # resolve start_dir to an absolute_path
     try:
@@ -3083,7 +3085,7 @@ if _HAS_XROOTD:
 
             jobInfo = {'src': source, 'tgt': target, 'bytes_total': file_size, 'bytes_processed': 0, 'start': timestamp_begin}
             self.job_list.insert(jobId - 1, jobInfo)
-            if self.debug: logging.debug(f"CopyProgressHandler.src: {source}\nCopyProgressHandler.dst: {target}\n")
+            if self.debug: logging.debug('CopyProgressHandler.src: %s\nCopyProgressHandler.dst: %s\n', source, target)
 
         def end(self, jobId, results):
             if results['status'].ok:
