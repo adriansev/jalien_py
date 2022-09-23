@@ -1,6 +1,7 @@
-import setuptools
 import os
 import sys
+import setuptools
+import traceback
 
 
 def get_version_from_file():

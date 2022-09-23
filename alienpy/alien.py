@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '7f4a529'
-ALIENPY_VERSION_DATE = '20220923_152003'
+ALIENPY_VERSION_HASH = 'dc53ed3'
+ALIENPY_VERSION_DATE = '20220923_153155'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -1741,7 +1741,7 @@ def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , prin
     # tpc = xrd_cp_args.tpc
     # hashtype = xrd_cp_args.hashtype
     # cksum = xrd_cp_args.cksum
-    # timeout = xrd_cp_args.timeout
+    timeout = xrd_cp_args.timeout
     # rate = xrd_cp_args.rate
     cmdline = f'{copy_job.src} {copy_job.dst}'
     return retf_print(_xrdcp_sysproc(cmdline, timeout))
@@ -3145,7 +3145,7 @@ if _HAS_XROOTD:
                     print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Contact developer for support.')
 
             if not xrdjob.isUpload:
-                meta_path, __, url_opts = str(xrdjob.src).partition("?")
+                meta_path = str(xrdjob.src).partition("?")[0]
                 if os.getenv('ALIENPY_KEEP_META'):
                     subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)
                 else:
@@ -4660,9 +4660,10 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         logging.debug(traceback.format_exc())
         return RET(5, "", f'Could not load key >>>{key_fname}<<<')  # EIO /* I/O error */
 
-    context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
-    context.use_privatekey(x509key)
-    context.use_certificate(x509cert)
+    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.use_privatekey(x509key)
+    ctx.use_certificate(x509cert)
 
     ca_verify_location = get_ca_path()
     cafile = capath = None
@@ -4672,13 +4673,13 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         capath = ca_verify_location
 
     try:
-        context.load_verify_locations(cafile = cafile, capath = capath)
+        ctx.load_verify_locations(cafile = cafile, capath = capath)
     except Exception:
         logging.debug(traceback.format_exc())
         return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */    
     
     try:
-        context.check_privatekey()
+        ctx.check_privatekey()
         return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}')
     except OpenSSL.SSL.Error:
         return RET(0, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}')
