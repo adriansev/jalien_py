@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'af3ecd8'
-ALIENPY_VERSION_DATE = '20220923_170623'
+ALIENPY_VERSION_HASH = 'f134be4'
+ALIENPY_VERSION_DATE = '20220924_214105'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -5015,8 +5015,8 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         args = shlex.split(input_alien.strip())
         cmd = args.pop(0)
 
-        _JSON_OUT = _JSON_OUT_GLOBAL  # if globally enabled then enable per command
-        _JSON_OUT = get_arg(args, '-json')  # if enabled for this command
+        # if globally enabled then enable per command OR if enabled for this command
+        _JSON_OUT = _JSON_OUT_GLOBAL or get_arg(args, '-json')
         print_opts = 'debug json' if _JSON_OUT else 'debug'
         if _JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
 
@@ -5040,7 +5040,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
 
 def JAlien(commands: str = '') -> int:
     """Main entry-point for interaction with AliEn"""
-    global AlienSessionInfo, _JSON_OUT
+    global AlienSessionInfo
     import_aliases()
     wb = None
 
@@ -5090,14 +5090,14 @@ def JAlien(commands: str = '') -> int:
 
 
 def main():
-    global _JSON_OUT, _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, _DEBUG
+    global _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, _DEBUG
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
-    _JSON_OUT_GLOBAL = _JSON_OUT = get_arg(sys.argv, '-json')
+    _JSON_OUT_GLOBAL = get_arg(sys.argv, '-json')
     if not _DEBUG:
         _DEBUG = get_arg(sys.argv, '-debug')
         if _DEBUG:
