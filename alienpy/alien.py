@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'f134be4'
-ALIENPY_VERSION_DATE = '20220924_214105'
+ALIENPY_VERSION_HASH = '449951b'
+ALIENPY_VERSION_DATE = '20220925_142941'
 ALIENPY_VERSION_STR = '1.4.3'
 ALIENPY_EXECUTABLE = ''
 
@@ -3906,9 +3906,10 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
                     'or relative timestamp to `now`, when they are negative.\nFor example `-60000` would be "1 minute ago" and effectively `-1` means "now".')
         return RET(0, msg_help)
     types = ('text', 'xml', 'json')
-    if any(type in types for arg in args): args.remove(type)
+    for t in types: get_arg(args, t)
     args.append('json')
     retobj = queryML(args)
+    q_dict = retobj.ansdict
 
     if retobj.exitcode != 0: return RET(retobj.exitcode, '', f'Error getting query: {" ".join(args)}')
     ans_list = retobj.ansdict["results"]
@@ -3936,7 +3937,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
     for row in ans_list:
         value_list = [row.get(key) for key in keys]
         msg = f'{msg}\n{row_format.format(*value_list)}'
-    return RET(0, msg, '')
+    return RET(0, msg, '', q_dict)
 
 
 def DO_submit(wb, args: Union[list, None] = None) -> RET:
