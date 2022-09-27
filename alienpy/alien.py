@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '9a2030e'
-ALIENPY_VERSION_DATE = '20220926_120325'
+ALIENPY_VERSION_HASH = '31eb6ea'
+ALIENPY_VERSION_DATE = '20220927_101925'
 ALIENPY_VERSION_STR = '1.4.4'
 ALIENPY_EXECUTABLE = ''
 
@@ -4604,7 +4604,7 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, __ = get_token_names()
+    tokencert, __ = get_valid_tokens()
     return CertInfo(tokencert)
 
 
@@ -4698,7 +4698,7 @@ def DO_certverify(args: Union[list, None] = None) -> RET:
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, __ = get_token_names()
+    tokencert, __ = get_valid_tokens()
     return CertVerify(tokencert)
 
 
@@ -4711,7 +4711,7 @@ def DO_certkeymatch(args: Union[list, None] = None) -> RET:
 
 def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    cert, key = get_token_names()
+    cert, key = get_valid_tokens()
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user token with key token", "")
     return CertKeyMatch(cert, key)
 
