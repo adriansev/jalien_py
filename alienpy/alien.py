@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'cd50178'
-ALIENPY_VERSION_DATE = '20220927_120245'
+ALIENPY_VERSION_HASH = '8541f82'
+ALIENPY_VERSION_DATE = '20221010_152806'
 ALIENPY_VERSION_STR = '1.4.5'
 ALIENPY_EXECUTABLE = ''
 
@@ -567,7 +567,7 @@ def get_ca_path() -> str:
     if not capath_default:
         msg = "No CA location or files specified or found!!! Connection will not be possible!!"
         print_err(msg)
-        logging.info(msg)
+        logging.error(msg)
         sys.exit(2)
     if _DEBUG: logging.debug('CApath = %s', capath_default)
     return capath_default
