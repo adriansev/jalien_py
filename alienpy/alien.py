@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '8541f82'
-ALIENPY_VERSION_DATE = '20221010_152806'
+ALIENPY_VERSION_HASH = 'de7634d'
+ALIENPY_VERSION_DATE = '20221102_210402'
 ALIENPY_VERSION_STR = '1.4.5'
 ALIENPY_EXECUTABLE = ''
 
@@ -1954,18 +1954,19 @@ def pathtype_local(path: str) -> str:
     return ''
 
 
-def fileIsValid(file: str, size: Union[str, int], reported_md5: str) -> RET:
+def fileIsValid(filename: str, size: Union[str, int], reported_md5: str, shallow_check: bool = False) -> RET:
     """Check if the file path is consistent with the size and md5 argument. N.B.! the local file will be deleted with size,md5 not match"""
     global AlienSessionInfo
-    if os.path.isfile(file):  # first check
-        if int(os.stat(file).st_size) != int(size):
-            os.remove(file)
-            return RET(1, '', f'{file} : Removed (invalid size)')
-        if md5(file) != reported_md5:
-            os.remove(file)
-            return RET(1, '', f'{file} : Removed (invalid md5 hash)')
-        return RET(0, f'{file} --> TARGET VALID')
-    return RET(2, '', f'{file} : No such file')  # ENOENT
+    if os.path.isfile(filename):  # first check
+        if int(os.stat(filename).st_size) != int(size):
+            os.remove(filename)
+            return RET(1, '', f'{filename} : Removed (invalid size)')
+        if shallow_check: return RET(0, f'{filename} --> TARGET VALID')
+        if md5(filename) != reported_md5:
+            os.remove(filename)
+            return RET(1, '', f'{filename} : Removed (invalid md5 hash)')
+        return RET(0, f'{filename} --> TARGET VALID')
+    return RET(2, '', f'{filename} : No such file')  # ENOENT
 
 
 def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Union[None, list] = None) -> str:
