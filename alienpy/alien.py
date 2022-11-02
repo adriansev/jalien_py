@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'de7634d'
-ALIENPY_VERSION_DATE = '20221102_210402'
+ALIENPY_VERSION_HASH = 'a69847a'
+ALIENPY_VERSION_DATE = '20221102_210956'
 ALIENPY_VERSION_STR = '1.4.5'
 ALIENPY_EXECUTABLE = ''
 
@@ -2623,13 +2623,8 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         # to reduce the remote calls we treat files and directory on separate code-paths
         if src_stat.type == 'f':  # single file
             dst_filename = format_dst_fn(src, src, dst, parent)
-            skip_file = False
-            if os.path.isfile(dst_filename):
-                if not overwrite:
-                    print_out(f'{dst_filename} exists, skipping..')
-                    skip_file = True
-                else:
-                    skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5)) == 0)
+            # if overwrite the file validity checking will do md5
+            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, overwrite)) == 0)
 
             if not skip_file:
                 tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
