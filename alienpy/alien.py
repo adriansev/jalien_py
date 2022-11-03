@@ -94,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'a69847a'
-ALIENPY_VERSION_DATE = '20221102_210956'
+ALIENPY_VERSION_HASH = '1a43d9c'
+ALIENPY_VERSION_DATE = '20221103_153929'
 ALIENPY_VERSION_STR = '1.4.5'
 ALIENPY_EXECUTABLE = ''
 
@@ -1960,12 +1960,13 @@ def fileIsValid(filename: str, size: Union[str, int], reported_md5: str, shallow
     if os.path.isfile(filename):  # first check
         if int(os.stat(filename).st_size) != int(size):
             os.remove(filename)
-            return RET(1, '', f'{filename} : Removed (invalid size)')
-        if shallow_check: return RET(0, f'{filename} --> TARGET VALID')
+            return RET(9, '', f'{filename} : Removed (invalid size)')
+        if shallow_check:
+            return RET(0, f'{filename} --> TARGET VALID (size match)')
         if md5(filename) != reported_md5:
             os.remove(filename)
-            return RET(1, '', f'{filename} : Removed (invalid md5 hash)')
-        return RET(0, f'{filename} --> TARGET VALID')
+            return RET(9, '', f'{filename} : Removed (invalid md5)')
+        return RET(0, f'{filename} --> TARGET VALID (md5 match)')
     return RET(2, '', f'{filename} : No such file')  # ENOENT
 
 
@@ -2624,7 +2625,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         if src_stat.type == 'f':  # single file
             dst_filename = format_dst_fn(src, src, dst, parent)
             # if overwrite the file validity checking will do md5
-            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, overwrite)) == 0)
+            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
 
             if not skip_file:
                 tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
@@ -2639,12 +2640,10 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
                 lfn = get_lfn_key(lfn_obj)
                 dst_filename = format_dst_fn(src, lfn, dst, parent)
-                if os.path.isfile(dst_filename):
-                    if not overwrite:
-                        print_out(f'{dst_filename} exists, skipping..')
-                        continue
-                    if retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'])) == 0: continue  # destination exists and is valid, no point to re-download
-
+                # if overwrite the file validity checking will do md5
+                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
+                if skip_file: continue  # destination exists and is valid, no point to re-download
+                
                 tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
                 if not tokens or 'answer' not in tokens: continue
                 copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
