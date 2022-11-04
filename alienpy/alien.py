@@ -93,9 +93,9 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '8835876'
-ALIENPY_VERSION_DATE = '20221104_001652'
-ALIENPY_VERSION_STR = '1.4.5'
+ALIENPY_VERSION_HASH = '38158c2'
+ALIENPY_VERSION_DATE = '20221104_003207'
+ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
 ##################################################
