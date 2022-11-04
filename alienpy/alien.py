@@ -41,8 +41,7 @@ import zipfile
 import difflib
 
 # External imports
-# import requests
-
+import requests
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
@@ -94,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '1a43d9c'
-ALIENPY_VERSION_DATE = '20221103_153929'
+ALIENPY_VERSION_HASH = '8835876'
+ALIENPY_VERSION_DATE = '20221104_001652'
 ALIENPY_VERSION_STR = '1.4.5'
 ALIENPY_EXECUTABLE = ''
 
@@ -3768,6 +3767,80 @@ def queryML(args: list = None) -> RET:
     return RET(exitcode, stdout, stderr, ansdict)
 
 
+def ccdb_json_cleanup(item_dict: dict) -> None:
+    item_dict.pop('createTime', None)
+    item_dict.pop('lastModified', None)
+    item_dict.pop('id', None)  # replaced by ETag
+    item_dict.pop('validFrom', None)
+    item_dict.pop('validUntil', None)
+    item_dict.pop('initialValidity', None)  # replaced by InitialValidityLimit
+    item_dict.pop('MD5', None)  # replaced by Content-MD5
+    item_dict.pop('fileName', None)  # replaced by Content-Disposition
+    content_disposition = item_dict.pop('Content-Disposition')
+    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
+    item_dict['filename'] = filename
+
+    item_dict.pop('contentType', None)
+    item_dict.pop('size', None)  # replaced by Content-Length
+    item_dict.pop('Created', None)  #  no need (??) to be shown (mail2dev if needed)
+    item_dict.pop('Content-Type', None)  #  useless for this application
+    item_dict.pop('UploadedFrom', None)  #  useless for this application
+    item_dict.pop('UploadedBy', None)  #  useless for this application
+    item_dict.pop('partName', None)  #  useless for this application
+    item_dict.pop('InitialValidityLimit', None)  #  unclear use for this field
+
+
+def DO_ccdb_query(args: list = None) -> RET:
+    """Query CCDB for object data"""
+    if not args: return {}
+
+    if is_help(args):
+        return RET(0, '''ccdb [-host FQDN] [-history] [-nicetime] QUERY
+where query has the form of:
+task name / detector name / start time [ / UUID]
+or
+task name / detector name / [ / time [ / key = value]* ]
+
+-host: specify other ccdb server than alice-ccdb.cern.ch
+-history: use browse to list the whole history of the object
+-unixtime: print the unixtime
+-get: download the specied object/objects - NOT IMPLEMENTED - WIP
+''' )
+
+    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', }  
+
+    listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
+    ccdb_default_host = 'http://alice-ccdb.cern.ch/'
+    host_arg = get_arg_value(args, '-host')
+    do_unixtime = get_arg(args, '-unixtime')
+    do_compact = get_arg(args, '-compact')
+
+    ccdb = host_arg if host_arg else ccdb_default_host
+    if not ccdb.endswith('/'): ccdb = f'{ccdb}/'
+    if not ccdb.startswith('http://') and not ccdb.startswith('https://'): ccdb = f'http://{ccdb}'
+
+    if not args: return RET(2, '', 'empty query!')
+    query_str = args[0]  # after removal of args assume the rest is the query
+
+    q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers)
+    q_dict = q.json()
+
+    [ ccdb_json_cleanup(i) for i in q_dict['objects'] ]
+
+    if not do_unixtime:
+        if 'validAt' in q_dict: q_dict['validAt'] = unixtime2local(q_dict['validAt'])
+        for i in q_dict['objects']:
+            i['Last-Modified'] = unixtime2local(i['Last-Modified'])
+            i['Valid-From'] = unixtime2local(i['Valid-From'])
+            i['Valid-Until'] = unixtime2local(i['Valid-Until'])
+
+    indent = None if do_compact else '  '
+    separators = (',', ':') if do_compact else (', ', ': ')
+    msg = json.dumps(q_dict, indent = indent, separators = separators).replace('\\"', '')
+
+    return RET(0, msg, '', q_dict)
+
+
 def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
     """Get a file and return an XML element structure"""
     if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
@@ -4829,6 +4902,7 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['quit'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
+    AlienSessionInfo['cmd2func_map_nowb']['ccdb'] = DO_ccdb_query
 
 
 make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection implementations
