@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '4aa9956'
-ALIENPY_VERSION_DATE = '20221108_153903'
+ALIENPY_VERSION_HASH = '1d20e59'
+ALIENPY_VERSION_DATE = '20221108_154746'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3327,16 +3327,28 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     return q_stats_dict
 
 
-def xrd_response2dict(response_status: xrd_client.responses.XRootDStatus) -> dict:
+def xrd_response2dict(response_status) -> dict:
     """Convert a XRootD response status answer to a dict"""
     if not response_status: return {}
+    if not _HAS_XROOTD:
+        print_err('XRootD not present')
+        retrun {}
+    if not isinstance(response_status, xrd_client.responses.XRootDStatus):
+        print_err('Invalid argument type passed to xrd_response2dict')
+        return {}
     return {'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
             'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok}
 
 
-def xrd_statinfo2dict(response_statinfo: xrd_client.responses.StatInfo) -> dict:
+def xrd_statinfo2dict(response_statinfo) -> dict:
     """Convert a XRootD StatInfo answer to a dict"""
     if not response_statinfo: return {}
+    if not _HAS_XROOTD:
+        print_err('XRootD not present')
+        retrun {}
+    if not isinstance(response_status, xrd_client.responses.StatInfo):
+        print_err('Invalid argument type passed to xrd_statinfo2dict')
+        return {}
     return {'size': response_statinfo.size, 'flags': response_statinfo.flags, 'modtime': response_statinfo.modtime, 'modtimestr': response_statinfo.modtimestr}
 
 
