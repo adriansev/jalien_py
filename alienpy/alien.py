@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '1d20e59'
-ALIENPY_VERSION_DATE = '20221108_154746'
+ALIENPY_VERSION_HASH = 'ba59bf7'
+ALIENPY_VERSION_DATE = '20221108_154844'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3332,7 +3332,7 @@ def xrd_response2dict(response_status) -> dict:
     if not response_status: return {}
     if not _HAS_XROOTD:
         print_err('XRootD not present')
-        retrun {}
+        return {}
     if not isinstance(response_status, xrd_client.responses.XRootDStatus):
         print_err('Invalid argument type passed to xrd_response2dict')
         return {}
@@ -3345,7 +3345,7 @@ def xrd_statinfo2dict(response_statinfo) -> dict:
     if not response_statinfo: return {}
     if not _HAS_XROOTD:
         print_err('XRootD not present')
-        retrun {}
+        return {}
     if not isinstance(response_status, xrd_client.responses.StatInfo):
         print_err('Invalid argument type passed to xrd_statinfo2dict')
         return {}
