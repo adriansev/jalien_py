@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'ba59bf7'
-ALIENPY_VERSION_DATE = '20221108_154844'
+ALIENPY_VERSION_HASH = 'ce189f7'
+ALIENPY_VERSION_DATE = '20221108_161247'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -1691,7 +1691,6 @@ options are the following :
 -xrdlog : change the default filepath of XRootD logfile (default: xrdlog)
 -f : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
 -fastcheck : When already present destination is check for validity, check only size not also md5
--cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified
 -S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
@@ -2858,8 +2857,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     fastcheck = get_arg(xrd_copy_command, '-fastcheck')
     overwrite = not fastcheck 
     
-    cksum = get_arg(xrd_copy_command, '-cksum')
-
+    get_arg(xrd_copy_command, '-cksum')
+    cksum = True
+ 
     tpc = 'none'
     if get_arg(xrd_copy_command, '-tpc'): tpc = 'first'
     if tpc != 'none': return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
