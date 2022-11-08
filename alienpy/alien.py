@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '38158c2'
-ALIENPY_VERSION_DATE = '20221104_003207'
+ALIENPY_VERSION_HASH = '4aa9956'
+ALIENPY_VERSION_DATE = '20221108_153903'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -1684,11 +1684,13 @@ where src|dst are local files if prefixed with file:// or file: or grid files ot
 and -input argument is a file with >src dst< pairs
 after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
 where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
+%ALIEN alias have the special meaning of AliEn user home directory
 options are the following :
 -h : print help
 -d | -dd | -ddd : enable XRootD log level to Info/Debug/Dump
 -xrdlog : change the default filepath of XRootD logfile (default: xrdlog)
--f : replace destination file (if destination is local it will be replaced only if integrity check fails)
+-f : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
+-fastcheck : When already present destination is check for validity, check only size not also md5
 -cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified
 -S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
@@ -2849,7 +2851,13 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         XRD_EnvPut('CpRetry', retry)
 
     _use_system_xrdcp = get_arg(xrd_copy_command, '-xrdcp')
-    overwrite = get_arg(xrd_copy_command, '-f')
+    f_arg = get_arg(xrd_copy_command, '-f')
+    if f_arg:
+        print_out('No longer used flag! md5 verification of present destination is default; disable with -fastcheck')
+    
+    fastcheck = get_arg(xrd_copy_command, '-fastcheck')
+    overwrite = not fastcheck 
+    
     cksum = get_arg(xrd_copy_command, '-cksum')
 
     tpc = 'none'
@@ -2878,7 +2886,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     if get_arg(xrd_copy_command, '-v'): print_out("Verbose mode not implemented, ignored; enable debugging with ALIENPY_DEBUG=1")
     if get_arg(xrd_copy_command, '-a'): print_out("-a is enabled as default")
     if get_arg(xrd_copy_command, '-s'): print_out("-s is enabled as default")
-    if get_arg(xrd_copy_command, '-f'): print_out("-f API flag not usefull for copy operations")
     if get_arg(xrd_copy_command, '-w'): print_out("-w flag not usefull for copy operations")
     if get_arg(xrd_copy_command, '-wh'): print_out("-wh flag not usefull for copy operations")
     if get_arg(xrd_copy_command, '-d'): print_out("-d flag not usefull for copy operations")
