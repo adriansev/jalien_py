@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '982727f'
-ALIENPY_VERSION_DATE = '20221110_223330'
+ALIENPY_VERSION_HASH = 'f256bc6'
+ALIENPY_VERSION_DATE = '20221110_224907'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3811,7 +3811,7 @@ def ccdb_json_cleanup(item_dict: dict) -> None:
 
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
-    if not args: return {}
+    if not args: return RET(2, '', 'empty query! Use at least a "/" as argument')
 
     if is_help(args):
         return RET(0, '''ccdb [-host FQDN] [-history] [-nicetime] QUERY
@@ -3843,8 +3843,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers)
     q_dict = q.json()
-
-    [ ccdb_json_cleanup(i) for i in q_dict['objects'] ]
+    list(map(ccdb_json_cleanup, q_dict['objects']))
 
     if not do_unixtime:
         if 'validAt' in q_dict: q_dict['validAt'] = unixtime2local(q_dict['validAt'])
