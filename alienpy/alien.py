@@ -93,8 +93,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'f256bc6'
-ALIENPY_VERSION_DATE = '20221110_224907'
+ALIENPY_VERSION_HASH = '06c0d18'
+ALIENPY_VERSION_DATE = '20221119_092148'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -2845,7 +2845,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     XRD_EnvPut('CpRetryPolicy', 'force')
     retry_arg = get_arg_value(xrd_copy_command, '-retry')
-    if rate_arg:
+    if retry_arg:
         retry = abs(int(retry_arg))
         XRD_EnvPut('CpRetry', retry)
 
