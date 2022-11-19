@@ -48,7 +48,7 @@ jobs:
         python-version: '3.9.15'
 
     - name: Install xrootd dependencies
-      run: sudo apt-get install -y libjson-c-dev libjson-c4 curl libcurl4-gnutls-dev libcurl4-openssl-dev libcurl4 libtinyxml-dev 
+      run: sudo apt-get install -y libjson-c-dev libjson-c4 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
 
     - name: Install dependencies
       run: | # |
