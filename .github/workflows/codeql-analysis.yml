@@ -51,12 +51,12 @@ jobs:
       run: sudo apt-get install -y libjson-c-dev libjson-c4 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
 
     - name: Install python base packages
-      run: python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+      run: python3 -m pip install --no-cache-dir --upgrade pip setuptools=65.5.1 wheel
 
     - name: Install alienpy dependencies
       run: | # |
-          grep -v xrootd requirements.txt > requirements_noxrd.txt
-          python3 -m pip install --no-cache-dir --upgrade -r requirements_noxrd.txt;
+          # grep -v xrootd requirements.txt > requirements_noxrd.txt
+          python3 -m pip install --no-cache-dir --upgrade -r requirements.txt;
           # Set the CODEQL-PYTHON environment variable to the Python executable that includes the dependencies
           echo "CODEQL_PYTHON=$(which python3)" >> $GITHUB_ENV
 
