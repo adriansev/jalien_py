@@ -50,12 +50,12 @@ jobs:
     - name: Install xrootd dependencies
       run: sudo apt-get install -y libjson-c-dev libjson-c4 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
 
-    - name: Install dependencies
+    - name: Install python base packages
+      run: python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    - name: Install alienpy dependencies
       run: | # |
-        python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
-          if [ -f requirements.txt ];
-              then python3 -m pip install --no-cache-dir --upgrade -r requirements.txt;
-          fi
+          python3 -m pip install --no-cache-dir --upgrade -r requirements.txt;
           # Set the CODEQL-PYTHON environment variable to the Python executable that includes the dependencies
           echo "CODEQL_PYTHON=$(which python3)" >> $GITHUB_ENV
 
