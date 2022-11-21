@@ -13,6 +13,7 @@ import ast
 import json
 import re
 import signal
+import faulthandler
 import subprocess
 import logging
 import traceback
@@ -94,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '7d673a0'
-ALIENPY_VERSION_DATE = '20221121_221220'
+ALIENPY_VERSION_HASH = 'ce9e443'
+ALIENPY_VERSION_DATE = '20221121_224608'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3227,7 +3228,13 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                         checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
 
     process.prepare()
+
+    faulthandler.disable()
+
+    faulthandler.enable(file = sys.__stderr__, all_threads = True)
     process.run(handler)
+    faulthandler.disable()
+
     if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
         ret_list = commitFileList(wb, handler.succesful_writes)
         for ret in ret_list: retf_print(ret, 'noout err')
