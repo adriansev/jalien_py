@@ -7,6 +7,7 @@ if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] 
     print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True)
     sys.exit(1)
 
+import errno
 import atexit
 import ast
 import json
@@ -93,8 +94,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '06c0d18'
-ALIENPY_VERSION_DATE = '20221119_092148'
+ALIENPY_VERSION_HASH = '7d673a0'
+ALIENPY_VERSION_DATE = '20221121_221220'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -5227,6 +5228,11 @@ def main():
     except KeyboardInterrupt:
         print_out("Received keyboard intrerupt, exiting..")
         sys.exit(1)
+    except BrokenPipeError:
+        # Python flushes standard streams on exit; redirect remaining output to devnull to avoid another BrokenPipeError at shutdown
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(1)  # Python exits with error code 1 on EPIPE
     except Exception:
         logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
         logging.error("\n\n")
