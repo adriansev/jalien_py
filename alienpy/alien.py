@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'ce9e443'
-ALIENPY_VERSION_DATE = '20221121_224608'
+ALIENPY_VERSION_HASH = '88e630a'
+ALIENPY_VERSION_DATE = '20221121_225236'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -2567,11 +2567,6 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     src, src_type = path_type(arg_src)
     dst, dst_type = path_type(arg_dst)
 
-    if src_type == dst_type == 'grid':
-        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
-    if src_type == dst_type == 'local':
-        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
-
     isSrcLocal = (src_type == 'local')
     isDownload = not isSrcLocal
     if isSrcLocal:  # UPLOAD
@@ -2582,6 +2577,11 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         dst_stat = path_local_stat(dst)
         if not path_writable_any(dst_stat.path):
             return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
+
+    if src_type == dst_type == 'grid':
+        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
+    if src_type == dst_type == 'local':
+        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
 
     if not src_stat.type: return RET(2, '', f'Specified source {src_stat.path} not found!')
 
