@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '88e630a'
-ALIENPY_VERSION_DATE = '20221121_225236'
+ALIENPY_VERSION_HASH = 'e3d9b75'
+ALIENPY_VERSION_DATE = '20221123_230931'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -2575,7 +2575,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
     else:           # DOWNLOAD
         src_stat = path_grid_stat(wb, src)
         dst_stat = path_local_stat(dst)
-        if not path_writable_any(dst_stat.path):
+        if not path_writable_any(dst_stat.path) and not parent > 1:
             return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
 
     if src_type == dst_type == 'grid':
