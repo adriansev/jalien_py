@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'e3d9b75'
-ALIENPY_VERSION_DATE = '20221123_230931'
+ALIENPY_VERSION_HASH = '9d810b6'
+ALIENPY_VERSION_DATE = '20221125_182122'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -1000,8 +1000,19 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
 
 
 @syncify
-async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
+async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
+    if not host:
+        msg = 'wb_create:: provided host argument is empty'
+        print_err(msg)
+        logging.error(msg)
+        return None
+    if not port:
+        msg = 'wb_create:: provided port argument is empty or 0'
+        print_err(msg)
+        logging.error(msg)
+        return None
+
     QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = None  # int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
     PING_TIMEOUT = int(os.getenv('ALIENPY_TIMEOUT', '20'))  # If the corresponding Pong frame isn’t received within ping_timeout seconds, the connection is considered unusable and is closed
@@ -1084,7 +1095,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '0', path: 
     return wb
 
 
-def wb_create_tryout(host: str = 'localhost', port: Union[str, int] = '0', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
+def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
     wb = None
     nr_tries = 0
@@ -4829,15 +4840,17 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
             # lets check JBOX availability
             jalien_info = read_conf_file(jclient_env)
-            if jalien_info and is_my_pid(jalien_info['JALIEN_PID']) and isReachable(jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']):
-                jalien_server, jalien_websocket_port = jalien_info['JALIEN_HOST'], jalien_info['JALIEN_WSPORT']
+            if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
+                jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
+                jbox_port = jalien_info.get('JALIEN_WSPORT', '8097')
+                if isReachable(jbox_host, jbox_port): jalien_server, jalien_websocket_port = jbox_host, jbox_port
 
         wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
         # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
         if wb is None and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
             jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
-            wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
+            wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
     if wb is None:
         msg = f'Check the logfile: {_DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
