@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '9d810b6'
-ALIENPY_VERSION_DATE = '20221125_182122'
+ALIENPY_VERSION_HASH = 'c8f0d02'
+ALIENPY_VERSION_DATE = '20221125_195044'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -1007,11 +1007,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         print_err(msg)
         logging.error(msg)
         return None
-    if not port:
-        msg = 'wb_create:: provided port argument is empty or 0'
+    if not port or not str(port).isdigit() or abs(int(port)) > 65535:
+        msg = 'wb_create:: provided port argument is empty, 0 or invalid integer'
         print_err(msg)
         logging.error(msg)
         return None
+    port = str(abs(int(port)))  # make sure the port argument is positive
 
     QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
     MSG_SIZE = None  # int(20 * 1024 * 1024)  # maximum size for incoming messages in bytes. The default value is 1 MiB. None disables the limit
