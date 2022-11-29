@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'c8f0d02'
-ALIENPY_VERSION_DATE = '20221125_195044'
+ALIENPY_VERSION_HASH = '70f3131'
+ALIENPY_VERSION_DATE = '20221129_135329'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -1701,8 +1701,7 @@ where disk selects the number of replicas and the following specifiers add (or r
 %ALIEN alias have the special meaning of AliEn user home directory
 options are the following :
 -h : print help
--d | -dd | -ddd : enable XRootD log level to Info/Debug/Dump
--xrdlog : change the default filepath of XRootD logfile (default: xrdlog)
+-dryrun : just print the src,dst pairs that would have been transfered without actually doing so
 -f : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
 -fastcheck : When already present destination is check for validity, check only size not also md5
 -S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
@@ -2670,7 +2669,6 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
 
         for file in results_list.ansdict["results"]:
             file_path = get_lfn_key(file)
-            print(file_path)
             lfn = format_dst_fn(src, file_path, dst, parent)
             lfn_dst_stat = path_grid_stat(wb, lfn)  # check each destination lfn
             if lfn_dst_stat.type == 'f':  # lfn exists
@@ -2798,23 +2796,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     timeout = int(0)
     rate = int(0)
 
-    if get_arg(xrd_copy_command, '-d'):
-        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Info')
-        XRD_EnvPut('XRD_LOGLEVEL', 'Info')
-    if get_arg(xrd_copy_command, '-dd'):
-        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Debug')
-        XRD_EnvPut('XRD_LOGLEVEL', 'Debug')
-    if get_arg(xrd_copy_command, '-ddd'):
-        if os.getenv('XRD_LOGLEVEL'): print_out('XRD_LOGLEVEL already set, it will be overwritten with Dump')
-        XRD_EnvPut('XRD_LOGLEVEL', 'Dump')
-
-    XRD_LOG = 'xrdlog.txt'
-    xrd_logfile_arg = get_arg_value(xrd_copy_command, '-xrdlog')
-    if xrd_logfile_arg:
-        if os.getenv('XRD_LOGFILE'): print_out(f'XRD_LOGFILE already set, it will be overwritten with {xrd_logfile_arg}')
-        XRD_LOG = xrd_logfile_arg
-    XRD_EnvPut('XRD_LOGFILE', XRD_LOG)
-
     streams_arg = get_arg_value(xrd_copy_command, '-S')
     if streams_arg:
         if is_int(streams_arg):
@@ -2873,6 +2854,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     
     get_arg(xrd_copy_command, '-cksum')
     cksum = True
+ 
+    dryrun = get_arg(xrd_copy_command, '-dryrun')
  
     tpc = 'none'
     if get_arg(xrd_copy_command, '-tpc'): tpc = 'first'
@@ -2968,12 +2951,11 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504
 
-    if not copy_lfnlist:  # at this point if any errors, the processing was already stopped
-        return RET(0)
+    if not copy_lfnlist: return RET(1, '', 'copy_lfnlist empty!!')  # at this point if any errors, the processing was already stopped
 
     if _DEBUG:
         logging.debug("We are going to copy these files:")
-        for file in copy_lfnlist: logging.debug(file)
+        for f in copy_lfnlist: logging.debug(f)
 
     # create a list of copy jobs to be passed to XRootD mechanism
     xrdcopy_job_list = []
@@ -2986,7 +2968,14 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     if _DEBUG:
         logging.debug("XRootD copy jobs:")
-        for file in xrdcopy_job_list: logging.debug(file)
+        for f in xrdcopy_job_list: logging.debug(f)
+
+    if dryrun:
+        msg = ''
+        for f in xrdcopy_job_list:
+            c_msg = f'{f.src} -> {f.lfn} ({f.token_request["se"]})' if f.isUpload else f'{f.lfn} -> {f.dst}'
+            msg = f'{msg}{c_msg}\n'
+        return RET(0, msg)
 
     msg1 = msg2 = msg3 = msg_sum = ''
     copy_jobs_nr = copy_jobs_nr1 = copy_jobs_nr2 = 0
@@ -3117,7 +3106,9 @@ if _HAS_XROOTD:
             job_status_info = f"jobID: {jobId}/{self.jobs} >>> STATUS {status}"
 
             deltaT = datetime.datetime.now().timestamp() - float(job_info['start'])
-            if os.getenv('XRD_LOGLEVEL'): logging.debug('XRD copy job time:: %s -> %s', xrdjob.lfn, deltaT)
+            if os.getenv('XRD_LOGLEVEL'):
+                logging.debug('XRD copy job time:: %s -> %s', xrdjob.lfn, deltaT)
+                logging.debug(results)
 
             if results['status'].ok:
                 speed = float(job_info['bytes_total']) / deltaT
@@ -3201,11 +3192,10 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     # timeout = xrd_cp_args.timeout
     # rate = xrd_cp_args.rate
 
-    cksum_mode = 'none'  # none | source | target | end2end
-    cksum_type = ''
-    cksum_preset = ''
-    delete_invalid_chk = False
-    if cksum:  # checksumming defaults good enough also for uploads
+    # none | source | target | end2end
+    # Default values for checksumming mechanism
+    cksum_mode = 'none'; cksum_type = cksum_preset = '' ; delete_invalid_chk = False
+    if cksum:
         xrd_client.EnvPutInt('ZipMtlnCksum', 1)
         cksum_mode = 'end2end'
         cksum_type = 'auto'
@@ -3227,22 +3217,21 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 # WIP: checksumming with md5 for uploading breaks, keep it on auto
                 # cksum_type = 'md5'
                 # cksum_preset = copy_job.token_request['md5']
-                pass
+                cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False  # Reset the cksum options
             else:  # for downloads we already have the md5 value, lets use that
                 cksum_type, cksum_preset = get_hash_meta(copy_job.src)
-                if not cksum_type or not cksum_preset:
-                    cksum_type = ''
-                    cksum_preset = ''
-                    cksum_mode = 'none'
+                if not cksum_type or not cksum_preset:  # The remote file had no hash registered
+                    cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False
+
         process.add_job(copy_job.src, copy_job.dst,
                         sourcelimit = sources, posc = posc, mkdir = makedir,
                         force = overwrite, thirdparty = tpc,
-                        checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk)
+                        checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
+                        retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
 
     faulthandler.disable()
-
     faulthandler.enable(file = sys.__stderr__, all_threads = True)
     process.run(handler)
     faulthandler.disable()
