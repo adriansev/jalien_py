@@ -95,8 +95,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '70f3131'
-ALIENPY_VERSION_DATE = '20221129_135329'
+ALIENPY_VERSION_HASH = '5ce639f'
+ALIENPY_VERSION_DATE = '20221130_113507'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3217,6 +3217,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 # WIP: checksumming with md5 for uploading breaks, keep it on auto
                 # cksum_type = 'md5'
                 # cksum_preset = copy_job.token_request['md5']
+                # cksum_mode = 'end2end'; cksum_type = 'auto' ; cksum_preset = ''; delete_invalid_chk = True  # Tryout
                 cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False  # Reset the cksum options
             else:  # for downloads we already have the md5 value, lets use that
                 cksum_type, cksum_preset = get_hash_meta(copy_job.src)
