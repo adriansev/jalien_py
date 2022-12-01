@@ -24,6 +24,9 @@ import uuid
 import multiprocessing as mp
 from typing import NamedTuple
 from typing import Union
+from typing import Optional
+from typing import Callable
+from typing import Iterator
 import shlex
 import tempfile
 import datetime
@@ -47,15 +50,21 @@ import requests
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
-        import async_stagger
+        import async_stagger  # type: ignore
     except Exception:
         print("async_stagger module could not be load", file = sys.stderr, flush = True)
         sys.exit(1)
 
 try:
+    import cryptography
+except Exception:
+    print("cryptography module could not be load", file = sys.stderr, flush = True)
+    sys.exit(1)
+
+try:
     import OpenSSL
 except Exception:
-    print("websockets module could not be load", file = sys.stderr, flush = True)
+    print("OpenSSL module could not be load", file = sys.stderr, flush = True)
     sys.exit(1)
 
 try:
@@ -69,7 +78,7 @@ except Exception:
 
 _HAS_XROOTD = False
 try:
-    from XRootD import client as xrd_client
+    from XRootD import client as xrd_client  # type: ignore
     _HAS_XROOTD = True
 except Exception:
     print("XRootD module could not be load", file = sys.stderr, flush = True)
@@ -84,19 +93,19 @@ except Exception:
 
 _HAS_READLINE = False
 try:
-    import readline as rl
+    import readline as rl  # type: ignore
     _HAS_READLINE = True
 except ImportError:
     try:
-        import gnureadline as rl
+        import gnureadline as rl  # type: ignore  # mypy: no-redef
         _HAS_READLINE = True
     except ImportError:
         pass
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '5ce639f'
-ALIENPY_VERSION_DATE = '20221130_113507'
+ALIENPY_VERSION_HASH = '9f4349f'
+ALIENPY_VERSION_DATE = '20221201_155719'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -135,7 +144,7 @@ __TOKENKEY_NAME = f'{__TMPDIR}/tokenkey_{str(os.getuid())}.pem'
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
+                    'cmd2func_map_nowb': dict(), 'cmd2func_map_client': dict(), 'cmd2func_map_srv': dict(), 'templist': list(), 'alias_cache': dict(),
                     'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
                     'use_usercert': False, 'verified_cert': False, 'verified_token': False}
 
@@ -244,63 +253,63 @@ if _HAS_XROOTD:
 
 class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
     """Collection of colors for terminal printing"""
-    ColorReset = '\033[00m'     # Text Reset
-    Black = '\033[0;30m'        # Black
-    Red = '\033[0;31m'          # Red
-    Green = '\033[0;32m'        # Green
-    Yellow = '\033[0;33m'       # Yellow
-    Blue = '\033[0;34m'         # Blue
-    Purple = '\033[0;35m'       # Purple
-    Cyan = '\033[0;36m'         # Cyan
-    White = '\033[0;37m'        # White
-    BBlack = '\033[1;30m'       # Bold Black
-    BRed = '\033[1;31m'         # Bold Red
-    BGreen = '\033[1;32m'       # Bold Green
-    BYellow = '\033[1;33m'      # Bold Yellow
-    BBlue = '\033[1;34m'        # Bold Blue
-    BPurple = '\033[1;35m'      # Bold Purple
-    BCyan = '\033[1;36m'        # Bold Cyan
-    BWhite = '\033[1;37m'       # Bold White
-    UBlack = '\033[4;30m'       # Underline Black
-    URed = '\033[4;31m'         # Underline Red
-    UGreen = '\033[4;32m'       # Underline Green
-    UYellow = '\033[4;33m'      # Underline Yellow
-    UBlue = '\033[4;34m'        # Underline Blue
-    UPurple = '\033[4;35m'      # Underline Purple
-    UCyan = '\033[4;36m'        # Underline Cyan
-    UWhite = '\033[4;37m'       # Underline White
-    IBlack = '\033[0;90m'       # High Intensity Black
-    IRed = '\033[0;91m'         # High Intensity Red
-    IGreen = '\033[0;92m'       # High Intensity Green
-    IYellow = '\033[0;93m'      # High Intensity Yellow
-    IBlue = '\033[0;94m'        # High Intensity Blue
-    IPurple = '\033[0;95m'      # High Intensity Purple
-    ICyan = '\033[0;96m'        # High Intensity Cyan
-    IWhite = '\033[0;97m'       # High Intensity White
-    BIBlack = '\033[1;90m'      # Bold High Intensity Black
-    BIRed = '\033[1;91m'        # Bold High Intensity Red
-    BIGreen = '\033[1;92m'      # Bold High Intensity Green
-    BIYellow = '\033[1;93m'     # Bold High Intensity Yellow
-    BIBlue = '\033[1;94m'       # Bold High Intensity Blue
-    BIPurple = '\033[1;95m'     # Bold High Intensity Purple
-    BICyan = '\033[1;96m'       # Bold High Intensity Cyan
-    BIWhite = '\033[1;97m'      # Bold High Intensity White
-    On_Black = '\033[40m'       # Background Black
-    On_Red = '\033[41m'         # Background Red
-    On_Green = '\033[42m'       # Background Green
-    On_Yellow = '\033[43m'      # Background Yellow
-    On_Blue = '\033[44m'        # Background Blue
-    On_Purple = '\033[45m'      # Background Purple
-    On_Cyan = '\033[46m'        # Background Cyan
-    On_White = '\033[47m'       # Background White
-    On_IBlack = '\033[0;100m'   # High Intensity backgrounds Black
-    On_IRed = '\033[0;101m'     # High Intensity backgrounds Red
-    On_IGreen = '\033[0;102m'   # High Intensity backgrounds Green
-    On_IYellow = '\033[0;103m'  # High Intensity backgrounds Yellow
-    On_IBlue = '\033[0;104m'    # High Intensity backgrounds Blue
-    On_IPurple = '\033[0;105m'  # High Intensity backgrounds Purple
-    On_ICyan = '\033[0;106m'    # High Intensity backgrounds Cyan
-    On_IWhite = '\033[0;107m'   # High Intensity backgrounds White
+    ColorReset:str = '\033[00m'     # Text Reset
+    Black:str = '\033[0;30m'        # Black
+    Red:str = '\033[0;31m'          # Red
+    Green:str = '\033[0;32m'        # Green
+    Yellow:str = '\033[0;33m'       # Yellow
+    Blue:str = '\033[0;34m'         # Blue
+    Purple:str = '\033[0;35m'       # Purple
+    Cyan:str = '\033[0;36m'         # Cyan
+    White:str = '\033[0;37m'        # White
+    BBlack:str = '\033[1;30m'       # Bold Black
+    BRed:str = '\033[1;31m'         # Bold Red
+    BGreen:str = '\033[1;32m'       # Bold Green
+    BYellow:str = '\033[1;33m'      # Bold Yellow
+    BBlue:str = '\033[1;34m'        # Bold Blue
+    BPurple:str = '\033[1;35m'      # Bold Purple
+    BCyan:str = '\033[1;36m'        # Bold Cyan
+    BWhite:str = '\033[1;37m'       # Bold White
+    UBlack:str = '\033[4;30m'       # Underline Black
+    URed:str = '\033[4;31m'         # Underline Red
+    UGreen:str = '\033[4;32m'       # Underline Green
+    UYellow:str = '\033[4;33m'      # Underline Yellow
+    UBlue:str = '\033[4;34m'        # Underline Blue
+    UPurple:str = '\033[4;35m'      # Underline Purple
+    UCyan:str = '\033[4;36m'        # Underline Cyan
+    UWhite:str = '\033[4;37m'       # Underline White
+    IBlack:str = '\033[0;90m'       # High Intensity Black
+    IRed:str = '\033[0;91m'         # High Intensity Red
+    IGreen:str = '\033[0;92m'       # High Intensity Green
+    IYellow:str = '\033[0;93m'      # High Intensity Yellow
+    IBlue:str = '\033[0;94m'        # High Intensity Blue
+    IPurple:str = '\033[0;95m'      # High Intensity Purple
+    ICyan:str = '\033[0;96m'        # High Intensity Cyan
+    IWhite:str = '\033[0;97m'       # High Intensity White
+    BIBlack:str = '\033[1;90m'      # Bold High Intensity Black
+    BIRed:str = '\033[1;91m'        # Bold High Intensity Red
+    BIGreen:str = '\033[1;92m'      # Bold High Intensity Green
+    BIYellow:str = '\033[1;93m'     # Bold High Intensity Yellow
+    BIBlue:str = '\033[1;94m'       # Bold High Intensity Blue
+    BIPurple:str = '\033[1;95m'     # Bold High Intensity Purple
+    BICyan:str = '\033[1;96m'       # Bold High Intensity Cyan
+    BIWhite:str = '\033[1;97m'      # Bold High Intensity White
+    On_Black:str = '\033[40m'       # Background Black
+    On_Red:str = '\033[41m'         # Background Red
+    On_Green:str = '\033[42m'       # Background Green
+    On_Yellow:str = '\033[43m'      # Background Yellow
+    On_Blue:str = '\033[44m'        # Background Blue
+    On_Purple:str = '\033[45m'      # Background Purple
+    On_Cyan:str = '\033[46m'        # Background Cyan
+    On_White:str = '\033[47m'       # Background White
+    On_IBlack:str = '\033[0;100m'   # High Intensity backgrounds Black
+    On_IRed:str = '\033[0;101m'     # High Intensity backgrounds Red
+    On_IGreen:str = '\033[0;102m'   # High Intensity backgrounds Green
+    On_IYellow:str = '\033[0;103m'  # High Intensity backgrounds Yellow
+    On_IBlue:str = '\033[0;104m'    # High Intensity backgrounds Blue
+    On_IPurple:str = '\033[0;105m'  # High Intensity backgrounds Purple
+    On_ICyan:str = '\033[0;106m'    # High Intensity backgrounds Cyan
+    On_IWhite:str = '\033[0;107m'   # High Intensity backgrounds White
 
 
 class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
@@ -377,7 +386,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
             if self.out and not ('noout' in opts or 'noprint' in opts):
                 print_out(f'{self.out.strip()}')
 
-    __call__ = print
+    __call__ = print  # type: ignore[misc] 
 
     def __bool__(self) -> bool:
         return bool(self.exitcode == 0)
@@ -439,10 +448,10 @@ class Msg:
         if isinstance(arg, str): self.args.extend(shlex.split(arg))
         if isinstance(arg, list): self.args.extend(arg)
 
-    def msgdict(self) -> dict:
+    def msgdict(self) -> Union[str, dict]:
         return CreateJsonCommand(self.cmd, self.args, self.opts, True)
 
-    def msgstr(self) -> str:
+    def msgstr(self) -> Union[str, dict]:
         return CreateJsonCommand(self.cmd, self.args, self.opts)
 
     def __call__(self) -> tuple:
@@ -584,7 +593,7 @@ def IsValidCert(fname: str) -> bool:
         return False
 
     try:
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)  # type: ignore[attr-defined]
     except Exception:
         logging.error('IsValidCert:: Unable to load certificate %s', fname)
         return False
@@ -612,14 +621,14 @@ def get_valid_tokens() -> tuple:
         temp_cert.write(tokencert.encode(encoding = "ascii", errors = "replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        AlienSessionInfo['templist'].append(tokencert)
+        AlienSessionInfo['templist'].append(tokencert)  # type: ignore[attr-defined]
     if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)  # noqa: PLR1732
         temp_key.write(tokenkey.encode(encoding = "ascii", errors = "replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
-        AlienSessionInfo['templist'].append(tokenkey)
+        AlienSessionInfo['templist'].append(tokenkey)  # type: ignore[attr-defined]
 
     if (IsValidCert(tokencert) and path_readable(tokenkey)):
         AlienSessionInfo['verified_token'] = True
@@ -750,7 +759,7 @@ def is_int(arg: Union[str, int, float, None]) -> bool:
 
 def time_unix2simple(time_arg: Union[str, int, None]) -> str:
     if not time_arg: return ''
-    return datetime.datetime.fromtimestamp(time_arg).replace(microsecond=0).isoformat().replace('T', ' ')
+    return datetime.datetime.fromtimestamp(float(time_arg)).replace(microsecond=0).isoformat().replace('T', ' ')
 
 
 def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
@@ -909,7 +918,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     if not wb:
         msg = "SendMsg:: websocket not initialized"
         logging.info(msg)
-        return '' if 'rawstr' in opts else RET(1, '', msg)
+        return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
     time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
@@ -921,7 +930,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
 
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty!")
-        return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")
+        return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")  # type: ignore [call-arg]
 
     if _DEBUG:
         logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\n>>>   SEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
@@ -943,7 +952,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {_DEBUG_FILE}"
         print_err(msg)
         logging.error(msg)
-        return RET(70, '', 'SendMsg:: Empty result received from server')  # ECOMM
+        return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM  
 
     if 'rawstr' in opts: return result
     time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
@@ -957,7 +966,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     if not wb:
         msg = "SendMsg:: websocket not initialized"
         logging.info(msg)
-        return '' if 'rawstr' in opts else RET(1, '', msg)
+        return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
     time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
     if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
@@ -1132,7 +1141,7 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
 def retf_result2ret(result: Union[str, dict, None]) -> RET:
     """Convert AliEn answer dictionary to RET object"""
     global AlienSessionInfo
-    if not result: return RET()
+    if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
     out_dict = None
     if isinstance(result, str):
         try:
@@ -1140,18 +1149,18 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
         except Exception as e:
             msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
             logging.error(msg)
-            return RET(1, '', msg)
+            return RET(22, '', msg)  # type: ignore [call-arg]
     else:
         out_dict = result.copy()
 
     if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
         msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
         logging.error(msg)
-        return RET(1, '', msg)
+        return RET(52, '', msg)  # type: ignore [call-arg]
 
     message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
     output = '\n'.join(message_list)
-    ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)
+    ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
 
     if AlienSessionInfo:  # update global state of session
         AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
@@ -1431,7 +1440,7 @@ def SessionRestore(wb):
 
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
-    return RET(0, f"{AlienSessionInfo['exitcode']}", '')
+    return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
 
 
 def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
@@ -1476,7 +1485,7 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
     if is_help(args): return get_help_srv(wb, 'cd')
     if args:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
-        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)
+        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
     return SendMsg(wb, 'cd', args, opts)
 
 
@@ -1566,8 +1575,8 @@ def DO_pushd(wb, args: Union[str, list, None] = None) -> RET:
 
 def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
-    if not cmd: return RET(1)
-    if args is None: return RET(1)
+    if not cmd: return RET(1)  # type: ignore [call-arg]
+    if args is None: return RET(1)  # type: ignore [call-arg]
     global AlienSessionInfo
     arg_list = args.split() if isinstance(args, str) else args
     do_not_cd = False
@@ -1582,7 +1591,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
                 'pushd [-n] [+N | -N | dir]')
 
     if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
-        return RET(1, '', help_msg)
+        return RET(1, '', help_msg)  # type: ignore [call-arg]
 
     sign = None
     position = None
@@ -1590,7 +1599,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
     for arg in arg_list:
         if arg[0] == '+' or arg[0] == '-':
             sign = arg[0]
-            if not arg[1:].isdecimal(): return RET(1, '', "-N | +N argument is invalid")
+            if not arg[1:].isdecimal(): return RET(1, '', "-N | +N argument is invalid")  # type: ignore [call-arg]
             position = int(arg[1:])
             arg_list.remove(arg)
             pos = int(arg)
@@ -1598,33 +1607,33 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
     if cmd == "dirs":
         if '-c' in arg_list:
             AlienSessionInfo['pathq'].clear()
-            return RET(0)
+            return RET(0)  # type: ignore [call-arg]
         if not arg_list: msg = ' '.join(AlienSessionInfo['pathq'])
 
         if position and sign:
-            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
+            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)  # type: ignore [call-arg]
             if sign == "+":
                 msg = AlienSessionInfo['pathq'][position]  # Nth position from top (last/top element have the index 0)
             if sign == "-":
                 msg = AlienSessionInfo['pathq'][len(AlienSessionInfo['pathq']) - 1 - position]  # Nth position from last
-        return RET(0, msg)  # end of dirs
+        return RET(0, msg)  # type: ignore [call-arg]  # end of dirs
 
     if cmd == "popd":
         if position and sign:
-            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
+            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)  # type: ignore [call-arg]
             deque_pop_pos(AlienSessionInfo['pathq'], pos)
             msg = " ".join(AlienSessionInfo['pathq'])
-            return RET(0, msg)
+            return RET(0, msg)  # type: ignore [call-arg]
 
         if not arg_list:
             AlienSessionInfo['pathq'].popleft()
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
         msg = " ".join(AlienSessionInfo['pathq'])
-        return RET(0, msg)  # end of popd
+        return RET(0, msg)  # type: ignore [call-arg]  # end of popd
 
     if cmd == "pushd":
         if position and sign:
-            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)
+            if position > len(AlienSessionInfo['pathq']) - 1: return RET(0)  # type: ignore [call-arg]
             if sign == "+":
                 AlienSessionInfo['pathq'].rotate(-1 * position)
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
@@ -1632,17 +1641,17 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
                 AlienSessionInfo['pathq'].rotate(-(len(AlienSessionInfo['pathq']) - 1 - position))
                 if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
             msg = " ".join(AlienSessionInfo['pathq'])
-            return RET(0, msg)  # end of +N|-N
+            return RET(0, msg)  # type: ignore [call-arg]  # end of +N|-N
 
         if not arg_list:
-            if len(AlienSessionInfo['pathq']) < 2: return RET(0)
+            if len(AlienSessionInfo['pathq']) < 2: return RET(0)  # type: ignore [call-arg]
             old_cwd = AlienSessionInfo['pathq'].popleft()
             new_cwd = AlienSessionInfo['pathq'].popleft()
             push2stack(old_cwd)
             push2stack(new_cwd)
             if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0], 'log')
             msg = " ".join(AlienSessionInfo['pathq'])
-            return RET(0, msg)  # end of +N|-N
+            return RET(0, msg)  # type: ignore [call-arg]  # end of +N|-N
 
         path = expand_path_grid(arg_list[0])
         if do_not_cd:
@@ -1653,8 +1662,8 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
             push2stack(path)
             cd(wb, AlienSessionInfo['pathq'][0], 'log')  # cd to the new top of stack
         msg = " ".join(AlienSessionInfo['pathq'])
-        return RET(0, msg)  # end of +N|-N
-    return RET()  # dummy return just in case cmd is not proper
+        return RET(0, msg)  # type: ignore [call-arg]  # end of +N|-N
+    return RET()  # type: ignore [call-arg]  # dummy return just in case cmd is not proper
 
 
 def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused-argument
@@ -1667,14 +1676,14 @@ def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused
               f'Python version: {sys.version}\n'
               'XRootD version: ')
     stdout = f'{stdout}{xrd_client.__version__}\nXRootD path: {xrd_client.__file__}' if _HAS_XROOTD else f'{stdout}Not Found!'
-    return RET(0, stdout, "")
+    return RET(0, stdout, "")  # type: ignore [call-arg]
 
 
 def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
     if args is None: args = []
     if len(args) > 0 and args[0] == '-h':
         msg = 'Command format: exit [code] [stderr|err] [message]'
-        return RET(0, msg)
+        return RET(0, msg)  # type: ignore [call-arg]
     code = AlienSessionInfo['exitcode']
     msg = ''
     if len(args) > 0:
@@ -1739,7 +1748,7 @@ Further filtering of the files can be applied with the following options:
 
 def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     """xrdcp stanalone system command"""
-    if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')
+    if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')  # type: ignore [call-arg]
     if timeout is not None: timeout = int(timeout)
     # --nopbar --posc
     xrdcp_cmdline = f'xrdcp -N -P {cmdline}'
