@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'b994389'
-ALIENPY_VERSION_DATE = '20221205_092510'
+ALIENPY_VERSION_HASH = '740b8e7'
+ALIENPY_VERSION_DATE = '20221205_092648'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3236,7 +3236,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                         sourcelimit = sources, posc = posc, mkdir = makedir,
                         force = overwrite, thirdparty = tpc,
                         checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
-                        retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
+                        retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
 
