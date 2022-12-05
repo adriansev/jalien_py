@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '9f4349f'
-ALIENPY_VERSION_DATE = '20221201_155719'
+ALIENPY_VERSION_HASH = 'b994389'
+ALIENPY_VERSION_DATE = '20221205_092510'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -249,9 +249,7 @@ if _HAS_XROOTD:
 ##############################################
 ##   Start of data strucutures definitons
 ##############################################
-
-
-class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
+class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
     """Collection of colors for terminal printing"""
     ColorReset:str = '\033[00m'     # Text Reset
     Black:str = '\033[0;30m'        # Black
@@ -311,6 +309,7 @@ class COLORS(NamedTuple):  # pylint: disable=inherit-non-class
     On_ICyan:str = '\033[0;106m'    # High Intensity backgrounds Cyan
     On_IWhite:str = '\033[0;107m'   # High Intensity backgrounds White
 
+COLORS = COLORS_COLL()  # Instance of colors collection
 
 class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep the set of xrootd flags used for xrootd copy process"""
