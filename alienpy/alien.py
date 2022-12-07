@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '740b8e7'
-ALIENPY_VERSION_DATE = '20221205_092648'
+ALIENPY_VERSION_HASH = '1c4e04e'
+ALIENPY_VERSION_DATE = '20221207_180922'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3232,11 +3232,14 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 if not cksum_type or not cksum_preset:  # The remote file had no hash registered
                     cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False
 
-        process.add_job(copy_job.src, copy_job.dst,
-                        sourcelimit = sources, posc = posc, mkdir = makedir,
-                        force = overwrite, thirdparty = tpc,
-                        checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
-                        retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
+        if 'xrateThreshold' in process.add_job.__code__.co_varnames:
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
+                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
+                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
+        else:
+            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
+                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
+                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
 
