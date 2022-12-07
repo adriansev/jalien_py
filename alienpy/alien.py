@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'c847511'
-ALIENPY_VERSION_DATE = '20221207_220700'
+ALIENPY_VERSION_HASH = '25a0c37'
+ALIENPY_VERSION_DATE = '20221207_231224'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -120,7 +120,7 @@ _alienpy_global_asyncio_loop = None
 _HAS_TTY = sys.stdout.isatty()
 _HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
 
-_NCPU = mp.cpu_count()
+_NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
 REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
@@ -2024,6 +2024,14 @@ def md5(input_file: str) -> str:
     with open(input_file, 'rb', buffering = 0) as f:
         for chunk in iter(lambda: f.read(BLOCKSIZE), b''): hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def md5_mp(list_of_files: Union[None, list] = None) -> list:
+    """Compute md5 hashes in parallel; the results are guaranteed (by documentation) to be in the order of input list"""
+    if not list_of_files: return []
+    hash_list = []
+    with mp.Pool(processes = _NCPU) as pool: hash_list = pool.map(md5, list_of_files)
+    return hash_list
 
 
 def format_dst_fn(src_dir, src_file, dst, parent):
