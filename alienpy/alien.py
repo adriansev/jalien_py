@@ -14,7 +14,7 @@ import json
 import re
 import signal
 import faulthandler
-import subprocess
+import subprocess  # nosec
 import logging
 import traceback
 import ssl
@@ -40,8 +40,8 @@ import threading
 import grp
 import pwd
 # import stat
-import xml.dom.minidom as MD  # noqa: N812
-import xml.etree.ElementTree as ET  # noqa: N817
+import xml.dom.minidom as MD  # noqa: N812  # nosec
+import xml.etree.ElementTree as ET  # noqa: N817  # nosec
 import zipfile
 import difflib
 
@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '1c4e04e'
-ALIENPY_VERSION_DATE = '20221207_180922'
+ALIENPY_VERSION_HASH = 'c847511'
+ALIENPY_VERSION_DATE = '20221207_220700'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -512,12 +512,7 @@ def check_path_perm(filepath: str, mode) -> bool:
     filepath = expand_path_local(filepath, True)
     if not filepath: return False
     if not mode: mode = os.F_OK
-    have_access = False
-    try:
-        have_access = os.access(filepath, mode, follow_symlinks = True)
-    except Exception:
-        pass
-    return have_access  # noqa: R504
+    return os.access(filepath, mode, follow_symlinks = True)
 
 
 def path_readable(filepath: str = '') -> bool:
@@ -871,7 +866,7 @@ async def wb_close(wb, code, reason):
     """Send close to websocket"""
     try:
         await wb.close(code = code, reason = reason)
-    except Exception:
+    except Exception:  # nosec
         pass
 
 
@@ -1343,7 +1338,7 @@ def read_conf_file(conf_file: str) -> dict:
                 var = re.sub(r"\"$", '', var)
                 DICT_INFO[name.strip()] = var
     except Exception:
-        pass
+        logging.error('Error reading the configuration file: %s', conf_file)
     return DICT_INFO
 
 
@@ -1396,7 +1391,7 @@ def pid_uid(pid: int) -> int:
                 # Uid, Gid: Real, effective, saved set, and filesystem UIDs(GIDs)
                 if line.startswith('Uid:'): uid = int((line.split()[1]))
     except Exception:
-        pass
+        logging.error('Error getting uid of pid: %d', pid)
     return uid  # noqa: R504
 
 
@@ -1414,15 +1409,16 @@ def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".
 
 
 def SessionSave():
+    session_filename = GetSessionFilename()
     try:
-        with open(GetSessionFilename(), "w", encoding="ascii", errors="replace") as f:
+        with open(session_filename, "w", encoding="ascii", errors="replace") as f:
             line1 = f"CWD = {AlienSessionInfo['currentdir']}\n"
             if not AlienSessionInfo['prevdir']: AlienSessionInfo['prevdir'] = AlienSessionInfo['currentdir']
             line2 = f"CWDPREV = {AlienSessionInfo['prevdir']}\n"
             f.writelines([line1, line2])
     except Exception as e:
-        logging.warning("SessionSave:: failed to write file")
-        logging.exception(e)
+        logging.error('SessionSave:: failed to write session information to %s', session_filename)
+        if _DEBUG: logging.exception(e)
 
 
 def SessionRestore(wb):
@@ -1858,7 +1854,7 @@ def lfn2meta(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] =
     if not metafile:
         print_err(f"Could not create the download metafile for {lfn}")
         return ''
-    subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'), check = False)  # keep it in local directory
+    subprocess.run(shlex.split(f'mv {metafile} {os.getcwd()}/'), check = False)  # keep it in local directory  # nosec
     metafile = os.path.realpath(os.path.basename(metafile))
     return f'{metafile}?xrdcl.unzip={file_in_zip}' if (file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ) else f'{metafile}'
 
@@ -2014,16 +2010,19 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
         return ''
 
 
-def md5(file: str) -> str:
+def md5(input_file: str) -> str:
     """Compute the md5 digest of the specified file"""
-    import hashlib
+    if not path_readable(input_file): return '-1'
+    from hashlib import md5 as hash_md5
     BLOCKSIZE = 65536
-    hasher = hashlib.md5()
-    with open(file, 'rb') as f:
-        buf = f.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = f.read(BLOCKSIZE)
+    
+    if hash_md5.__text_signature__ and 'usedforsecurity' in hash_md5.__text_signature__:
+        hasher = hash_md5(usedforsecurity = False)
+    else:
+        hasher = hash_md5()  # nosec
+
+    with open(input_file, 'rb', buffering = 0) as f:
+        for chunk in iter(lambda: f.read(BLOCKSIZE), b''): hasher.update(chunk)
     return hasher.hexdigest()
 
 
@@ -3163,7 +3162,7 @@ if _HAS_XROOTD:
             if not xrdjob.isUpload:
                 meta_path = str(xrdjob.src).partition("?")[0]
                 if os.getenv('ALIENPY_KEEP_META'):
-                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)
+                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)  # nosec
                 else:
                     os.remove(meta_path)  # remove the created metalink
 
@@ -3795,7 +3794,7 @@ def queryML(args: list = None) -> RET:
     exitcode = stdout = stderr = ansdict = ansraw = None
 
     url_req = urlreq.Request(url)
-    with urlreq.urlopen(url_req) as req:
+    with urlreq.urlopen(url_req) as req:  # nosec
         ansraw = req.read().decode()
         exitcode = 0 if (req.getcode() == 200) else req.getcode()
 
@@ -4421,7 +4420,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     status = exitcode = except_msg = None
     msg_out = msg_err = ''
     try:
-        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check
+        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check  # nosec
     except subprocess.TimeoutExpired:
         print_err(f"Expired timeout: {timeout} for: {sh_cmd}")
         exitcode = int(62)
@@ -4511,8 +4510,9 @@ def check_ip_port(socket_object: tuple) -> bool:
         try:
             s.connect(socket_object[4])
             is_open = True
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error('check_ip_port:: error connecting to %s', str(socket_object[4]))
+            if _DEBUG: logging.exception(e)
     return is_open  # noqa: R504
 
 
@@ -5085,7 +5085,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         if ret_obj.exitcode != 0: return ret_obj
         if not ret_obj.out:
             return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
-        shell_run = subprocess.run(shellcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=ret_obj.out, encoding='ascii', shell=True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env
+        shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = ret_obj.out, encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
