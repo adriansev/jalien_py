@@ -48,7 +48,7 @@ jobs:
         python-version: '3.9.15'
 
     - name: Install xrootd dependencies
-      run: sudo apt-get install -y libjson-c-dev libjson-c4 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
+      run: sudo apt-get install -y libjson-c-dev libjson-c5 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
 
     - name: Install python base packages
       run: python3 -m pip install --no-cache-dir --upgrade pip setuptools==65.5.1 wheel
