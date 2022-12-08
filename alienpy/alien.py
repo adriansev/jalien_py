@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '25a0c37'
-ALIENPY_VERSION_DATE = '20221207_231224'
+ALIENPY_VERSION_HASH = 'ea1db09'
+ALIENPY_VERSION_DATE = '20221208_095719'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -3203,18 +3203,11 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     batch = xrd_cp_args.batch
     tpc = xrd_cp_args.tpc
     # hashtype = xrd_cp_args.hashtype
-    cksum = xrd_cp_args.cksum
     # timeout = xrd_cp_args.timeout
     # rate = xrd_cp_args.rate
 
-    # none | source | target | end2end
-    # Default values for checksumming mechanism
-    cksum_mode = 'none'; cksum_type = cksum_preset = '' ; delete_invalid_chk = False
-    if cksum:
-        xrd_client.EnvPutInt('ZipMtlnCksum', 1)
-        cksum_mode = 'end2end'
-        cksum_type = 'auto'
-        delete_invalid_chk = True
+    cksum = xrd_cp_args.cksum
+    if cksum: xrd_client.EnvPutInt('ZipMtlnCksum', 1)
 
     handler = MyCopyProgressHandler()
     handler.wb = wb
@@ -3228,17 +3221,19 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     for copy_job in job_list:
         if _DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         if cksum:
+            # none | source | target | end2end
+            cksum_mode = 'end2end'
             if copy_job.isUpload:
-                # WIP: checksumming with md5 for uploading breaks, keep it on auto
-                # cksum_type = 'md5'
-                # cksum_preset = copy_job.token_request['md5']
-                # cksum_mode = 'end2end'; cksum_type = 'auto' ; cksum_preset = ''; delete_invalid_chk = True  # Tryout
-                cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False  # Reset the cksum options
+                # WIP: checksumming with md5 for uploading breaks on EOS, keep it on auto; but disable for now as there are EOS-es that do not allow checksumming
+                # cksum_type = 'md5' ; cksum_preset = copy_job.token_request['md5']
+                # cksum_type = 'auto' ; cksum_preset = '';
+                cksum_mode = 'none'; cksum_type = cksum_preset = '';  # Reset the cksum options
             else:  # for downloads we already have the md5 value, lets use that
                 cksum_type, cksum_preset = get_hash_meta(copy_job.src)
                 if not cksum_type or not cksum_preset:  # The remote file had no hash registered
-                    cksum_mode = 'none'; cksum_type = cksum_preset = ''; delete_invalid_chk = False
+                    cksum_mode = 'none'; cksum_type = cksum_preset = '';
 
+        delete_invalid_chk = (not cksum_mode == 'none')  # if no checksumming mode, disable delete_invalid_chk
         if 'xrateThreshold' in process.add_job.__code__.co_varnames:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
                             checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
