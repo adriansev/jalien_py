@@ -104,8 +104,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'ea1db09'
-ALIENPY_VERSION_DATE = '20221208_095719'
+ALIENPY_VERSION_HASH = '8b105c5'
+ALIENPY_VERSION_DATE = '20221209_083054'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -2966,7 +2966,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504
 
-    if not copy_lfnlist: return RET(1, '', 'copy_lfnlist empty!!')  # at this point if any errors, the processing was already stopped
+    # at this point if any errors, the processing was already stopped
+    if not copy_lfnlist: return RET(0, 'No copy jobs to be done!')
 
     if _DEBUG:
         logging.debug("We are going to copy these files:")
