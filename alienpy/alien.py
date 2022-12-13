@@ -46,25 +46,24 @@ import zipfile
 import difflib
 
 # External imports
-import requests
 
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
         import async_stagger  # type: ignore
     except Exception:
-        print("async_stagger module could not be load", file = sys.stderr, flush = True)
+        print("async_stagger module could not be imported! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
         sys.exit(1)
 
 try:
     import cryptography
 except Exception:
-    print("cryptography module could not be load", file = sys.stderr, flush = True)
+    print("cryptography module could not be imported! Make sure you can do:\npython3 -c 'import cryptography'", file = sys.stderr, flush = True)
     sys.exit(1)
 
 try:
     import OpenSSL
 except Exception:
-    print("OpenSSL module could not be load", file = sys.stderr, flush = True)
+    print("OpenSSL module could not be imported! Make sure you can do:\npython3 -c 'import OpenSSL'", file = sys.stderr, flush = True)
     sys.exit(1)
 
 try:
@@ -73,7 +72,13 @@ try:
     import websockets.version as wb_version
     from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 except Exception:
-    print("websockets module could not be load", file = sys.stderr, flush = True)
+    print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.client as wb_client'", file = sys.stderr, flush = True)
+    sys.exit(1)
+
+try:
+    import requests
+except Exception:
+    print("requests module could not be imported! Make sure you can do:\npython3 -c 'import requests'", file = sys.stderr, flush = True)
     sys.exit(1)
 
 _HAS_XROOTD = False
@@ -81,14 +86,14 @@ try:
     from XRootD import client as xrd_client  # type: ignore
     _HAS_XROOTD = True
 except Exception:
-    print("XRootD module could not be load", file = sys.stderr, flush = True)
+    print("XRootD module could not be imported! Not fatal, but not XRootD transfers will work (any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
 _HAS_PPRINT = False
 try:
     from rich.pretty import pprint
     _HAS_PPRINT = True
 except Exception:
-    print("rich module could not be load", file = sys.stderr, flush = True)
+    print("rich module could not be imported! Not fatal, but some pretty print features will not be available.\n Make sure you can do:\npython3 -c 'from rich.pretty import pprint'", file = sys.stderr, flush = True)
 
 
 _HAS_READLINE = False
@@ -104,8 +109,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = '8b105c5'
-ALIENPY_VERSION_DATE = '20221209_083054'
+ALIENPY_VERSION_HASH = 'c7fb4db'
+ALIENPY_VERSION_DATE = '20221213_150321'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
