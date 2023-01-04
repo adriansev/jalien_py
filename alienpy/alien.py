@@ -109,8 +109,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'c7fb4db'
-ALIENPY_VERSION_DATE = '20221213_150321'
+ALIENPY_VERSION_HASH = 'fd3f8fe'
+ALIENPY_VERSION_DATE = '20230104_171737'
 ALIENPY_VERSION_STR = '1.4.6'
 ALIENPY_EXECUTABLE = ''
 
@@ -142,8 +142,8 @@ _DEBUG = os.getenv('ALIENPY_DEBUG', '')
 _DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
 _TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 _DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
-__TMPDIR = tempfile.gettempdir()
 
+__TMPDIR = tempfile.gettempdir()
 __TOKENCERT_NAME = f'{__TMPDIR}/tokencert_{str(os.getuid())}.pem'
 __TOKENKEY_NAME = f'{__TMPDIR}/tokenkey_{str(os.getuid())}.pem'
 
@@ -254,215 +254,12 @@ if _HAS_XROOTD:
 ##############################################
 ##   Start of data strucutures definitons
 ##############################################
-class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
-    """Collection of colors for terminal printing"""
-    ColorReset:str = '\033[00m'     # Text Reset
-    Black:str = '\033[0;30m'        # Black
-    Red:str = '\033[0;31m'          # Red
-    Green:str = '\033[0;32m'        # Green
-    Yellow:str = '\033[0;33m'       # Yellow
-    Blue:str = '\033[0;34m'         # Blue
-    Purple:str = '\033[0;35m'       # Purple
-    Cyan:str = '\033[0;36m'         # Cyan
-    White:str = '\033[0;37m'        # White
-    BBlack:str = '\033[1;30m'       # Bold Black
-    BRed:str = '\033[1;31m'         # Bold Red
-    BGreen:str = '\033[1;32m'       # Bold Green
-    BYellow:str = '\033[1;33m'      # Bold Yellow
-    BBlue:str = '\033[1;34m'        # Bold Blue
-    BPurple:str = '\033[1;35m'      # Bold Purple
-    BCyan:str = '\033[1;36m'        # Bold Cyan
-    BWhite:str = '\033[1;37m'       # Bold White
-    UBlack:str = '\033[4;30m'       # Underline Black
-    URed:str = '\033[4;31m'         # Underline Red
-    UGreen:str = '\033[4;32m'       # Underline Green
-    UYellow:str = '\033[4;33m'      # Underline Yellow
-    UBlue:str = '\033[4;34m'        # Underline Blue
-    UPurple:str = '\033[4;35m'      # Underline Purple
-    UCyan:str = '\033[4;36m'        # Underline Cyan
-    UWhite:str = '\033[4;37m'       # Underline White
-    IBlack:str = '\033[0;90m'       # High Intensity Black
-    IRed:str = '\033[0;91m'         # High Intensity Red
-    IGreen:str = '\033[0;92m'       # High Intensity Green
-    IYellow:str = '\033[0;93m'      # High Intensity Yellow
-    IBlue:str = '\033[0;94m'        # High Intensity Blue
-    IPurple:str = '\033[0;95m'      # High Intensity Purple
-    ICyan:str = '\033[0;96m'        # High Intensity Cyan
-    IWhite:str = '\033[0;97m'       # High Intensity White
-    BIBlack:str = '\033[1;90m'      # Bold High Intensity Black
-    BIRed:str = '\033[1;91m'        # Bold High Intensity Red
-    BIGreen:str = '\033[1;92m'      # Bold High Intensity Green
-    BIYellow:str = '\033[1;93m'     # Bold High Intensity Yellow
-    BIBlue:str = '\033[1;94m'       # Bold High Intensity Blue
-    BIPurple:str = '\033[1;95m'     # Bold High Intensity Purple
-    BICyan:str = '\033[1;96m'       # Bold High Intensity Cyan
-    BIWhite:str = '\033[1;97m'      # Bold High Intensity White
-    On_Black:str = '\033[40m'       # Background Black
-    On_Red:str = '\033[41m'         # Background Red
-    On_Green:str = '\033[42m'       # Background Green
-    On_Yellow:str = '\033[43m'      # Background Yellow
-    On_Blue:str = '\033[44m'        # Background Blue
-    On_Purple:str = '\033[45m'      # Background Purple
-    On_Cyan:str = '\033[46m'        # Background Cyan
-    On_White:str = '\033[47m'       # Background White
-    On_IBlack:str = '\033[0;100m'   # High Intensity backgrounds Black
-    On_IRed:str = '\033[0;101m'     # High Intensity backgrounds Red
-    On_IGreen:str = '\033[0;102m'   # High Intensity backgrounds Green
-    On_IYellow:str = '\033[0;103m'  # High Intensity backgrounds Yellow
-    On_IBlue:str = '\033[0;104m'    # High Intensity backgrounds Blue
-    On_IPurple:str = '\033[0;105m'  # High Intensity backgrounds Purple
-    On_ICyan:str = '\033[0;106m'    # High Intensity backgrounds Cyan
-    On_IWhite:str = '\033[0;107m'   # High Intensity backgrounds White
+from .data_structs import (COLORS_COLL, XrdCpArgs, CopyFile, CommitInfo, lfn2file, KV, RET, ALIEN_COLLECTION_EL, STAT_FILEPATH, Msg)
+
 
 COLORS = COLORS_COLL()  # Instance of colors collection
 
-class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure to keep the set of xrootd flags used for xrootd copy process"""
-    overwrite: bool
-    batch: int
-    tpc: str
-    hashtype: str
-    cksum: bool
-    timeout: int
-    rate: int
 
-
-class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure to keep a generic copy task"""
-    src: str
-    dst: str
-    isUpload: bool
-    token_request: dict
-    lfn: str
-
-
-class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure for commit of succesful xrootd write to file catalogue"""
-    envelope: str
-    size: str
-    lfn: str
-    perm: str
-    expire: str
-    pfn: str
-    se: str
-    guid: str
-    md5: str
-
-
-class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
-    """Map a lfn to file (and reverse)"""
-    lfn: str
-    file: str
-
-
-class KV(NamedTuple):  # pylint: disable=inherit-non-class
-    """Assign a value to a key"""
-    key: str
-    val: str
-
-
-class RET(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure for POSIX like function return: exitcode, stdout, stderr, dictionary of server reply"""
-    exitcode: int = -1
-    out: str = ''
-    err: str = ''
-    ansdict: dict = {}
-
-    def print(self, opts: str = '') -> None:
-        """Print the in json format the content of ansdict, if existent"""
-        if 'json' in opts:
-            if self.ansdict:
-                json_out = json.dumps(self.ansdict, sort_keys = True, indent = 4)
-                print_out(json_out)
-                if _DEBUG: logging.debug(json_out)
-            else:
-                print_err('This command did not return a json dictionary')
-            return
-
-        if self.exitcode != 0:
-            if 'info' in opts: logging.info(self.err)
-            if 'warn' in opts: logging.warning(self.err)
-            if 'err' in opts: logging.error(self.err)
-            if 'debug' in opts: logging.debug(self.err)
-            if self.err and not ('noerr' in opts or 'noprint' in opts):
-                print_err(f'{self.err.strip()}')
-        else:
-            if self.out and not ('noout' in opts or 'noprint' in opts):
-                print_out(f'{self.out.strip()}')
-
-    __call__ = print  # type: ignore[misc] 
-
-    def __bool__(self) -> bool:
-        return bool(self.exitcode == 0)
-
-
-class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
-    """AliEn style xml collection element strucure"""
-    name: str = ''
-    aclId: str = ''
-    broken: str = ''
-    ctime: str = ''
-    dir: str = ''
-    entryId: str = ''
-    expiretime: str = ''
-    gowner: str = ''
-    guid: str = ''
-    guidtime: str = ''
-    jobid: str = ''
-    lfn: str = ''
-    md5: str = ''
-    owner: str = ''
-    perm: str = ''
-    replicated: str = ''
-    size: str = ''
-    turl: str = ''
-    type: str = ''
-
-
-class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
-    """Stat attributes of a lfn"""
-    path: str = ''
-    type: str = ''
-    perm: str = ''
-    uid: str = ''
-    gid: str = ''
-    ctime: str = ''
-    mtime: str = ''
-    guid: str = ''
-    size: str = ''
-    md5: str = ''
-
-
-class Msg:
-    """Class to create json messages to be sent to server"""
-    __slots__ = ('cmd', 'args', 'opts')
-
-    def __init__(self, cmd: str = '', args: Union[str, list, None] = None, opts: str = '') -> None:
-        self.cmd = cmd
-        self.opts = opts
-        if not args:
-            self.args = []
-        elif isinstance(args, str):
-            self.args = shlex.split(args)
-        elif isinstance(args, list):
-            self.args = args.copy()
-
-    def add_arg(self, arg: Union[str, list, None]) -> None:
-        if not arg: return
-        if isinstance(arg, str): self.args.extend(shlex.split(arg))
-        if isinstance(arg, list): self.args.extend(arg)
-
-    def msgdict(self) -> Union[str, dict]:
-        return CreateJsonCommand(self.cmd, self.args, self.opts, True)
-
-    def msgstr(self) -> Union[str, dict]:
-        return CreateJsonCommand(self.cmd, self.args, self.opts)
-
-    def __call__(self) -> tuple:
-        return (self.cmd, self.args, self.opts)
-
-    def __bool__(self):
-        return bool(self.cmd)
 
 
 class AliEn:
