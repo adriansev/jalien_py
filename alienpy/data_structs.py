@@ -1,3 +1,5 @@
+'''alienpy:: Definitions of data structures'''
+
 from typing import NamedTuple
 from typing import Union
 import shlex

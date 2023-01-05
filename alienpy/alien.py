@@ -109,10 +109,8 @@ except ImportError:
 
 deque = collections.deque
 
-ALIENPY_VERSION_HASH = 'fd3f8fe'
-ALIENPY_VERSION_DATE = '20230104_171737'
-ALIENPY_VERSION_STR = '1.4.6'
-ALIENPY_EXECUTABLE = ''
+##   VERSION STRINGS
+from .version import *
 
 ##################################################
 #   GLOBAL POINTER TO WB CONNECTION  #############
@@ -122,36 +120,8 @@ __ALIEN_WB = None
 _alienpy_global_asyncio_loop = None
 ##################################################
 
-_HAS_TTY = sys.stdout.isatty()
-_HAS_COLOR = _HAS_TTY  # if it has tty then it supports colors
-
-_NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
-
-REGEX_PATTERN_TYPE = type(re.compile('.'))
-guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
-cmds_split = re.compile(';|\n')  # regex for spliting chained commands
-specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
-lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
-ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
-emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
-
-# environment debug variable
-_JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
-_JSON_OUT_GLOBAL = _JSON_OUT
-_DEBUG = os.getenv('ALIENPY_DEBUG', '')
-_DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
-_TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
-_DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
-
-__TMPDIR = tempfile.gettempdir()
-__TOKENCERT_NAME = f'{__TMPDIR}/tokencert_{str(os.getuid())}.pem'
-__TOKENKEY_NAME = f'{__TMPDIR}/tokenkey_{str(os.getuid())}.pem'
-
-# global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': dict(), 'cmd2func_map_client': dict(), 'cmd2func_map_srv': dict(), 'templist': list(), 'alias_cache': dict(),
-                    'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
-                    'use_usercert': False, 'verified_cert': False, 'verified_token': False}
+##   GLOBALS
+from .global_vars import *
 
 
 #############################################
@@ -172,21 +142,21 @@ def print_err(msg: str, toLog: bool = False):
 
 
 def setup_logging():
-    global _DEBUG_FILE
+    global DEBUG_FILE
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
-    MSG_LVL = logging.DEBUG if _DEBUG else logging.INFO
+    MSG_LVL = logging.DEBUG if DEBUG else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
     try:
-        logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+        logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
     except Exception:
-        print_err(f'Could not write the log file {_DEBUG_FILE}; falling back to detected tmp dir')
-        _DEBUG_FILE = f'{__TMPDIR}/{os.path.basename(_DEBUG_FILE)}'
+        print_err(f'Could not write the log file {DEBUG_FILE}; falling back to detected tmp dir')
+        DEBUG_FILE = f'{TMPDIR}/{os.path.basename(DEBUG_FILE)}'
         try:
-            logging.basicConfig(format = line_fmt, filename = _DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+            logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
         except Exception:
-            print_err(f'Could not write the log file {_DEBUG_FILE}')
+            print_err(f'Could not write the log file {DEBUG_FILE}')
 
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('wb_client').setLevel(MSG_LVL)
@@ -251,11 +221,8 @@ if _HAS_XROOTD:
     _HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
 
-##############################################
-##   Start of data strucutures definitons
-##############################################
+##   Data strucutures definitons
 from .data_structs import (COLORS_COLL, XrdCpArgs, CopyFile, CommitInfo, lfn2file, KV, RET, ALIEN_COLLECTION_EL, STAT_FILEPATH, Msg)
-
 
 COLORS = COLORS_COLL()  # Instance of colors collection
 
@@ -342,8 +309,8 @@ def get_files_cert() -> tuple:
 
 def get_token_names(files: bool = False) -> tuple:
     if files:
-        return  __TOKENCERT_NAME, __TOKENKEY_NAME
-    return os.getenv('JALIEN_TOKEN_CERT', __TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', __TOKENKEY_NAME)
+        return  TOKENCERT_NAME, TOKENKEY_NAME
+    return os.getenv('JALIEN_TOKEN_CERT', TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', TOKENKEY_NAME)
 
 
 def get_ca_path() -> str:
@@ -354,12 +321,12 @@ def get_ca_path() -> str:
 
     x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
     if x509file:
-        if _DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
+        if DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
         return x509file
 
     x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
     if x509dir:
-        if _DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
+        if DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
         return x509dir
 
     capath_default = None
@@ -375,7 +342,7 @@ def get_ca_path() -> str:
         print_err(msg)
         logging.error(msg)
         sys.exit(2)
-    if _DEBUG: logging.debug('CApath = %s', capath_default)
+    if DEBUG: logging.debug('CApath = %s', capath_default)
     return capath_default
 
 
@@ -454,26 +421,26 @@ def get_valid_certs() -> tuple:
 
 ##################################################
 # Check the presence of user certs and bailout before anything else
-__tokencert, __tokenkey = get_valid_tokens()
-__usercert, __userkey = get_valid_certs()
-if not __usercert and not __tokencert:
-    print_err(f'No valid user certificate or token found!! check {_DEBUG_FILE} for further information and contact the developer if the information is not clear.')
+tokencert, tokenkey = get_valid_tokens()
+usercert, userkey = get_valid_certs()
+if not usercert and not tokencert:
+    print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
     sys.exit(126)
 
 ##################################################
 
 def get_valid_auth_cred(use_usercert: bool = False) -> tuple:
     """Return tuple of valid cert files to be used for ssl context"""
-    global AlienSessionInfo, __tokencert, __tokenkey, __usercert, __userkey
-    __usercert, __userkey = get_valid_certs()
-    __tokencert, __tokenkey = get_valid_tokens()
+    global AlienSessionInfo, tokencert, tokenkey, usercert, userkey
+    usercert, userkey = get_valid_certs()
+    tokencert, tokenkey = get_valid_tokens()
 
     # token auth
-    if not use_usercert and __tokencert: return __tokencert, __tokenkey
+    if not use_usercert and tokencert: return (tokencert, tokenkey)
 
     # usercert auth
     AlienSessionInfo['use_usercert'] = True
-    return __usercert, __userkey
+    return (usercert, userkey)
 
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
@@ -483,13 +450,13 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
 
-    if _DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
+    if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
     ctx = ssl.SSLContext(ssl_protocol)
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
-    if _DEBUG: logging.debug("SSL context:: Load verify locations")
+    if DEBUG: logging.debug("SSL context:: Load verify locations")
 
     ca_verify_location = get_ca_path()
     cafile = capath = None
@@ -505,15 +472,15 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print_err(f'Verify location could not be loaded!!! check content of >>> {ca_verify_location} <<< and the log')
         os._exit(126)
 
-    if _DEBUG: logging.debug('SSL context:: Loading cert,key pair\n%s\n%s', cert, key)
+    if DEBUG: logging.debug('SSL context:: Loading cert,key pair\n%s\n%s', cert, key)
     try:
         ctx.load_cert_chain(certfile = cert, keyfile = key)
     except Exception:
         logging.exception('Could not load certificates!!!\n')  # EIO /* I/O error */
-        print_err('Error loading certificate pair!! Check the content of {_DEBUG_FILE}')
+        print_err('Error loading certificate pair!! Check the content of {DEBUG_FILE}')
         os._exit(126)
 
-    if _DEBUG: logging.debug('... SSL context done.')
+    if DEBUG: logging.debug('... SSL context done.')
     return ctx
 
 
@@ -650,8 +617,8 @@ def syncify(fn):
 @syncify
 async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
-    time_begin = time.perf_counter() if _DEBUG_TIMING else None
-    if _DEBUG:
+    time_begin = time.perf_counter() if DEBUG_TIMING else None
+    if DEBUG:
         logging.info('Called from: %s', sys._getframe().f_back.f_code.co_name)  # pylint: disable=protected-access
     try:
         pong_waiter = await wb.ping()
@@ -685,7 +652,7 @@ async def msg_proxy(websocket, use_usercert = False):
 async def __sendmsg(wb, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
     time_begin = None
-    if _DEBUG_TIMING: time_begin = time.perf_counter()
+    if DEBUG_TIMING: time_begin = time.perf_counter()
     await wb.send(jsonmsg)
     result = await wb.recv()
     if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
@@ -697,7 +664,7 @@ async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
     time_begin = None
-    if _DEBUG_TIMING: time_begin = time.perf_counter()
+    if DEBUG_TIMING: time_begin = time.perf_counter()
     for msg in jsonmsg_list: await wb.send(msg)
 
     result_list = []
@@ -716,8 +683,8 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
-    time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
-    if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
+    time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
@@ -728,7 +695,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.info("SendMsg:: json message is empty!")
         return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")  # type: ignore [call-arg]
 
-    if _DEBUG:
+    if DEBUG:
         logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\n>>>   SEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
 
     nr_tries = int(1)
@@ -745,13 +712,13 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
 
     if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
     if not result:
-        msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {_DEBUG_FILE}"
+        msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {DEBUG_FILE}"
         print_err(msg)
         logging.error(msg)
         return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM  
 
     if 'rawstr' in opts: return result
-    time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
+    time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
     if time_begin_decode: logging.debug('SendMsg::Result decoded: %s us', deltat_us_perf(time_begin_decode))
     return ret_obj  # noqa: R504
@@ -764,8 +731,8 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
-    time_begin = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
-    if _JSON_OUT_GLOBAL or _JSON_OUT or _DEBUG:  # if jsout output was requested, then make sure we get the full answer
+    time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
@@ -775,7 +742,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         jsonmsg = cmd_str if all(x in cmd_str for x in json_signature) else CreateJsonCommand(cmd_str, [], opts)
         json_cmd_list.append(jsonmsg)
 
-    if _DEBUG:
+    if DEBUG:
         logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\nSEND COMMAND:: {chr(32).join(json_cmd_list)}")  # pylint: disable=protected-access
 
     nr_tries = int(1)
@@ -798,7 +765,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms(time_begin))
     if not result_list: return []
     if 'rawstr' in opts: return result_list
-    time_begin_decode = time.perf_counter() if _DEBUG or _DEBUG_TIMING else None
+    time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
     if time_begin_decode: logging.debug('SendMsg::Result decoded: %s ms', deltat_ms(time_begin_decode))
     return ret_obj_list  # noqa: R504
@@ -835,7 +802,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info('Request connection to : %s', fHostWSUrl)
-        socket_filename = f'{__TMPDIR}/jboxpy_{str(os.getuid())}.sock'
+        socket_filename = f'{TMPDIR}/jboxpy_{str(os.getuid())}.sock'
         try:
             wb = await wb_client.unix_connect(socket_filename, fHostWSUrl,
                                               max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
@@ -844,7 +811,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         except Exception as e:
             msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
             logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
             return None
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
@@ -855,19 +822,19 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
         # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
         try:
-            if _DEBUG:
+            if DEBUG:
                 logging.debug('TRY ENDPOINT: %s:%s', host, port)
                 init_begin = time.perf_counter()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
-            if _DEBUG:
+            if DEBUG:
                 logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
         except Exception as e:
             msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
             logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
             return None
 
         if socket_endpoint:
@@ -875,19 +842,19 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
             try:
-                if _DEBUG: init_begin = time.perf_counter()
+                if DEBUG: init_begin = time.perf_counter()
                 wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
                                              ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
 
-                if _DEBUG:
+                if DEBUG:
                     logging.debug('WEBSOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
 
             except wb_exceptions.InvalidStatusCode as e:
                 msg = f'Invalid status code {e.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
                 logging.error(msg)
-                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+                print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
                 if int(e.status_code) == 401:
                     print_err('The status code indicate that your certificate is not authorized.\nCheck the correct certificate registration into ALICE VO')
                     os._exit(129)
@@ -895,7 +862,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             except Exception as e:
                 msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
                 logging.error(msg)
-                print_err(f'{msg}\nCheck the logfile: {_DEBUG_FILE}')
+                print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
                 return None
         if wb: logging.info('CONNECTED: %s:%s', wb.remote_address[0], wb.remote_address[1])
     return wb
@@ -906,7 +873,7 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     wb = None
     nr_tries = 0
     init_begin = None
-    if _TIME_CONNECT or _DEBUG: init_begin = time.perf_counter()
+    if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
 
@@ -925,11 +892,11 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     if init_begin:
         fail_msg = 'trials ' if not wb else ''
         msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
-        if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print_out(msg)
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
 
     if wb and localConnect:
-        pid_filename = f'{__TMPDIR}/jboxpy_{os.getuid()}.pid'
+        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
         writePidFile(pid_filename)
     return wb
 
@@ -1031,7 +998,7 @@ def GetMeta(result: dict, meta: str = '') -> list:
 
 def PrintColor(color: str) -> str:
     """Disable color if the terminal does not have capability"""
-    return color if _HAS_COLOR else ''
+    return color if HAS_COLOR else ''
 
 
 def cursor_vertical(lines: int = 0):
@@ -1108,7 +1075,7 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)
-            if _DEBUG: logging.debug(json_out)
+            if DEBUG: logging.debug(json_out)
             print_out(json_out)
         else:
             print_err('This command did not return a json dictionary')
@@ -1220,7 +1187,7 @@ def SessionSave():
             f.writelines([line1, line2])
     except Exception as e:
         logging.error('SessionSave:: failed to write session information to %s', session_filename)
-        if _DEBUG: logging.exception(e)
+        if DEBUG: logging.exception(e)
 
 
 def SessionRestore(wb):
@@ -1585,9 +1552,9 @@ def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout
     # print(q.get())
     # p.join()
     for copy_job in job_list:
-        if _DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
+        if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
-        if _DEBUG: print_out(copy_job)
+        if DEBUG: print_out(copy_job)
     return []
 
 
@@ -2219,7 +2186,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
 
     # create and return the list object just for a single file
     if is_single_file:
-        send_opts = 'nomsg' if not _DEBUG else ''
+        send_opts = 'nomsg' if not DEBUG else ''
         ret_obj = SendMsg(wb, 'stat', [search_dir], opts = send_opts)
     else:
         find_args_default = ['-f', '-a', '-s']
@@ -2227,7 +2194,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
         if find_args_list: find_args_default.extend(find_args_list)  # insert any other additional find arguments
         find_args_default.append(search_dir)
         find_args_default.append(pattern)
-        send_opts = 'nomsg' if not _DEBUG else ''
+        send_opts = 'nomsg' if not DEBUG else ''
         ret_obj = SendMsg(wb, 'find', find_args_default, opts = send_opts)
 
     if ret_obj.exitcode != 0:
@@ -2432,7 +2399,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
             mk_path.mkdir(parents=True, exist_ok=True)
         except Exception:
             logging.error(traceback.format_exc())
-            msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {_DEBUG_FILE}"
+            msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {DEBUG_FILE}"
             return RET(42, '', msg)  # ENOMSG /* No message of desired type */
     else:  # this is upload to GRID
         mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
@@ -2536,7 +2503,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
                 print_err(f"Could not create the download metafile for {cpfile.src}")
                 continue
             if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
-            if _DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
+            if DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
@@ -2771,7 +2738,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # at this point if any errors, the processing was already stopped
     if not copy_lfnlist: return RET(0, 'No copy jobs to be done!')
 
-    if _DEBUG:
+    if DEBUG:
         logging.debug("We are going to copy these files:")
         for f in copy_lfnlist: logging.debug(f)
 
@@ -2784,7 +2751,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         logging.info(msg)
         return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
-    if _DEBUG:
+    if DEBUG:
         logging.debug("XRootD copy jobs:")
         for f in xrdcopy_job_list: logging.debug(f)
 
@@ -2918,6 +2885,7 @@ if _HAS_XROOTD:
                 status = f'{PrintColor(COLORS.BIRed)}FATAL{PrintColor(COLORS.ColorReset)}'
             else:
                 status = f'{PrintColor(COLORS.BIRed)}UNKNOWN{PrintColor(COLORS.ColorReset)}'
+
             job_info = self.job_list[jobId - 1]
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
             replica_dict = xrdjob.token_request
@@ -2963,7 +2931,7 @@ if _HAS_XROOTD:
                     msg = f"{job_status_info} : {xrdjob.token_request['file']} to {xrdjob.token_request['se']}, {xrdjob.token_request['nSEs']} replicas\n{xrd_resp_msg}"
                 else:
                     msg = f"{job_status_info} : {xrdjob.lfn}\n{xrd_resp_msg}"
-                if _DEBUG: msg = f'{msg}\n{failed_after}'
+                if DEBUG: msg = f'{msg}\n{failed_after}'
                 logging.error('\n%s\n%s', codes_info, msg)
                 print_err(msg)
                 defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
@@ -3017,12 +2985,12 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     handler.xrdjob_list = job_list
     handler.printout = printout
     handler.succesful_writes = []
-    if _DEBUG: handler.debug = True
+    if DEBUG: handler.debug = True
 
     process = xrd_client.CopyProcess()
     process.parallel(int(batch))
     for copy_job in job_list:
-        if _DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
+        if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         if cksum:
             # none | source | target | end2end
             cksum_mode = 'end2end'
@@ -3048,10 +3016,10 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 
     process.prepare()
 
-    faulthandler.disable()
-    faulthandler.enable(file = sys.__stderr__, all_threads = True)
+    #faulthandler.disable()
+    #faulthandler.enable(file = sys.__stderr__, all_threads = True)
     process.run(handler)
-    faulthandler.disable()
+    #faulthandler.disable()
 
     if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
         ret_list = commitFileList(wb, handler.succesful_writes)
@@ -3525,12 +3493,12 @@ def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
 def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
     """make temporary file path string either random or based on grid lfn string"""
     if not ext: ext = f'_{str(os.getuid())}.alienpy_tmp'
-    return f'{__TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
+    return f'{TMPDIR}/{lfn2tmp_fn(lfn, uuid5)}{ext}'
 
 
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
-    return lfn.replace(f'{__TMPDIR}/', '').replace("%%", "/")
+    return lfn.replace(f'{TMPDIR}/', '').replace("%%", "/")
 
 
 def download_tmp(wb, lfn: str, overwrite: bool = False, verbose: bool = False) -> str:
@@ -3958,7 +3926,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokencert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
         os.chmod(tokencert, 0o400)  # make it readonly
     except Exception:
-        print_err(f'Error writing to file the aquired token cert; check the log file {_DEBUG_FILE}!')
+        print_err(f'Error writing to file the aquired token cert; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -3969,7 +3937,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         with open(tokenkey, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
         os.chmod(tokenkey, 0o400)  # make it readonly
     except Exception:
-        print_err(f'Error writing to file the aquired token key; check the log file {_DEBUG_FILE}!')
+        print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -4015,8 +3983,8 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
         return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
     wb = token_regen(wb, args)
-    tokencert, __ = get_token_names()
-    return CertInfo(tokencert)
+    tkcert, __ = get_token_names()
+    return CertInfo(tkcert)
 
 
 def DO_edit(wb, args: Union[list, None] = None, editor: str = '') -> RET:
@@ -4318,7 +4286,7 @@ def check_ip_port(socket_object: tuple) -> bool:
             is_open = True
         except Exception as e:
             logging.error('check_ip_port:: error connecting to %s', str(socket_object[4]))
-            if _DEBUG: logging.exception(e)
+            if DEBUG: logging.exception(e)
     return is_open  # noqa: R504
 
 
@@ -4517,8 +4485,8 @@ def DO_certinfo(args: Union[list, None] = None) -> RET:
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, __ = get_valid_tokens()
-    return CertInfo(tokencert)
+    tkcert, __ = get_valid_tokens()
+    return CertInfo(tkcert)
 
 
 def CertVerify(fname: str) -> RET:
@@ -4611,8 +4579,8 @@ def DO_certverify(args: Union[list, None] = None) -> RET:
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    tokencert, __ = get_valid_tokens()
-    return CertVerify(tokencert)
+    tkcert, __ = get_valid_tokens()
+    return CertVerify(tkcert)
 
 
 def DO_certkeymatch(args: Union[list, None] = None) -> RET:
@@ -4636,7 +4604,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
-    jclient_env = f'{__TMPDIR}/jclient_token_{str(os.getuid())}'
+    jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
     if __ALIEN_WB: wb_close(__ALIEN_WB, code = 1000, reason = 'Close previous websocket')
 
@@ -4661,7 +4629,7 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
     if wb is None:
-        msg = f'Check the logfile: {_DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
+        msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
         print_err(msg)
         sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
@@ -4674,12 +4642,12 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     """Create a session to AliEn services, including session globals and token regeneration"""
     global AlienSessionInfo
     if not token_args: token_args = []
-    init_begin = time.perf_counter() if (_TIME_CONNECT or _DEBUG) else None
+    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
     wb = AlienConnect(token_args, use_usercert, localConnect)
     if init_begin:
         msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
-        if _DEBUG: logging.debug(msg)
-        if _TIME_CONNECT: print_out(msg)
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
 
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED
@@ -4690,11 +4658,11 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
         getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
         if session_begin:
             msg = f">>>   Time for session initialization: {deltat_us_perf(session_begin)} us"
-            if _DEBUG: logging.debug(msg)
-            if _TIME_CONNECT: print_out(msg)
+            if DEBUG: logging.debug(msg)
+            if TIME_CONNECT: print_out(msg)
 
     # if usercert connection always regenerate token if connected with usercert
-    if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {_DEBUG_FILE}')
+    if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
     return wb
 
 
@@ -4902,7 +4870,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
-    global AlienSessionInfo, _JSON_OUT
+    global AlienSessionInfo, JSON_OUT
     if not cmd_chain: return int(1)
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
@@ -4913,7 +4881,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     # for each command, save exitcode and RET of the command
     for cmdline in cmdline_list:
         if not cmdline: continue
-        if _DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
+        if DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
         if cmdline.startswith('!'):  # if shell command, just run it and return
             capture_out = True
             if '-noout' in cmdline:
@@ -4933,9 +4901,9 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         cmd = args.pop(0)
 
         # if globally enabled then enable per command OR if enabled for this command
-        _JSON_OUT = _JSON_OUT_GLOBAL or get_arg(args, '-json')
-        print_opts = 'debug json' if _JSON_OUT else 'debug'
-        if _JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
+        JSON_OUT = JSON_OUT_GLOBAL or get_arg(args, '-json')
+        print_opts = 'debug json' if JSON_OUT else 'debug'
+        if JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -4951,7 +4919,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
 
         AlienSessionInfo['exitcode'] = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
         if cmd == 'cd': SessionSave()
-        _JSON_OUT = _JSON_OUT_GLOBAL  # reset _JSON_OUT if it's not globally enabled (env var or argument to alien.py)
+        JSON_OUT = JSON_OUT_GLOBAL  # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
     return AlienSessionInfo['exitcode']
 
 
@@ -5007,21 +4975,21 @@ def JAlien(commands: str = '') -> int:
 
 
 def main():
-    global _JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, _DEBUG
+    global JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, DEBUG
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
-    _JSON_OUT_GLOBAL = get_arg(sys.argv, '-json')
-    if not _DEBUG:
-        _DEBUG = get_arg(sys.argv, '-debug')
-        if _DEBUG:
-            print_out(f'Debug enabled, logfile is: {_DEBUG_FILE}')
+    JSON_OUT_GLOBAL = get_arg(sys.argv, '-json')
+    if not DEBUG:
+        DEBUG = get_arg(sys.argv, '-debug')
+        if DEBUG:
+            print_out(f'Debug enabled, logfile is: {DEBUG_FILE}')
             setup_logging()
 
-    if _DEBUG:
+    if DEBUG:
         ret_obj = DO_version()
         logging.debug('%s\n', ret_obj.out)
 
@@ -5064,7 +5032,7 @@ def main():
     except Exception:
         logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
         logging.error("\n\n")
-        print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {_DEBUG_FILE}
+        print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
 If the exception is reproductible including on lxplus, please create a detailed debug report this way:
 ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
