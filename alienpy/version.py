@@ -1,7 +1,7 @@
 '''alienpy:: Definitions of version strings'''
 
-ALIENPY_VERSION_HASH = 'fd3f8fe'
-ALIENPY_VERSION_DATE = '20230104_171737'
+ALIENPY_VERSION_HASH = '114fc55'
+ALIENPY_VERSION_DATE = '20230106_003108'
 ALIENPY_VERSION_STR = '1.4.6'
 
 if __name__ == '__main__':
