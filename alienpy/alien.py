@@ -116,9 +116,6 @@ from .version import *
 #   GLOBAL POINTER TO WB CONNECTION  #############
 __ALIEN_WB = None
 ##################################################
-#   GLOBAL STATE ASYNCIO LOOP
-_alienpy_global_asyncio_loop = None
-##################################################
 
 ##   GLOBALS
 from .global_vars import *
@@ -225,8 +222,6 @@ if _HAS_XROOTD:
 from .data_structs import (COLORS_COLL, XrdCpArgs, CopyFile, CommitInfo, lfn2file, KV, RET, ALIEN_COLLECTION_EL, STAT_FILEPATH, Msg)
 
 COLORS = COLORS_COLL()  # Instance of colors collection
-
-
 
 
 class AliEn:
@@ -553,66 +548,9 @@ def unquote_str(arg):
 #########################
 #   ASYNCIO MECHANICS
 #########################
-def start_asyncio():
-    """Initialization of main thread that will keep the asyncio loop"""
-    ready = threading.Event()
-
-    def _cancel_all_tasks(loop_to_cancel):
-        to_cancel = None
-        if sys.version_info[1] < 7:
-            to_cancel = asyncio.Task.all_tasks(loop_to_cancel)
-        else:
-            to_cancel = asyncio.all_tasks(loop_to_cancel)
-        if not to_cancel: return
-        for task in to_cancel: task.cancel()
-        loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
-
-        for task in to_cancel:
-            if task.cancelled(): continue
-            if task.exception() is not None:
-                loop_to_cancel.call_exception_handler({'message': 'unhandled exception during asyncio.run() shutdown', 'exception': task.exception(), 'task': task})
-
-    def run(mainasync, *, debug = False):
-        global _alienpy_global_asyncio_loop
-        if asyncio.events._get_running_loop() is not None: raise RuntimeError('asyncio.run() cannot be called from a running event loop')  # pylint: disable=protected-access
-        if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError(f'a coroutine was expected, got {mainasync!r}')
-
-        _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
-        try:
-            asyncio.events.set_event_loop(_alienpy_global_asyncio_loop)
-            _alienpy_global_asyncio_loop.set_debug(debug)
-            return _alienpy_global_asyncio_loop.run_until_complete(mainasync)
-        finally:
-            try:
-                _cancel_all_tasks(_alienpy_global_asyncio_loop)
-                _alienpy_global_asyncio_loop.run_until_complete(_alienpy_global_asyncio_loop.shutdown_asyncgens())
-            finally:
-                asyncio.events.set_event_loop(None)
-                _alienpy_global_asyncio_loop.close()
-
-    async def wait_forever():
-        global _alienpy_global_asyncio_loop
-        _alienpy_global_asyncio_loop = asyncio.get_event_loop()
-        ready.set()
-        await _alienpy_global_asyncio_loop.create_future()
-
-    threading.Thread(daemon = True, target = run, args = (wait_forever(),)).start()
-    ready.wait()
-
-
+from .async_tools import *
 # Let's start the asyncio main thread
 start_asyncio()
-
-
-def syncify(fn):
-    """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
-    def syncfn(*args, **kwds):
-        # submit the original coroutine to the event loop and wait for the result
-        conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _alienpy_global_asyncio_loop)
-        return conc_future.result()
-    syncfn.as_async = fn
-    return syncfn
-
 
 @syncify
 async def IsWbConnected(wb) -> bool:
