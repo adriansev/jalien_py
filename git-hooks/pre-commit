@@ -2,7 +2,7 @@
 
 REPO="$(git rev-parse --show-toplevel)"
 
-ALIENPY_IS_CHANGED=$(git status -s ${REPO}/alienpy/alien.py)
+ALIENPY_IS_CHANGED=$(git ls-files -m)
 [[ -n "${ALIENPY_IS_CHANGED}" ]] && touch ${REPO}/.commit_in_progress
 
 exit 0
