@@ -3,11 +3,14 @@
 [[ ! -e alienpy/alien.py ]] && { echo "alien.py was not found"; exit 1; }
 
 ./update_version
-git commit -m "alien.py update version info" alienpy/alien.py alienpy/VERSION
+git commit -m "alien.py update version info" alienpy/alien.py alienpy/version.py
 git push
 git push xjalienfs master
 
-git tag $(< alienpy/VERSION)
+VER=$(python3 -c 'from alienpy.version import *;print(ALIENPY_VERSION_STR)') # '
+[[ -z ${VER} ]] && { echo "Something is wrong, could not get the version number"; exit 1; }
+
+git tag ${VER}
 git push --tags
 git push --tags xjalienfs master
 

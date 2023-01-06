@@ -6,15 +6,16 @@ import traceback
 
 def get_version_from_file():
     try:
-        f = open('alienpy/VERSION', encoding="ascii")
-        version = f.read().strip()
-        f.close()
-        return version
+        from alienpy.version import *
+        return ALIENPY_VERSION_STR
     except Exception:
-        traceback.print_exc()
-        print('Failed to get version from file. Using unknown')
-        return 'unknown'
-
+        try:
+            from xjalienfs.version import *
+            return ALIENPY_VERSION_STR
+        except Exception:
+            traceback.print_exc()
+            print('Failed to get version from file. Using unknown')
+            return 'unknown'
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -38,13 +39,13 @@ else:
 setuptools.setup(
     name="alienpy",
     version=get_version_from_file(),
+    packages=setuptools.find_packages(),
     author="Adrian Sevcenco",
     author_email="adrian.sevcenco@cern.ch",
     description="Websocket based cli interface for ALICE experiment GRID infrastructure",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://gitlab.cern.ch/jalien/xjalienfs",
-    packages=setuptools.find_packages(),
     install_requires=selected_requirements,
     python_requires='>=3.6',
     classifiers=[
@@ -87,7 +88,7 @@ setuptools.setup(
     scripts = [
         'examples/alien_wbtime',
         ],
-    data_files = [('alienpy', ['alienpy/VERSION'])],
+    # data_files = [('alienpy', ['alienpy/VERSION'])],
     keywords = 'CERN ALICE JAliEn GRID',
 
 )
