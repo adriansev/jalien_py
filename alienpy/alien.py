@@ -1509,7 +1509,7 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
             return {}
         access_type = 'write'
         size = int(os.stat(local_file).st_size)
-        md5sum = md5(local_file)
+        md5sum = '' # md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576 and not specs:  # we have a special lfn
             specs.append('disk:4')  # and no specs defined then default to disk:4
@@ -2840,9 +2840,10 @@ if _HAS_XROOTD:
                 speed_str = f'{GetHumanReadable(speed)}/s'
 
                 if xrdjob.isUpload:  # isUpload
+                    md5 = results['sourceCheckSum'].replace('md5:','',1)
                     perm = '644'
                     expire = '0'
-                    self.succesful_writes.append(CommitInfo(replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], replica_dict['md5']))
+                    self.succesful_writes.append(CommitInfo(replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], md5))
                 else:  # isDownload
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -2916,8 +2917,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     # timeout = xrd_cp_args.timeout
     # rate = xrd_cp_args.rate
 
-    cksum = xrd_cp_args.cksum
-    if cksum: xrd_client.EnvPutInt('ZipMtlnCksum', 1)
+    xrd_client.EnvPutInt('ZipMtlnCksum', 1)
 
     handler = MyCopyProgressHandler()
     handler.wb = wb
@@ -2930,27 +2930,24 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     process.parallel(int(batch))
     for copy_job in job_list:
         if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
-        if cksum:
-            # none | source | target | end2end
-            cksum_mode = 'end2end'
-            if copy_job.isUpload:
-                # WIP: checksumming with md5 for uploading breaks on EOS, keep it on auto; but disable for now as there are EOS-es that do not allow checksumming
-                # cksum_type = 'md5' ; cksum_preset = copy_job.token_request['md5']
-                # cksum_type = 'auto' ; cksum_preset = '';
-                cksum_mode = 'none'; cksum_type = cksum_preset = '';  # Reset the cksum options
-            else:  # for downloads we already have the md5 value, lets use that
-                cksum_type, cksum_preset = get_hash_meta(copy_job.src)
-                if not cksum_type or not cksum_preset:  # The remote file had no hash registered
-                    cksum_mode = 'none'; cksum_type = cksum_preset = '';
+        if copy_job.isUpload:
+            cksum_mode = 'source'; cksum_type = 'md5' ; cksum_preset = ''; # copy_job.token_request['md5']
+        else:  # for downloads we already have the md5 value, lets use that
+            cksum_mode = 'target';
+            cksum_type, cksum_preset = get_hash_meta(copy_job.src)
+            # If the remote file had no hash registered
+            if not cksum_type or not cksum_preset:
+                logging.error(f'COPY:: MD5 missing for {copy_job.lfn}')
+                cksum_mode = 'none'; cksum_type = cksum_preset = '';
 
-        delete_invalid_chk = (not cksum_mode == 'none')  # if no checksumming mode, disable delete_invalid_chk
+        delete_invalid_cksum = (not cksum_mode == 'none')  # if no checksumming mode, disable rmBadCksum
         if 'xrateThreshold' in process.add_job.__code__.co_varnames:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
-                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
+                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
                             retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
         else:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
-                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_chk,
+                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
                             retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
