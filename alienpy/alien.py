@@ -2370,7 +2370,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overw
         else:  # directory to be listed
             results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
             if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
-                msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''}-a -s {src} {pattern}"
+                msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''} -a -s {src} {pattern}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
 
             for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
