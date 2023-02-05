@@ -9,8 +9,10 @@ import threading
 _alienpy_global_asyncio_loop = None
 _thread_event = None
 
+
 def get_loop():
     return _alienpy_global_asyncio_loop
+
 
 def _cancel_all_tasks(loop_to_cancel):
     to_cancel = None
@@ -32,6 +34,7 @@ def _run(mainasync, *, debug = False):
     global _alienpy_global_asyncio_loop
     if asyncio.events._get_running_loop() is not None: raise RuntimeError('asyncio.run() cannot be called from a running event loop')  # pylint: disable=protected-access
     if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError(f'a coroutine was expected, got {mainasync!r}')
+    if _alienpy_global_asyncio_loop is not None: raise RuntimeError('asyncio event loop already started')
 
     _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
     try:
@@ -48,10 +51,9 @@ def _run(mainasync, *, debug = False):
 
 
 async def _wait_forever():
-    global _alienpy_global_asyncio_loop, _thread_event
-    _alienpy_global_asyncio_loop = asyncio.get_event_loop()
+    global _thread_event
     _thread_event.set()
-    await _alienpy_global_asyncio_loop.create_future()
+    await asyncio.get_event_loop().create_future()
 
 
 def start_asyncio():
