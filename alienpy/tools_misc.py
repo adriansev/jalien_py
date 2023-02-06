@@ -382,6 +382,11 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
     return any(ip[-1] for ip in result_list)
 
 
+def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
+    """Return the latest global recorded exitcode"""
+    return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
+
+
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)

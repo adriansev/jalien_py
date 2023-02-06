@@ -179,38 +179,6 @@ if _HAS_XROOTD:
 
 
 
-class AliEn:
-    """Class to be used as advanced API for interaction with central servers"""
-    __slots__ = ('internal_wb', 'opts')
-
-    def __init__(self, opts = ''):
-        self.internal_wb = InitConnection()
-        self.opts = opts
-
-    def run(self, cmd, opts = '') -> Union[RET, str]:
-        """SendMsg to server a string command, a RET object will be returned"""
-        if not opts: opts = self.opts
-        return SendMsg(self.internal_wb, cmd, opts = opts)
-
-    def ProcessMsg(self, cmd, opts = '') -> int:
-        """ProcessCommandChain - the app main function to process a (chain of) command(s)"""
-        if not opts: opts = self.opts
-        return ProcessCommandChain(self.internal_wb, cmd)
-
-    def wb(self):
-        """Get the websocket, to be used in other functions"""
-        return self.internal_wb
-
-    @staticmethod
-    def help():
-        """Print help message"""
-        print_out('Methods of AliEn session:\n'
-                  '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
-                  '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
-                  '.wb() : return the session WebSocket to be used with other function within alien.py')
-
-
-
 
 def signal_handler(sig, frame):  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
@@ -233,24 +201,13 @@ def GetMeta(result: dict, meta: str = '') -> list:
 
 def cleanup_temp():
     """Remove from disk all recorded temporary files"""
-    if AlienSessionInfo['templist']:
-        for f in AlienSessionInfo['templist']:
-            if os.path.isfile(f): os.remove(f)
-
+    if AlienSessionInfo['templist']: [os.remove(f) for f in AlienSessionInfo['templist'] if os.path.isfile(f)]
 
 
 def import_aliases():
     global AlienSessionInfo
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
     if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
-
-
-
-
-def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
-    """Return the latest global recorded exitcode"""
-    return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
-
 
 
 def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
@@ -262,9 +219,6 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
         if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
     return SendMsg(wb, 'cd', args, opts)
-
-
-
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -3404,7 +3358,6 @@ def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     return CertKeyMatch(cert, key)
 
 
-
 def make_func_map_clean_server():
     """Remove from server list the client-side re-implementations"""
     global AlienSessionInfo
@@ -3520,8 +3473,8 @@ def getSessionVars(wb):
     if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
         print_err("Start session:: could not get command list, let's exit.")
         sys.exit(1)
-    regex = re.compile(r'.*_csd$')
-    AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not regex.match(cmd["commandlist"])]
+    csd_cmds_re = re.compile(r'.*_csd$')
+    AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not csd_cmds_re.match(cmd["commandlist"])]
     AlienSessionInfo['commandlist'].remove('jquota')
     AlienSessionInfo['commandlist'].remove('fquota')
 
@@ -3530,33 +3483,30 @@ def getSessionVars(wb):
     make_func_map_clean_server()
 
     # these are aliases, or directly interpreted
-    AlienSessionInfo['commandlist'].append('ll')
-    AlienSessionInfo['commandlist'].append('la')
-    AlienSessionInfo['commandlist'].append('lla')
+    AlienSessionInfo['commandlist'].extend(['ll', 'la', 'lla'])
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])  # add nowb cmds to list
-    # AlienSessionInfo['commandlist'].sort()
     AlienSessionInfo['commandlist'] = sorted(set(AlienSessionInfo['commandlist']))
-
-    # when starting new session prevdir is empty, if set then this is a reconnection
-    if AlienSessionInfo['prevdir'] and (AlienSessionInfo['prevdir'] != AlienSessionInfo['currentdir']): cd(wb, AlienSessionInfo['prevdir'], 'log')
 
 
 def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a session to AliEn services, including session globals and token regeneration"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
+    if not AlienSessionInfo:
+        print_err('InitConnection:: AlienSessionInfo session object not found')
+        return None
     if not token_args: token_args = []
     init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
     if ALIENPY_GLOBAL_WB: wb_close(ALIENPY_GLOBAL_WB, code = 1000, reason = 'Close previous websocket')
     ALIENPY_GLOBAL_WB = AlienConnect(token_args, use_usercert, localConnect)
-    
+
     if init_begin:
         msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
         if DEBUG: logging.debug(msg)
         if TIME_CONNECT: print_out(msg)
 
     # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
-    if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars
+    if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars ONLY ONCE
         AlienSessionInfo['session_started'] = True
         session_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
         getSessionVars(ALIENPY_GLOBAL_WB)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
@@ -3564,6 +3514,9 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
             msg = f">>>   Time for session initialization: {deltat_us_perf(session_begin)} us"
             if DEBUG: logging.debug(msg)
             if TIME_CONNECT: print_out(msg)
+
+    # this is a reconnection, make sure on the server we are in the last known current directory
+    if AlienSessionInfo['currentdir']: cd(ALIENPY_GLOBAL_WB, AlienSessionInfo['currentdir'], 'log')
 
     # if usercert connection always regenerate token if connected with usercert
     if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')

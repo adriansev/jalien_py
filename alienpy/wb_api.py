@@ -10,6 +10,38 @@ from .wb_async import *
 #from .setup_logging import *
 from .tools_stackcmd import *
 
+
+class AliEn:
+    """Class to be used as advanced API for interaction with central servers"""
+    __slots__ = ('internal_wb', 'opts')
+
+    def __init__(self, opts = ''):
+        self.internal_wb = InitConnection()
+        self.opts = opts
+
+    def run(self, cmd, opts = '') -> Union[RET, str]:
+        """SendMsg to server a string command, a RET object will be returned"""
+        if not opts: opts = self.opts
+        return SendMsg(self.internal_wb, cmd, opts = opts)
+
+    def ProcessMsg(self, cmd, opts = '') -> int:
+        """ProcessCommandChain - the app main function to process a (chain of) command(s)"""
+        if not opts: opts = self.opts
+        return ProcessCommandChain(self.internal_wb, cmd)
+
+    def wb(self):
+        """Get the websocket, to be used in other functions"""
+        return self.internal_wb
+
+    @staticmethod
+    def help():
+        """Print help message"""
+        print_out('Methods of AliEn session:\n'
+                  '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
+                  '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
+                  '.wb() : return the session WebSocket to be used with other function within alien.py')
+
+
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
     """Return a json with command and argument list"""
     if args is None: args = []
@@ -192,7 +224,6 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
 
 def retf_result2ret(result: Union[str, dict, None]) -> RET:
     """Convert AliEn answer dictionary to RET object"""
-    global AlienSessionInfo
     if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
     out_dict = None
     if isinstance(result, str):
@@ -210,10 +241,15 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
         logging.error(msg)
         return RET(52, '', msg)  # type: ignore [call-arg]
 
+    session_state_update(out_dict)
     message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
     output = '\n'.join(message_list)
-    ret_obj = RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
+    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
 
+
+def session_state_update (out_dict: dict) -> None:
+    """Update global AlienSessionInfo with status of the latest command"""
+    global AlienSessionInfo
     if AlienSessionInfo:  # update global state of session
         AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
         current_dir = out_dict["metadata"]["currentdir"]
@@ -222,6 +258,7 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
         if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
 
         # update the current current/previous dir status
+        # previous/current have the meaning of before and after command execution
         prev_dir = AlienSessionInfo['currentdir']  # last known current dir
         if prev_dir != current_dir:
             AlienSessionInfo['currentdir'] = current_dir
@@ -234,7 +271,6 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
             if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
         else:
             push2stack(short_current_dir)
-    return ret_obj  # noqa: R504
 
 
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
@@ -244,7 +280,6 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
     jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
-
 
     # let's try to get a websocket
     wb = None
@@ -257,7 +292,9 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
                 jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
                 jbox_port = jalien_info.get('JALIEN_WSPORT', '8097')
-                if isReachable(jbox_host, jbox_port): jalien_server, jalien_websocket_port = jbox_host, jbox_port
+                if isReachable(jbox_host, jbox_port):
+                    jalien_server, jalien_websocket_port = jbox_host, jbox_port
+                    logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
 
         wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
 
