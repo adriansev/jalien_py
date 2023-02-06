@@ -4,18 +4,15 @@ import setuptools
 import traceback
 
 
-def get_version_from_file():
+try:
+    from alienpy.version import *
+except Exception:
     try:
-        from alienpy.version import *
-        return ALIENPY_VERSION_STR
+        from xjalienfs.version import *
     except Exception:
-        try:
-            from xjalienfs.version import *
-            return ALIENPY_VERSION_STR
-        except Exception:
-            traceback.print_exc()
-            print('Failed to get version from file. Using unknown')
-            return 'unknown'
+        traceback.print_exc()
+        print('Failed to get version from file. Using 0.0.0')
+        ALIENPY_VERSION_STR = '0.0.0'
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -37,29 +34,29 @@ else:
     selected_requirements = base_requirements + local_requirements
 
 setuptools.setup(
-    name="alienpy",
-    version=get_version_from_file(),
-    packages=setuptools.find_packages(),
-    author="Adrian Sevcenco",
-    author_email="adrian.sevcenco@cern.ch",
-    description="Websocket based cli interface for ALICE experiment GRID infrastructure",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://gitlab.cern.ch/jalien/xjalienfs",
-    install_requires=selected_requirements,
-    python_requires='>=3.6',
-    classifiers=[
+    name = "alienpy",
+    version = ALIENPY_VERSION_STR,
+    packages = setuptools.find_packages(),
+    author = "Adrian Sevcenco",
+    author_email = "adrian.sevcenco@cern.ch",
+    description = "Websocket based cli interface for ALICE experiment GRID infrastructure",
+    long_description = long_description,
+    long_description_content_type = "text/markdown",
+    url = "https://gitlab.cern.ch/jalien/xjalienfs",
+    install_requires = selected_requirements,
+    python_requires = '>=3.6',
+    classifiers = [
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
-    ],
-    project_urls={
+        ],
+    project_urls = {
         "Dev git": "https://github.com/adriansev/jalien_py",
         "Issues": "https://github.com/adriansev/jalien_py/issues",
         "Changelog": "https://github.com/adriansev/jalien_py/commits/master",
         "Documentation": "https://jalien.docs.cern.ch",
         "CERN Mattermost/JAliEn": "https://mattermost.web.cern.ch/alice/channels/jalien",
-    },
+        },
     entry_points = {
         'console_scripts': [
             'alien.py = alienpy.alien:main',
@@ -83,13 +80,11 @@ setuptools.setup(
             'alien-token-info = alienpy.alien:cmd_token_info',
             'alien-token-init = alienpy.alien:cmd_token_init',
             'alien-token-destroy = alienpy.alien:cmd_token_destroy',
-        ]
-    },
+            ]
+        },
     scripts = [
         'examples/alien_wbtime',
         ],
-    # data_files = [('alienpy', ['alienpy/VERSION'])],
     keywords = 'CERN ALICE JAliEn GRID',
-
 )
 

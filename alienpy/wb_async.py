@@ -180,7 +180,7 @@ async def wb_sendmsg(wb, jsonmsg: str) -> str:
 
 
 @syncify
-async def __sendmsg_multi(wb, jsonmsg_list: list) -> list:
+async def wb_sendmsg_multi(wb, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
     time_begin = None
