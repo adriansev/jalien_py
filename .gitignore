@@ -1,5 +1,8 @@
 .commit
 
+# ignore backup files
+*~
+
 # Compiled python modules.
 *.pyc
 
