@@ -117,6 +117,8 @@ COLORS = COLORS_COLL()  # Instance of colors collection
 # commands stack tools
 from .tools_stackcmd import *
 
+# shell related toold
+from .tools_shell import *
 
 #########################
 #   ASYNCIO MECHANICS
@@ -186,16 +188,15 @@ def signal_handler(sig, frame):  # pylint: disable=unused-argument
     exit_message(int(AlienSessionInfo['exitcode']))
 
 
-def GetMeta(result: dict, meta: str = '') -> list:
+def GetMeta(result: dict) -> dict:
     """Extract from input and return a list of 2nd arg selectable of cwd user error exitcode"""
-    output = []
+    output = { 'cwd': None, 'user': None, 'error': None, 'exitcode': None }
     if not result: return output
     if isinstance(result, dict) and 'metadata' in result:  # these works only for AliEn responses
-        meta_opts_list = meta.split() if meta else []
-        if 'cwd' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["currentdir"])
-        if 'user' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["user"])
-        if 'error' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["error"])
-        if 'exitcode' in meta_opts_list or 'all' in meta_opts_list: output.append(result["metadata"]["exitcode"])
+        output['cwd'] = result['metadata']['currentdir']
+        output['user'] = result['metadata']['user']
+        output['error'] = result['metadata']['error']
+        output['exitcode'] = result['metadata']['exitcode']
     return output
 
 
@@ -3074,33 +3075,7 @@ The server options:''')
     return list_files_grid(wb, search_dir, pattern, use_regex, args)
 
 
-def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
-    """Run shell command in subprocess; if exists, print stdout and stderr"""
-    if not INPUT: return RET(1, '', 'No command to be run provided')
-    sh_cmd = re.sub(r'^!', '', INPUT)
-    args = sh_cmd if do_shell else shlex.split(sh_cmd)
-    capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
-    status = exitcode = except_msg = None
-    msg_out = msg_err = ''
-    try:
-        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check  # nosec
-    except subprocess.TimeoutExpired:
-        print_err(f"Expired timeout: {timeout} for: {sh_cmd}")
-        exitcode = int(62)
-    except FileNotFoundError:
-        print_err(f"Command not found: {sh_cmd}")
-        exitcode = int(2)
-    except Exception:
-        ex_type, ex_value, ex_traceback = sys.exc_info()
-        except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
-        exitcode = int(1)
 
-    if status:
-        if status.stdout: msg_out = status.stdout.strip()
-        if status.stderr: msg_err = status.stderr.strip()
-        exitcode = status.returncode
-    if except_msg: msg_err = f'{except_msg}\n{msg_err}'
-    return RET(exitcode, msg_out, msg_err)
 
 
 def DO_quota(wb, args: Union[None, list] = None) -> RET:
@@ -3519,7 +3494,7 @@ def InitConnection(token_args: Union[None, list] = None, use_usercert: bool = Fa
     if AlienSessionInfo['currentdir']: cd(ALIENPY_GLOBAL_WB, AlienSessionInfo['currentdir'], 'log')
 
     # if usercert connection always regenerate token if connected with usercert
-    if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
+    if AlienSessionInfo['use_usercert'] and token(ALIENPY_GLOBAL_WB, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
     return ALIENPY_GLOBAL_WB
 
 

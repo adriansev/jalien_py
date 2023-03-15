@@ -1,0 +1,41 @@
+'''alienpy:: Misc tooling functions'''
+
+import sys
+import subprocess
+import shlex
+from .data_structs import *
+
+def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
+    """Run shell command in subprocess; if exists, print stdout and stderr"""
+    if not INPUT: return RET(1, '', 'No command to be run provided')
+    sh_cmd = re.sub(r'^!', '', INPUT)
+    args = sh_cmd if do_shell else shlex.split(sh_cmd)
+    capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
+    status = exitcode = except_msg = None
+    msg_out = msg_err = ''
+    try:
+        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check  # nosec
+    except subprocess.TimeoutExpired:
+        print_err(f"Expired timeout: {timeout} for: {sh_cmd}")
+        exitcode = int(62)
+    except FileNotFoundError:
+        print_err(f"Command not found: {sh_cmd}")
+        exitcode = int(2)
+    except Exception:
+        ex_type, ex_value, ex_traceback = sys.exc_info()
+        except_msg = f'Exception:: {ex_type} -> {ex_value}\n{ex_traceback}\n'
+        exitcode = int(1)
+
+    if status:
+        if status.stdout: msg_out = status.stdout.strip()
+        if status.stderr: msg_err = status.stderr.strip()
+        exitcode = status.returncode
+    if except_msg: msg_err = f'{except_msg}\n{msg_err}'
+    return RET(exitcode, msg_out, msg_err)
+
+
+
+if __name__ == '__main__':
+    print('This file should not be executed!', file = sys.stderr, flush = True)
+    sys.exit(95)
+
