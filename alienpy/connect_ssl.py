@@ -1,8 +1,13 @@
 '''alienpy:: SSL and certificate tooling'''
 
 import logging
-import ssl
 from pathlib import Path
+
+try:
+    import ssl
+except Exception:
+    print("Python ssl module could not be imported! Make sure you can do:\npython3 -c 'import ssl'", file = sys.stderr, flush = True)
+    sys.exit(1)
 
 try:
     import cryptography
