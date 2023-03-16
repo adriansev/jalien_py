@@ -7,15 +7,15 @@ if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] 
     print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True)
     sys.exit(1)
 
-import asyncio
+# import asyncio
 import atexit
-import ast
-from collections import deque
+# import ast
+# from collections import deque
 import datetime
 import difflib
 
-import errno
-import faulthandler
+# import errno
+# import faulthandler
 
 import json
 import re
@@ -25,8 +25,8 @@ from pathlib import Path
 import subprocess  # nosec
 import logging
 import shlex
-import socket
-import ssl
+# import socket
+# import ssl
 import statistics
 
 from typing import NamedTuple
@@ -34,13 +34,13 @@ from typing import Union
 from typing import Optional
 from typing import Callable
 from typing import Iterator
-## import threading
+# import threading
 import traceback
-import tempfile
+# import tempfile
 import time
 import urllib.request as urlreq
 from urllib.parse import urlparse
-import zipfile
+# import zipfile
 
 # import stat
 import xml.dom.minidom as MD  # nosec

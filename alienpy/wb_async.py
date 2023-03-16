@@ -1,7 +1,7 @@
 """WEBSOCKET:: main async functions"""
 
 import os
-import asyncio
+# import asyncio
 import socket
 
 try:
