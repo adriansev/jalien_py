@@ -1,5 +1,6 @@
 '''alienpy:: SSL and certificate tooling'''
 
+import sys
 import logging
 from pathlib import Path
 
@@ -148,6 +149,14 @@ def get_valid_certs() -> tuple:
     AlienSessionInfo['verified_cert'] = True  # This means that we already checked
     if INVALID: return None, None
     return usercert, userkey
+
+
+# Check the presence of user certs and bailout before anything else
+tokencert, tokenkey = get_valid_tokens()
+usercert, userkey = get_valid_certs()
+if not usercert and not tokencert:
+    print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
+    sys.exit(126)
 
 
 def get_valid_auth_cred(use_usercert: bool = False) -> tuple:

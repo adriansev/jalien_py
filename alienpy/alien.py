@@ -95,14 +95,7 @@ from .version import *
 ##   LOGGING
 from .setup_logging import *
 
-##   SSL tooling
-from .connect_ssl import *
-# Check the presence of user certs and bailout before anything else
-tokencert, tokenkey = get_valid_tokens()
-usercert, userkey = get_valid_certs()
-if not usercert and not tokencert:
-    print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
-    sys.exit(126)
+
 
 ##   General misc functions library
 from .tools_misc import *
@@ -142,6 +135,7 @@ from .xrd_core import *
 xrd_config_init()
 
 
+from .connect_ssl import get_valid_tokens, get_files_cert
 
 
 def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
