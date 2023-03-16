@@ -406,16 +406,23 @@ def name2regex(pattern_regex: str = '') -> str:
     return translated_pattern_regex  # noqa: R504
 
 
-def cleanup_temp():
+def cleanup_temp(item: str = ''):
     """Remove from disk all recorded temporary files"""
-    global AlienSessionInfo
     try:
         AlienSessionInfo
     except NameError:
         return
-    if AlienSessionInfo['templist']:
-        for f in AlienSessionInfo['templist']:
-            if os.path.isfile(f): os.remove(f)
+    if not AlienSessionInfo['templist']: return
+
+    def rm_item(i: str = ''):
+        if not i: return
+        if os.path.isfile(i):
+            AlienSessionInfo['templist'].remove(i)
+            os.remove(i)
+    if item:
+        rm_item(item)
+    else:
+        for f in AlienSessionInfo['templist']: rm_item(f)
 
 
 def import_aliases():

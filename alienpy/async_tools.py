@@ -51,7 +51,7 @@ def _run(mainasync, *, debug = False):
 
 
 async def _wait_forever():
-    global _thread_event
+    # global _thread_event
     _thread_event.set()
     await asyncio.get_event_loop().create_future()
 

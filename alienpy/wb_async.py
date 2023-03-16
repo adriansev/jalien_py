@@ -26,14 +26,13 @@ from .version import *
 from .global_vars import *
 from .data_structs import *
 from .setup_logging import *
-from .async_tools import *
 from .connect_ssl import *
 from .tools_misc import *
 
 #########################
 #   ASYNCIO MECHANICS
 #########################
-from .async_tools import *
+from .async_tools import start_asyncio, syncify
 # Let's start the asyncio main thread
 start_asyncio()
 

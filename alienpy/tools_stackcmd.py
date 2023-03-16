@@ -7,7 +7,6 @@ from .global_vars import *
 deque = collections.deque
 
 def push2stack(path: str):
-    global AlienSessionInfo
     if not str: return
     home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
