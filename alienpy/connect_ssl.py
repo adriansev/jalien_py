@@ -111,14 +111,14 @@ def get_valid_tokens() -> tuple:
     if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
-        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)  # noqa: PLR1732
+        temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)
         temp_cert.write(tokencert.encode(encoding = "ascii", errors = "replace"))
         temp_cert.seek(0)
         tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
         AlienSessionInfo['templist'].append(tokencert)  # type: ignore[attr-defined]
     if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
-        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)  # noqa: PLR1732
+        temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)
         temp_key.write(tokenkey.encode(encoding = "ascii", errors = "replace"))
         temp_key.seek(0)
         tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey

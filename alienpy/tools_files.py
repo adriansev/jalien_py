@@ -3,7 +3,7 @@
 
 import uuid
 from pathlib import Path
-import xml.dom.minidom as MD
+import xml.dom.minidom as MD  # nosec B408:blacklist
 from .data_structs import *
 from .tools_misc import *
 
@@ -97,21 +97,21 @@ def get_lfn_meta(meta_fn: str) -> str:
     """Extract lfn value from metafile"""
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return ''
-    return MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue
+    return MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue  # nosec B318:blacklist
 
 
 def get_size_meta(meta_fn: str) -> int:
     """Extract size value from metafile"""
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return int(0)
-    return int(MD.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)
+    return int(MD.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)  # nosec B318:blacklist
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
     """Extract hash value from metafile"""
     if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
     if not os.path.isfile(meta_fn): return ('', '')
-    content = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]
+    content = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]  # nosec B318:blacklist
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
 

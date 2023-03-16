@@ -35,7 +35,7 @@ emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': dict(), 'cmd2func_map_client': dict(), 'cmd2func_map_srv': dict(), 'templist': list(), 'alias_cache': dict(),
+                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
                     'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
                     'use_usercert': False, 'verified_cert': False, 'verified_token': False}
 

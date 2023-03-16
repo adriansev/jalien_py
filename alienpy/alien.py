@@ -43,8 +43,8 @@ from urllib.parse import urlparse
 import zipfile
 
 # import stat
-import xml.dom.minidom as MD  # noqa: N812  # nosec
-import xml.etree.ElementTree as ET  # noqa: N817  # nosec
+import xml.dom.minidom as MD  # nosec
+import xml.etree.ElementTree as ET  # nosec
 
 # External imports
 try:
@@ -292,7 +292,7 @@ def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
                 print_out(msg)
             else:
                 print_err(msg)
-    sys.exit(int(code))  # noqa: R503
+    sys.exit(int(code))
 
 
 def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
@@ -660,7 +660,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if not args: return RET(2, '', 'empty query!')
     query_str = args[0]  # after removal of args assume the rest is the query
 
-    q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers)
+    q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     q_dict = q.json()
     list(map(ccdb_json_cleanup, q_dict['objects']))
 
@@ -697,9 +697,9 @@ def mk_xml_local(filepath_list: list):
     collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
     for idx, item in enumerate(filepath_list, start = 1):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
-        f = ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())  # noqa:F841
+        f = ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
     oxml = ET.tostring(xml_root, encoding = 'ascii')
-    dom = MD.parseString(oxml)
+    dom = MD.parseString(oxml)  # nosec B318:blacklist
     return dom.toprettyxml()
 
 
@@ -918,7 +918,7 @@ http : URIs will be for http end-points of enabled SEs
     if not isWrite: lfn = expand_path_grid(lfn)
     specs = ''
     if len(lfn_components) > 1: specs = lfn_components[1]
-    if write_meta:  # noqa: IFSTMT001
+    if write_meta:
         out = lfn2meta(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
     else:
         out = lfn2uri(wb, lfn, local_file, specs, isWrite, strictspec, httpurl)
@@ -1040,7 +1040,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
         ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
-        if ret_obj.exitcode != 0: return ret_obj  # noqa: R504
+        if ret_obj.exitcode != 0: return ret_obj
         md5_end = md5(tmp)
         if md5_begin != md5_end:
             uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
@@ -1380,7 +1380,7 @@ def lfn_list(wb, lfn: str = ''):
     else:
         listing = get_list_entries(wb, base_dir)
         list_lfns = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
-    return list_lfns  # noqa: R504
+    return list_lfns
 
 
 def wb_ping(wb) -> float:
@@ -1696,7 +1696,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
     if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
         ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
-    return ret_obj  # noqa: R504
+    return ret_obj
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:

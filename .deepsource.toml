@@ -1,6 +1,6 @@
 version = 1
 
-test_patterns = ["alienpy/alien.py"]
+test_patterns = ["alienpy/*.py"]
 
 [[analyzers]]
 name = "shell"

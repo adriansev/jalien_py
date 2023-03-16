@@ -1,7 +1,7 @@
 '''alienpy:: Misc tooling functions'''
 
 import sys
-import subprocess
+import subprocess  # nosec B404:blacklist
 import shlex
 from .data_structs import *
 

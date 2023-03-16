@@ -49,7 +49,7 @@ def time_unix2simple(time_arg: Union[str, int, None]) -> str:
     return datetime.datetime.fromtimestamp(float(time_arg)).replace(microsecond=0).isoformat().replace('T', ' ')
 
 
-def time_str2unixmili(time_arg: Union[str, int, None]) -> int:  # noqa: FQ004
+def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
     if not time_arg:
         return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
     time_arg = str(time_arg)
@@ -413,7 +413,9 @@ def cleanup_temp():
         AlienSessionInfo
     except NameError:
         return
-    if AlienSessionInfo['templist']: [os.remove(f) for f in AlienSessionInfo['templist'] if os.path.isfile(f)]
+    if AlienSessionInfo['templist']:
+        for f in AlienSessionInfo['templist']:
+            if os.path.isfile(f): os.remove(f)
 
 
 def import_aliases():

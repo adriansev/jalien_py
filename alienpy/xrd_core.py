@@ -2,7 +2,7 @@
 
 import datetime
 import sys
-import xml.dom.minidom as MD
+import xml.dom.minidom as MD  # nosec B408:blacklist
 from .global_vars import *
 from .data_structs import *
 from .version import *
@@ -21,7 +21,7 @@ except Exception:
 def _is_valid_xrootd() -> bool:
     if not HAS_XROOTD: return False
     xrd_ver_arr = xrd_client.__version__.split(".")
-    if len(xrd_ver_arr) > 1:  # noqa: PLR1705
+    if len(xrd_ver_arr) > 1:
         _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_2 = xrd_ver_arr[1]
         return int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
@@ -892,7 +892,7 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
         if xml_raw: return response
         # xml_stats = ET.fromstring(response)
         # return ET.dump(xml_stats)
-        xml_stats = MD.parseString(response)
+        xml_stats = MD.parseString(response)  # nosec B318:blacklist
         indent = '  '
         newl = '\n'
         if compact: indent = newl = ''

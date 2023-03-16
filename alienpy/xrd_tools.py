@@ -300,7 +300,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789,PLC0123
+        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
