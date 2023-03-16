@@ -50,6 +50,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         print_err(msg)
         logging.error(msg)
         return None
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     port = str(abs(int(port)))  # make sure the port argument is positive
 
     QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
@@ -137,6 +138,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
 @syncify
 async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     time_begin = time.perf_counter() if DEBUG_TIMING else None
     if DEBUG:
         logging.info('Called from: %s', sys._getframe().f_back.f_code.co_name)  # pylint: disable=protected-access
@@ -171,8 +173,7 @@ async def msg_proxy(websocket, use_usercert = False):
 @syncify
 async def wb_sendmsg(wb, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
-    time_begin = None
-    if DEBUG_TIMING: time_begin = time.perf_counter()
+    time_begin = time.perf_counter() if DEBUG_TIMING else None
     await wb.send(jsonmsg)
     result = await wb.recv()
     if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
@@ -183,8 +184,7 @@ async def wb_sendmsg(wb, jsonmsg: str) -> str:
 async def wb_sendmsg_multi(wb, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
-    time_begin = None
-    if DEBUG_TIMING: time_begin = time.perf_counter()
+    time_begin = time.perf_counter() if DEBUG_TIMING else None
     for msg in jsonmsg_list: await wb.send(msg)
 
     result_list = []

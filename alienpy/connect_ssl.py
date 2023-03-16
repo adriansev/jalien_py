@@ -25,6 +25,11 @@ except Exception:
 from .global_vars import *
 from .data_structs import *
 from .tools_misc import *
+from .tools_files import *
+
+
+TOKENCERT_NAME = f'{TMPDIR}/tokencert_{str(os.getuid())}.pem'
+TOKENKEY_NAME = f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem'
 
 
 def get_files_cert() -> tuple:
@@ -39,6 +44,8 @@ def get_token_names(files: bool = False) -> tuple:
 
 def get_ca_path() -> str:
     """Return either the CA path or file; bailout application if not found"""
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
@@ -164,6 +171,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
 
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
     ctx = ssl.SSLContext(ssl_protocol)

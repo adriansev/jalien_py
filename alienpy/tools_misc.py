@@ -24,44 +24,10 @@ def exit_message(code: int = 0, msg = ''):
     sys.exit(code)
 
 
-def expand_path_local(path_arg: str, strict: bool = False) -> str:
-    """Given a string representing a local file, return a full path after interpretation of HOME location, current directory, . and .. and making sure there are only single /"""
-    if not path_arg: return ''
-    exp_path = None
-    path_arg = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
-    try:
-        exp_path = Path(path_arg).expanduser().resolve(strict).as_posix()
-    except Exception:
-        return ''
-    if (len(exp_path) > 1 and path_arg.endswith('/')) or os.path.isdir(exp_path): exp_path = f'{exp_path}/'
-    return exp_path  # noqa: R504
-
-
-def check_path_perm(filepath: str, mode) -> bool:
-    """Resolve a file/path and check if mode is valid"""
-    filepath = expand_path_local(filepath, True)
-    if not filepath: return False
-    if not mode: mode = os.F_OK
-    return os.access(filepath, mode, follow_symlinks = True)
-
-
-def path_readable(filepath: str = '') -> bool:
-    """Resolve a file/path and check if it is readable"""
-    return check_path_perm(filepath, os.R_OK)
-
-
-def path_writable(filepath: str = '') -> bool:
-    """Resolve a file/path and check if it is writable"""
-    return check_path_perm(filepath, os.W_OK)
-
-
-def path_writable_any(filepath: str = '') -> bool:
-    """Return true if any path in hierarchy is writable (starting with the longest path)"""
-    filepath = expand_path_local(filepath)  # do not use strict as the destination directory could not yet exists
-    if not filepath: return False
-    paths_list = [p.as_posix() for p in Path(filepath).parents]
-    if Path(filepath).is_dir(): paths_list.insert(0, filepath)
-    return any(path_writable(p) for p in paths_list)
+def signal_handler(sig, frame):  # pylint: disable=unused-argument
+    """Generig signal handler: just print the signal and exit"""
+    print_out(f"\nCought signal {sig}, let\'s exit")
+    exit_message(int(AlienSessionInfo['exitcode']))
 
 
 def is_float(arg: Union[str, float, None]) -> bool:
@@ -358,6 +324,7 @@ def GetHumanReadableSize(size, precision = 2):
 def check_ip_port(socket_object: tuple) -> bool:
     """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
     if not socket_object: return False
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     is_open = False
     # socket_object = (family, type, proto, canonname, sockaddr)
     with socket.socket(socket_object[0], socket_object[1], socket_object[2]) as s:  # Create a TCP socket
@@ -385,6 +352,79 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
+
+
+
+
+def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
+    """Validate a regex string and return a re.Pattern if valid"""
+    regex = None
+    try:
+        regex = re.compile(regex_str.encode('unicode-escape').decode())  # try to no hit https://docs.python.org/3.6/howto/regex.html#the-backslash-plague
+    except re.error:
+        logging.error('regex validation failed:: %s', regex_str)
+    return regex  # noqa: R504
+
+
+def name2regex(pattern_regex: str = '') -> str:
+    """Convert -name/-select argument of cp/find2 to regex form"""
+    if not pattern_regex: return ''
+    translated_pattern_regex = ''
+    re_all = '.*'
+    re_all_end = '[^/]*'
+    verbs = ('begin', 'contain', 'ends', 'ext')
+    pattern_list = pattern_regex.split('_')
+    if any(verb in pattern_regex for verb in verbs):
+        if pattern_list.count('begin') > 1 or pattern_list.count('end') > 1 or pattern_list.count('ext') > 1:
+            print_out('<begin>, <end>, <ext> verbs cannot appear more than once in the name selection')
+            return ''
+
+        list_begin = []
+        list_contain = []
+        list_ends = []
+        list_ext = []
+        for idx, tokenstr in enumerate(pattern_list):
+            if tokenstr == 'begin': list_begin.append(KV(tokenstr, pattern_list[idx + 1]))
+            if tokenstr == 'contain': list_contain.append(KV(tokenstr, pattern_list[idx + 1]))
+            if tokenstr == 'ends': list_ends.append(KV(tokenstr, pattern_list[idx + 1]))
+            if tokenstr == 'ext': list_ext.append(KV(tokenstr, pattern_list[idx + 1]))
+
+        if list_begin:
+            translated_pattern_regex = re_all + '/' + f'{list_begin[0].val}{re_all_end}'  # first string after the last slash (last match exclude /)
+        for patt in list_contain:
+            if not list_begin: translated_pattern_regex = f'{re_all}'
+            translated_pattern_regex = f'{translated_pattern_regex}{patt.val}{re_all_end}'
+        if list_ends:
+            translated_pattern_regex = f'{translated_pattern_regex}{list_ends[0].val}{re_all_end}'
+        if list_ext:
+            translated_pattern_regex = translated_pattern_regex + "\\." + list_ext[0].val
+        if translated_pattern_regex:
+            if list_ext:
+                translated_pattern_regex = f'{translated_pattern_regex}' + '$'
+            else:
+                translated_pattern_regex = f'{translated_pattern_regex}{re_all_end}' + '$'
+    return translated_pattern_regex  # noqa: R504
+
+
+def cleanup_temp():
+    """Remove from disk all recorded temporary files"""
+    global AlienSessionInfo
+    try:
+        AlienSessionInfo
+    except NameError:
+        return
+    if AlienSessionInfo['templist']: [os.remove(f) for f in AlienSessionInfo['templist'] if os.path.isfile(f)]
+
+
+def import_aliases():
+    """Import defined aliases in the global session variable"""
+    global AlienSessionInfo
+    try:
+        AlienSessionInfo
+    except NameError:
+        return
+    alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
+    if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
 
 if __name__ == '__main__':

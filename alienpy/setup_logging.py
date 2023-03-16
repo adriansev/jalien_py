@@ -1,11 +1,10 @@
 '''alienpy:: Setup logging'''
 
 import os
+import sys
 import logging
-
-##   GLOBALS
+from pathlib import Path
 from .global_vars import *
-
 
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE
@@ -24,22 +23,25 @@ def print_err(msg: str, toLog: bool = False):
         print(msg, file = sys.stderr, flush = True)
 
 
-def setup_logging():
-    global DEBUG_FILE
+def setup_logging(debug: bool = False, debug_file:str = ''):
+    """Setup logging machinery"""
+    if not debug_file: debug_file = f'{Path.home().as_posix()}/alien_py.log'
+
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
-    MSG_LVL = logging.DEBUG if DEBUG else logging.INFO
+    
+    MSG_LVL = logging.DEBUG if debug else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
     try:
-        logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+        logging.basicConfig(format = line_fmt, filename = debug_file, filemode = file_mode, level = MSG_LVL)
     except Exception:
-        print_err(f'Could not write the log file {DEBUG_FILE}; falling back to detected tmp dir')
-        DEBUG_FILE = f'{TMPDIR}/{os.path.basename(DEBUG_FILE)}'
+        print_err(f'Could not write the log file {debug_file}; falling back to detected tmp dir')
+        debug_file = f'{TMPDIR}/{os.path.basename(debug_file)}'
         try:
-            logging.basicConfig(format = line_fmt, filename = DEBUG_FILE, filemode = file_mode, level = MSG_LVL)
+            logging.basicConfig(format = line_fmt, filename = debug_file, filemode = file_mode, level = MSG_LVL)
         except Exception:
-            print_err(f'Could not write the log file {DEBUG_FILE}')
+            print_err(f'Could not write the log file {debug_file}')
 
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('wb_client').setLevel(MSG_LVL)

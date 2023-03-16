@@ -3,11 +3,9 @@
 import os
 import json
 
+from .global_vars import *
 from .tools_misc import *
-#from .setup_logging import *
 from .wb_async import *
-#from .global_vars import *
-#from .setup_logging import *
 from .tools_stackcmd import *
 
 
@@ -71,6 +69,8 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')    
+    
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
@@ -119,6 +119,8 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
@@ -164,6 +166,8 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     wb = None
     nr_tries = 0
     init_begin = None
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+
     if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
@@ -200,6 +204,7 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
      - info/warn/err/debug : will log the stderr to that facility
      - json : will print just the json (if present)
     """
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)
@@ -271,6 +276,18 @@ def session_state_update (out_dict: dict) -> None:
             if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
         else:
             push2stack(short_current_dir)
+
+
+def GetMeta(result: dict) -> dict:
+    """Converta metadata field of an JAliEn response to a dict"""
+    output = { 'cwd': None, 'user': None, 'error': None, 'exitcode': None }
+    if not result: return output
+    if isinstance(result, dict) and 'metadata' in result:  # these works only for AliEn responses
+        output['cwd'] = result['metadata']['currentdir']
+        output['user'] = result['metadata']['user']
+        output['error'] = result['metadata']['error']
+        output['exitcode'] = result['metadata']['exitcode']
+    return output
 
 
 def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
