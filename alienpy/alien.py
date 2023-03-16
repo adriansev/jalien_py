@@ -697,7 +697,7 @@ def mk_xml_local(filepath_list: list):
     collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
     for idx, item in enumerate(filepath_list, start = 1):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
-        f = ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
+        ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
     oxml = ET.tostring(xml_root, encoding = 'ascii')
     dom = MD.parseString(oxml)  # nosec B318:blacklist
     return dom.toprettyxml()
