@@ -371,6 +371,17 @@ def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: 
     return wb
 
 
+def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
+    """Override cd to add to home and to prev functions"""
+    if args is None: args = []
+    if isinstance(args, str): args = args.split()
+    if is_help(args): return get_help_srv(wb, 'cd')
+    if args:
+        if args[0] == '-': args = [AlienSessionInfo['prevdir']]
+        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
+    return SendMsg(wb, 'cd', args, opts)
+
+
 @syncify
 async def msg_proxy(websocket, use_usercert = False):
     """Proxy messages from a connection point to another"""

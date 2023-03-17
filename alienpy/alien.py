@@ -7,42 +7,27 @@ if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] 
     print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True)
     sys.exit(1)
 
-# import asyncio
 import atexit
-# import ast
-# from collections import deque
+import collections
 import datetime
 import difflib
-
-# import errno
-# import faulthandler
-
 import json
 import re
 import signal
-
 from pathlib import Path
 import subprocess  # nosec
 import logging
 import shlex
-# import socket
-# import ssl
 import statistics
-
 from typing import NamedTuple
 from typing import Union
 from typing import Optional
 from typing import Callable
 from typing import Iterator
-# import threading
 import traceback
-# import tempfile
 import time
 import urllib.request as urlreq
 from urllib.parse import urlparse
-# import zipfile
-
-# import stat
 import xml.dom.minidom as MD  # nosec
 import xml.etree.ElementTree as ET  # nosec
 
@@ -104,6 +89,9 @@ from .tools_stackcmd import push2stack, deque_pop_pos
 # shell related toold
 from .tools_shell import *  # nosec PYL-W0614
 
+# Session save
+from .setup_cwd import SessionSave, SessionRestore
+
 #########################
 #   ASYNCIO MECHANICS
 #########################
@@ -113,17 +101,6 @@ from .wb_api import *  # nosec PYL-W0614
 from .xrd_core import *  # nosec PYL-W0614
 # Global XRootD preferences
 xrd_config_init()
-
-
-def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
-    """Override cd to add to home and to prev functions"""
-    if args is None: args = []
-    if isinstance(args, str): args = args.split()
-    if is_help(args): return get_help_srv(wb, 'cd')
-    if args:
-        if args[0] == '-': args = [AlienSessionInfo['prevdir']]
-        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
-    return SendMsg(wb, 'cd', args, opts)
 
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
@@ -974,8 +951,7 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
         return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
     wb = token_regen(wb, args)
-    tkcert, __ = get_token_names()
-    return CertInfo(tkcert)
+    return CertInfo(TOKENCERT_NAME)
 
 
 def DO_edit(wb, args: Union[list, None] = None, editor: str = '') -> RET:
@@ -1716,7 +1692,7 @@ def JAlien(commands: str = '') -> int:
     # Start interactive/shell mode
     ALIENPY_GLOBAL_WB = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
-    if _HAS_READLINE:
+    if HAS_READLINE:
         rl.parse_and_bind("tab: complete")
         rl.set_completer_delims(" ")
 
@@ -1737,7 +1713,7 @@ def JAlien(commands: str = '') -> int:
     print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
-    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(wb)
+    if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(ALIENPY_GLOBAL_WB)
 
     while True:
         INPUT = None
@@ -1751,7 +1727,7 @@ def JAlien(commands: str = '') -> int:
             exit_message()
 
         if not INPUT: continue
-        AlienSessionInfo['exitcode'] = ProcessCommandChain(wb, INPUT)
+        AlienSessionInfo['exitcode'] = ProcessCommandChain(ALIENPY_GLOBAL_WB, INPUT)
     return AlienSessionInfo['exitcode']  # exit with the last command exitcode run in interactive mode
 
 

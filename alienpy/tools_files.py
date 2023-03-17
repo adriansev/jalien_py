@@ -7,6 +7,7 @@ import xml.dom.minidom as MD  # nosec B408:blacklist
 from .data_structs import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 import multiprocessing as mp
+import traceback
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 

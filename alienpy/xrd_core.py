@@ -3,6 +3,9 @@
 import datetime
 import sys
 import xml.dom.minidom as MD  # nosec B408:blacklist
+import zipfile
+import traceback
+from urllib.parse import urlparse
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
@@ -10,6 +13,7 @@ from .tools_files import *  # nosec PYL-W0614
 from .xrd_tools import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
+from .tools_shell import runShellCMD
 
 HAS_XROOTD = False
 try:

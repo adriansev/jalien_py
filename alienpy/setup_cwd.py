@@ -1,6 +1,8 @@
 """alienpy:: setup cwd restoration"""
 
 from .global_vars import *  # nosec PYL-W0614
+from .wb_api import cd
+from .tools_misc import read_conf_file
 
 
 def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")
