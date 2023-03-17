@@ -281,7 +281,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         except wb_exceptions.ConnectionClosed as e:
             logging.exception('SendMsgMulti:: failure because of %s', e.__cause__)
             try:
-                wb = InitConnection()
+                wb = AlienConnect(wb)
             except Exception:
                 logging.exception('SendMsgMulti:: Could not recover connection when disconnected!!')
         except Exception:
