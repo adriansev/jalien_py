@@ -11,37 +11,6 @@ from .tools_stackcmd import push2stack
 from .setup_logging import print_out, print_err
 
 
-class AliEn:
-    """Class to be used as advanced API for interaction with central servers"""
-    __slots__ = ('internal_wb', 'opts')
-
-    def __init__(self, opts = ''):
-        self.internal_wb = InitConnection()
-        self.opts = opts
-
-    def run(self, cmd, opts = '') -> Union[RET, str]:
-        """SendMsg to server a string command, a RET object will be returned"""
-        if not opts: opts = self.opts
-        return SendMsg(self.internal_wb, cmd, opts = opts)
-
-    def ProcessMsg(self, cmd, opts = '') -> int:
-        """ProcessCommandChain - the app main function to process a (chain of) command(s)"""
-        if not opts: opts = self.opts
-        return ProcessCommandChain(self.internal_wb, cmd)
-
-    def wb(self):
-        """Get the websocket, to be used in other functions"""
-        return self.internal_wb
-
-    @staticmethod
-    def help():
-        """Print help message"""
-        print_out('Methods of AliEn session:\n'
-                  '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
-                  '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
-                  '.wb() : return the session WebSocket to be used with other function within alien.py')
-
-
 class Msg:
     """Class to create json messages to be sent to server"""
     __slots__ = ('cmd', 'args', 'opts')
@@ -72,6 +41,89 @@ class Msg:
 
     def __bool__(self):
         return bool(self.cmd)
+
+
+def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False):
+    """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
+    wb = None
+    nr_tries = 0
+    init_begin = None
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+
+    if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
+    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
+    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
+
+    while wb is None:
+        nr_tries += 1
+        try:
+            wb = wb_create(host, str(port), path, use_usercert, localConnect)
+        except Exception:
+            logging.exception('wb_create_tryout:: exception when wb_create')
+        if not wb:
+            if nr_tries >= connect_tries:
+                logging.error('We tried on %s:%s%s %s times', host, port, path, nr_tries)
+                break
+            time.sleep(connect_tries_interval)
+
+    if init_begin:
+        fail_msg = 'trials ' if not wb else ''
+        msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
+
+    if wb and localConnect:
+        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
+        writePidFile(pid_filename)
+    return wb
+
+
+def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
+    """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
+    if not token_args: token_args = []
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
+
+    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
+    jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
+    jalien_websocket_path = '/websocket/json'
+    jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
+
+    # If presentent with existing socket, let's try to close it
+    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
+
+    # let's try to get a websocket
+    if localConnect:
+        wb = wb_create(localConnect = True)
+    else:
+        if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
+            # lets check JBOX availability
+            jalien_info = read_conf_file(jclient_env)
+            if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
+                jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
+                jbox_port = jalien_info.get('JALIEN_WSPORT', '8097')
+                if isReachable(jbox_host, jbox_port):
+                    jalien_server, jalien_websocket_port = jbox_host, jbox_port
+                    logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
+
+        wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
+
+        # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
+        if wb is None and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
+            jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
+            wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
+
+    if init_begin:
+        msg = f">>>   AlienConnect::Time for connection: {deltat_ms_perf(init_begin)} ms"
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
+
+    if wb is None:
+        msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
+        logging.error(msg)
+        print_err(msg)
+        sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
+    return wb
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
@@ -179,7 +231,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
             result = wb_sendmsg(wb, jsonmsg)
         except Exception as e:
             logging.exception('SendMsg:: Error sending: %s\nBecause of %s', jsonmsg, e.__cause__)
-            wb = InitConnection()
+            wb = AlienConnect(wb)
         if result is None: time.sleep(0.2)
 
     if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
@@ -245,41 +297,6 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     return ret_obj_list  # noqa: R504
 
 
-def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False):
-    """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
-    wb = None
-    nr_tries = 0
-    init_begin = None
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
-
-    if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
-    connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
-    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
-
-    while wb is None:
-        nr_tries += 1
-        try:
-            wb = wb_create(host, str(port), path, use_usercert, localConnect)
-        except Exception:
-            logging.exception('wb_create_tryout:: exception when wb_create')
-        if not wb:
-            if nr_tries >= connect_tries:
-                logging.error('We tried on %s:%s%s %s times', host, port, path, nr_tries)
-                break
-            time.sleep(connect_tries_interval)
-
-    if init_begin:
-        fail_msg = 'trials ' if not wb else ''
-        msg = f'>>>   Websocket {fail_msg}connecting time: {deltat_ms_perf(init_begin)} ms'
-        if DEBUG: logging.debug(msg)
-        if TIME_CONNECT: print_out(msg)
-
-    if wb and localConnect:
-        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
-        writePidFile(pid_filename)
-    return wb
-
-
 def retf_print(ret_obj: RET, opts: str = '') -> int:
     """Process a RET object; it will return the exitcode
     opts content will steer the logging and message printing:
@@ -323,54 +340,6 @@ def GetMeta(result: dict) -> dict:
     return output
 
 
-def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
-    """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
-    if not token_args: token_args = []
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
-    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
-
-    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-    jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
-    jalien_websocket_path = '/websocket/json'
-    jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
-
-    # If presentent with existing socket, let's try to close it
-    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
-
-    # let's try to get a websocket
-    if localConnect:
-        wb = wb_create(localConnect = True)
-    else:
-        if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
-            # lets check JBOX availability
-            jalien_info = read_conf_file(jclient_env)
-            if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
-                jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
-                jbox_port = jalien_info.get('JALIEN_WSPORT', '8097')
-                if isReachable(jbox_host, jbox_port):
-                    jalien_server, jalien_websocket_port = jbox_host, jbox_port
-                    logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
-
-        wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
-
-        # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
-        if wb is None and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
-            jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
-            wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
-
-    if init_begin:
-        msg = f">>>   AlienConnect::Time for connection: {deltat_ms_perf(init_begin)} ms"
-        if DEBUG: logging.debug(msg)
-        if TIME_CONNECT: print_out(msg)
-
-    if wb is None:
-        msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
-        logging.error(msg)
-        print_err(msg)
-        sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
-    return wb
-
-
 def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
     """Override cd to add to home and to prev functions"""
     if args is None: args = []
@@ -380,6 +349,12 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
         if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
     return SendMsg(wb, 'cd', args, opts)
+
+
+def get_help_srv(wb, cmd: str = '') -> RET:
+    """Return the help option for server-side known commands"""
+    if not cmd: return RET(1, '', 'No command specified for help request')
+    return SendMsg(wb, f'{cmd} -h')
 
 
 @syncify

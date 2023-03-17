@@ -1239,12 +1239,6 @@ def get_help(wb, cmd: str = '') -> RET:
     return ProcessInput(wb, cmd, ['-h'])
 
 
-def get_help_srv(wb, cmd: str = '') -> RET:
-    """Return the help option for server-side known commands"""
-    if not cmd: return RET(1, '', 'No command specified for help request')
-    return SendMsg(wb, f'{cmd} -h')
-
-
 def DO_help(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
     if args is None: args = []
@@ -1705,7 +1699,7 @@ def JAlien(commands: str = '') -> int:
             elif len(tokens) == 1 and not prompt_line.endswith(' '):
                 results = [f'{x} ' for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
             else:
-                results = lfn_list(wb, text) + [None]
+                results = lfn_list(ALIENPY_GLOBAL_WB, text) + [None]
             return results[state]
         rl.set_completer(complete)
         setupHistory()  # enable history saving
@@ -1729,6 +1723,37 @@ def JAlien(commands: str = '') -> int:
         if not INPUT: continue
         AlienSessionInfo['exitcode'] = ProcessCommandChain(ALIENPY_GLOBAL_WB, INPUT)
     return AlienSessionInfo['exitcode']  # exit with the last command exitcode run in interactive mode
+
+
+class AliEn:
+    """Class to be used as advanced API for interaction with central servers"""
+    __slots__ = ('internal_wb', 'opts')
+
+    def __init__(self, opts = ''):
+        self.internal_wb = InitConnection()
+        self.opts = opts
+
+    def run(self, cmd, opts = '') -> Union[RET, str]:
+        """SendMsg to server a string command, a RET object will be returned"""
+        if not opts: opts = self.opts
+        return SendMsg(self.internal_wb, cmd, opts = opts)
+
+    def ProcessMsg(self, cmd, opts = '') -> int:
+        """ProcessCommandChain - the app main function to process a (chain of) command(s)"""
+        if not opts: opts = self.opts
+        return ProcessCommandChain(self.internal_wb, cmd)
+
+    def wb(self):
+        """Get the websocket, to be used in other functions"""
+        return self.internal_wb
+
+    @staticmethod
+    def help():
+        """Print help message"""
+        print_out('Methods of AliEn session:\n'
+                  '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
+                  '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
+                  '.wb() : return the session WebSocket to be used with other function within alien.py')
 
 
 ###################################################
