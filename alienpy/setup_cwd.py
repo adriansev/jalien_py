@@ -20,7 +20,6 @@ def SessionSave():
 
 
 def SessionRestore(wb):
-    global AlienSessionInfo
     if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     session = read_conf_file(GetSessionFilename())
     if not session: return

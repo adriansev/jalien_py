@@ -155,7 +155,6 @@ if not USERCERT_VALID and not TOKENCERT_VALID:
 
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
-    global USERCERT_VALID, USERKEY_VALID, TOKENCERT_VALID, TOKENKEY_VALID
     if use_usercert or not TOKENCERT_VALID:
         AlienSessionInfo['use_usercert'] = True
         cert, key = USERCERT_VALID, USERKEY_VALID

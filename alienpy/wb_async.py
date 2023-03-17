@@ -25,7 +25,7 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 from .version import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
+from .setup_logging import print_err
 from .connect_ssl import create_ssl_context
 from .tools_misc import *  # nosec PYL-W0614
 

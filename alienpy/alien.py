@@ -93,7 +93,7 @@ from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import TOKENCERT_NAME, TOKENKEY_NAME, TOKENCERT_VALID, TOKENKEY_VALID, USERCERT_VALID, USERKEY_VALID, CertInfo, CertVerify, CertKeyMatch, IsValidCert
+from .connect_ssl import TOKENCERT_NAME, TOKENKEY_NAME, TOKENCERT_VALID, TOKENKEY_VALID, USERCERT_VALID, USERKEY_VALID, CertInfo, CertVerify, CertKeyMatch
 
 ##   General misc functions library
 from .tools_misc import *  # nosec PYL-W0614
@@ -942,7 +942,7 @@ def token_regen(wb, args: Union[None, list] = None):
     if not AlienSessionInfo['use_usercert']:
         wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
-            wb_usercert = InitConnection(args, use_usercert = True)  # we have to reconnect with the new token
+            wb_usercert = InitConnection(wb, args, use_usercert = True)  # we have to reconnect with the new token
         except Exception:
             logging.debug(traceback.format_exc())
             return None  # we failed usercert connection
@@ -954,7 +954,7 @@ def token_regen(wb, args: Union[None, list] = None):
     AlienSessionInfo['use_usercert'] = False
     wb_token_new = None
     try:
-        wb_token_new = InitConnection(args)
+        wb_token_new = InitConnection(wb_token_new, args)
         __ = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
     except Exception:
         logging.exception('token_regen:: error re-initializing connection')
@@ -1554,7 +1554,7 @@ def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert
     """Create a session to AliEn services, including session globals and token regeneration"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
     DEBUG = os.getenv('ALIENPY_DEBUG', '')
-    wb = StartConnection(wb, token_args, use_usercert, localConnect)
+    wb = AlienConnect(wb, token_args, use_usercert, localConnect)
     ALIENPY_GLOBAL_WB = wb
 
     # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
@@ -1682,8 +1682,8 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         else:
             if wb is None:
                 # we are doing the connection recovery and exception treatment in AlienConnect()
-                ALIENPY_GLOBAL_WB = InitConnection(args, use_usercert = (cmd == 'token-init' and not is_help(args)))
-                wb = ALIENPY_GLOBAL_WB
+                wb = InitConnection(wb, args, use_usercert = (cmd == 'token-init' and not is_help(args)))
+                ALIENPY_GLOBAL_WB = wb
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 

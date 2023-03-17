@@ -425,7 +425,6 @@ def cleanup_temp(item: str = ''):
 
 def import_aliases():
     """Import defined aliases in the global session variable"""
-    global AlienSessionInfo
     try:
         AlienSessionInfo
     except NameError:

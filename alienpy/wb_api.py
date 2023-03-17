@@ -323,16 +323,21 @@ def GetMeta(result: dict) -> dict:
     return output
 
 
-def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
+def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     if not token_args: token_args = []
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
+
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
     jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
     jalien_websocket_path = '/websocket/json'
     jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
+    # If presentent with existing socket, let's try to close it
+    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
+
     # let's try to get a websocket
-    wb = None
     if localConnect:
         wb = wb_create(localConnect = True)
     else:
@@ -353,31 +358,16 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
             jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
             wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
+    if init_begin:
+        msg = f">>>   AlienConnect::Time for connection: {deltat_ms_perf(init_begin)} ms"
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
+
     if wb is None:
         msg = f'Check the logfile: {DEBUG_FILE}\nCould not get a websocket connection to {jalien_server}:{jalien_websocket_port}'
         logging.error(msg)
         print_err(msg)
         sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
-
-    return wb
-
-
-def StartConnection(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
-    """Create a session to AliEn services, including session globals and token regeneration"""
-    global AlienSessionInfo
-    if not AlienSessionInfo:
-        print_err('InitConnection:: AlienSessionInfo session object not found')
-        return None
-    if not token_args: token_args = []
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
-    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
-    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
-    wb = AlienConnect(token_args, use_usercert, localConnect)
-
-    if init_begin:
-        msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
-        if DEBUG: logging.debug(msg)
-        if TIME_CONNECT: print_out(msg)
     return wb
 
 

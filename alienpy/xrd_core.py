@@ -100,13 +100,13 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
     if xrd_copy_command is None: xrd_copy_command = []
-    global AlienSessionInfo
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
 
     if not xrd_copy_command or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
         help_msg = xrdcp_help()
         return RET(0, help_msg)  # EX_USAGE /* command line usage error */
 
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     xrd_config_init()  # reset XRootD preferences to cp oriented settings
 
     # XRootD copy parameters
@@ -1001,7 +1001,6 @@ def get_pfn_list(wb, lfn: str) -> list:
 
 def download_tmp(wb, lfn: str, overwrite: bool = False, verbose: bool = False) -> str:
     """Download a lfn to a temporary file, it will return the file path of temporary"""
-    global AlienSessionInfo
     tmpfile = make_tmp_fn(expand_path_grid(lfn))
     if os.path.isfile(tmpfile):
         if overwrite:
