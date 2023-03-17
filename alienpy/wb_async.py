@@ -25,8 +25,8 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 from .version import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
-from .setup_logging import *  # nosec PYL-W0614
-from .connect_ssl import *  # nosec PYL-W0614
+from .setup_logging import print_out, print_err
+from .connect_ssl import create_ssl_context
 from .tools_misc import *  # nosec PYL-W0614
 
 #########################
@@ -159,15 +159,6 @@ async def wb_close(wb, code, reason):
         await wb.close(code = code, reason = reason)
     except Exception:  # nosec
         pass
-
-
-@syncify
-async def msg_proxy(websocket, use_usercert = False):
-    """Proxy messages from a connection point to another"""
-    wb_jalien = AlienConnect(None, use_usercert)
-    local_query = await websocket.recv()
-    jalien_answer = SendMsg(wb_jalien, local_query)
-    await websocket.send(jalien_answer.ansdict)
 
 
 @syncify

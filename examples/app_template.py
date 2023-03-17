@@ -4,10 +4,10 @@ import sys
 
 # import alienpy code
 try:
-    from alienpy.alien import *
+    from alienpy.alien import *  # nosec PYL-W0614
 except Exception:
     try:
-        from xjalienfs.alien import *
+        from xjalienfs.alien import *  # nosec PYL-W0614
     except Exception:
         print("Can't load alienpy, exiting...")
         sys.exit(1)

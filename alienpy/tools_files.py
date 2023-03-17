@@ -6,6 +6,9 @@ from pathlib import Path
 import xml.dom.minidom as MD  # nosec B408:blacklist
 from .data_structs import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
+import multiprocessing as mp
+
+NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
 
 def format_dst_fn(src_dir, src_file, dst, parent):
@@ -137,7 +140,7 @@ def md5_mp(list_of_files: Union[None, list] = None) -> list:
     """Compute md5 hashes in parallel; the results are guaranteed (by documentation) to be in the order of input list"""
     if not list_of_files: return []
     hash_list = []
-    with mp.Pool(processes = _NCPU) as pool: hash_list = pool.map(md5, list_of_files)
+    with mp.Pool(processes = NCPU) as pool: hash_list = pool.map(md5, list_of_files)
     return hash_list
 
 

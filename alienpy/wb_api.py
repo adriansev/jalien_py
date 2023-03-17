@@ -2,11 +2,12 @@
 
 import os
 import json
+import shlex
 
 from .global_vars import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 from .wb_async import *  # nosec PYL-W0614
-from .tools_stackcmd import *  # nosec PYL-W0614
+from .tools_stackcmd import push2stack
 
 
 class AliEn:
@@ -92,6 +93,57 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     if 'nokeys' in opts: args.insert(0, '-nokeys')
     jsoncmd = {"command": cmd, "options": args}
     return jsoncmd if get_dict else json.dumps(jsoncmd)
+
+
+def session_state_update (out_dict: dict) -> None:
+    """Update global AlienSessionInfo with status of the latest command"""
+    global AlienSessionInfo
+    if AlienSessionInfo:  # update global state of session
+        AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
+        current_dir = out_dict["metadata"]["currentdir"]
+
+        # if this is first connection, current dir is alien home
+        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
+
+        # update the current current/previous dir status
+        # previous/current have the meaning of before and after command execution
+        prev_dir = AlienSessionInfo['currentdir']  # last known current dir
+        if prev_dir != current_dir:
+            AlienSessionInfo['currentdir'] = current_dir
+            AlienSessionInfo['prevdir'] = prev_dir
+
+        # update directory stack (pushd/popd/dirs)
+        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
+        short_current_dir = short_current_dir[:-1]  # remove the last /
+        if AlienSessionInfo['pathq']:
+            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
+        else:
+            push2stack(short_current_dir)
+
+
+def retf_result2ret(result: Union[str, dict, None]) -> RET:
+    """Convert AliEn answer dictionary to RET object"""
+    if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
+    out_dict = None
+    if isinstance(result, str):
+        try:
+            out_dict = json.loads(result)
+        except Exception as e:
+            msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
+            logging.error(msg)
+            return RET(22, '', msg)  # type: ignore [call-arg]
+    else:
+        out_dict = result.copy()
+
+    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
+        msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
+        logging.error(msg)
+        return RET(52, '', msg)  # type: ignore [call-arg]
+
+    session_state_update(out_dict)
+    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
+    output = '\n'.join(message_list)
+    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
 
 
 def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
@@ -259,57 +311,6 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
     return ret_obj.exitcode
 
 
-def retf_result2ret(result: Union[str, dict, None]) -> RET:
-    """Convert AliEn answer dictionary to RET object"""
-    if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
-    out_dict = None
-    if isinstance(result, str):
-        try:
-            out_dict = json.loads(result)
-        except Exception as e:
-            msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
-            logging.error(msg)
-            return RET(22, '', msg)  # type: ignore [call-arg]
-    else:
-        out_dict = result.copy()
-
-    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
-        msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
-        logging.error(msg)
-        return RET(52, '', msg)  # type: ignore [call-arg]
-
-    session_state_update(out_dict)
-    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
-    output = '\n'.join(message_list)
-    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
-
-
-def session_state_update (out_dict: dict) -> None:
-    """Update global AlienSessionInfo with status of the latest command"""
-    global AlienSessionInfo
-    if AlienSessionInfo:  # update global state of session
-        AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
-        current_dir = out_dict["metadata"]["currentdir"]
-
-        # if this is first connection, current dir is alien home
-        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
-
-        # update the current current/previous dir status
-        # previous/current have the meaning of before and after command execution
-        prev_dir = AlienSessionInfo['currentdir']  # last known current dir
-        if prev_dir != current_dir:
-            AlienSessionInfo['currentdir'] = current_dir
-            AlienSessionInfo['prevdir'] = prev_dir
-
-        # update directory stack (pushd/popd/dirs)
-        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
-        short_current_dir = short_current_dir[:-1]  # remove the last /
-        if AlienSessionInfo['pathq']:
-            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
-        else:
-            push2stack(short_current_dir)
-
-
 def GetMeta(result: dict) -> dict:
     """Converta metadata field of an JAliEn response to a dict"""
     output = { 'cwd': None, 'user': None, 'error': None, 'exitcode': None }
@@ -359,6 +360,34 @@ def AlienConnect(token_args: Union[None, list] = None, use_usercert: bool = Fals
         sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
 
     return wb
+
+
+def StartConnection(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
+    """Create a session to AliEn services, including session globals and token regeneration"""
+    global AlienSessionInfo
+    if not AlienSessionInfo:
+        print_err('InitConnection:: AlienSessionInfo session object not found')
+        return None
+    if not token_args: token_args = []
+    DEBUG = os.getenv('ALIENPY_DEBUG', '')
+    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
+    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
+    wb = AlienConnect(token_args, use_usercert, localConnect)
+
+    if init_begin:
+        msg = f">>>   Time for connection: {deltat_ms_perf(init_begin)} ms"
+        if DEBUG: logging.debug(msg)
+        if TIME_CONNECT: print_out(msg)
+    return wb
+
+
+@syncify
+async def msg_proxy(websocket, use_usercert = False):
+    """Proxy messages from a connection point to another"""
+    wb_jalien = AlienConnect(None, use_usercert)
+    local_query = await websocket.recv()
+    jalien_answer = SendMsg(wb_jalien, local_query)
+    await websocket.send(jalien_answer.ansdict)
 
 
 if __name__ == '__main__':

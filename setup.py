@@ -5,10 +5,10 @@ import traceback
 
 
 try:
-    from alienpy.version import *
+    from alienpy.version import *  # nosec PYL-W0614
 except Exception:
     try:
-        from xjalienfs.version import *
+        from xjalienfs.version import *  # nosec PYL-W0614
     except Exception:
         traceback.print_exc()
         print('Failed to get version from file. Using 0.0.0')

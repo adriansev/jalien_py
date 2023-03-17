@@ -1,7 +1,9 @@
 '''alienpy:: SSL and certificate tooling'''
 
 import sys
+import os
 import logging
+import uuid
 from pathlib import Path
 
 try:
@@ -28,19 +30,12 @@ from .data_structs import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 
+# Have global variables for certificate file names, defaults being over-ridden by env vars
+USERCERT_NAME = os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem')
+USERKEY_NAME  = os.getenv('X509_USER_KEY',  f'{Path.home().as_posix()}/.globus/userkey.pem')
 
-TOKENCERT_NAME = f'{TMPDIR}/tokencert_{str(os.getuid())}.pem'
-TOKENKEY_NAME = f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem'
-
-
-def get_files_cert() -> tuple:
-    return os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem'), os.getenv('X509_USER_KEY', f'{Path.home().as_posix()}/.globus/userkey.pem')
-
-
-def get_token_names(files: bool = False) -> tuple:
-    if files:
-        return TOKENCERT_NAME, TOKENKEY_NAME
-    return os.getenv('JALIEN_TOKEN_CERT', TOKENCERT_NAME), os.getenv('JALIEN_TOKEN_KEY', TOKENKEY_NAME)
+TOKENCERT_NAME = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
+TOKENKEY_NAME  = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
 def get_ca_path() -> str:
@@ -103,79 +98,70 @@ def IsValidCert(fname: str) -> bool:
     return time_remaining > 300
 
 
+def get_valid_certs() -> tuple:
+    """Return valid names for user certificate or None"""
+    if AlienSessionInfo['verified_cert']: return USERCERT_NAME, USERKEY_NAME
+    FOUND = INVALID = False
+    if path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME):
+        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection will not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
+        logging.error(msg)
+        FOUND = True
+    if FOUND and not IsValidCert(USERCERT_NAME):
+        msg = f'Invalid/expired user certificate!! Check the content of {USERCERT_NAME}'
+        logging.error(msg)
+        INVALID = True
+    if not FOUND or INVALID: return None, None
+    AlienSessionInfo['verified_cert'] = True  # This means that we already checked
+    return USERCERT_NAME, USERKEY_NAME
+
+
+# Have global variables for checked at the load time of user certificates
+USERCERT_VALID, USERKEY_VALID = get_valid_certs()
+
+
 def get_valid_tokens() -> tuple:
     """Get the token filenames, including the temporary ones used as env variables"""
-    global AlienSessionInfo
-    tokencert, tokenkey = get_token_names()
+    global TOKENCERT_NAME, TOKENKEY_NAME
     random_str = None
     cert_suffix = None
-    if not path_readable(tokencert) and tokencert.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
+    if not path_readable(TOKENCERT_NAME) and TOKENCERT_NAME.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)
-        temp_cert.write(tokencert.encode(encoding = "ascii", errors = "replace"))
+        temp_cert.write(TOKENCERT_NAME.encode(encoding = "ascii", errors = "replace"))
         temp_cert.seek(0)
-        tokencert = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        AlienSessionInfo['templist'].append(tokencert)  # type: ignore[attr-defined]
-    if not path_readable(tokenkey) and tokenkey.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
+        TOKENCERT_NAME = temp_cert.name  # temp file was created, let's give the filename to tokencert
+        AlienSessionInfo['templist'].append(TOKENCERT_NAME)  # type: ignore[attr-defined]
+    if not path_readable(TOKENKEY_NAME) and TOKENKEY_NAME.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)
-        temp_key.write(tokenkey.encode(encoding = "ascii", errors = "replace"))
+        temp_key.write(TOKENKEY_NAME.encode(encoding = "ascii", errors = "replace"))
         temp_key.seek(0)
-        tokenkey = temp_key.name  # temp file was created, let's give the filename to tokenkey
-        AlienSessionInfo['templist'].append(tokenkey)  # type: ignore[attr-defined]
+        TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
+        AlienSessionInfo['templist'].append(TOKENKEY_NAME)  # type: ignore[attr-defined]
 
-    if (IsValidCert(tokencert) and path_readable(tokenkey)):
+    if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
         AlienSessionInfo['verified_token'] = True
-        return (tokencert, tokenkey)
+        return (TOKENCERT_NAME, TOKENKEY_NAME)
     return (None, None)
 
 
-def get_valid_certs() -> tuple:
-    """Return valid names for user certificate or None"""
-    global AlienSessionInfo
-    usercert, userkey = get_files_cert()
-    if AlienSessionInfo['verified_cert']: return usercert, userkey
-
-    INVALID = False
-    if not (path_readable(usercert) and path_readable(userkey)):
-        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection will not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
-        logging.info(msg)
-        INVALID = True
-    if not IsValidCert(usercert):
-        msg = f'Invalid/expired user certificate!! Check the content of {usercert}'
-        logging.info(msg)
-        INVALID = True
-    AlienSessionInfo['verified_cert'] = True  # This means that we already checked
-    if INVALID: return None, None
-    return usercert, userkey
-
-
 # Check the presence of user certs and bailout before anything else
-tokencert, tokenkey = get_valid_tokens()
-usercert, userkey = get_valid_certs()
-if not usercert and not tokencert:
+TOKENCERT_VALID, TOKENKEY_VALID = get_valid_tokens()
+if not USERCERT_VALID and not TOKENCERT_VALID:
     print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
     sys.exit(126)
 
 
-def get_valid_auth_cred(use_usercert: bool = False) -> tuple:
-    """Return tuple of valid cert files to be used for ssl context"""
-    global AlienSessionInfo, tokencert, tokenkey, usercert, userkey
-    usercert, userkey = get_valid_certs()
-    tokencert, tokenkey = get_valid_tokens()
-
-    # token auth
-    if not use_usercert and tokencert: return (tokencert, tokenkey)
-
-    # usercert auth
-    AlienSessionInfo['use_usercert'] = True
-    return (usercert, userkey)
-
-
 def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
-    cert, key = get_valid_auth_cred(use_usercert)
+    global USERCERT_VALID, USERKEY_VALID, TOKENCERT_VALID, TOKENKEY_VALID
+    if use_usercert or not TOKENCERT_VALID:
+        AlienSessionInfo['use_usercert'] = True
+        cert, key = USERCERT_VALID, USERKEY_VALID
+    else:
+        cert, key = TOKENCERT_VALID, TOKENKEY_VALID
+
     if not cert:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
