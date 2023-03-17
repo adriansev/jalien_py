@@ -1,5 +1,6 @@
 '''alienpy:: Misc tooling functions'''
 
+import re
 import sys
 import subprocess  # nosec B404:blacklist
 import shlex

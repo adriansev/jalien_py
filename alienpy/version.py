@@ -1,5 +1,7 @@
 '''alienpy:: Definitions of version strings'''
 
+import sys
+
 ALIENPY_VERSION_HASH = '3ec8764'
 ALIENPY_VERSION_DATE = '20230207_140652'
 ALIENPY_VERSION_STR = '1.4.6'

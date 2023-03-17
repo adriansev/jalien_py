@@ -9,6 +9,7 @@ from .version import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 from .xrd_tools import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
+from .setup_logging import print_out, print_err
 
 HAS_XROOTD = False
 try:

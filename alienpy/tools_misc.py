@@ -10,7 +10,7 @@ import time
 import grp
 import pwd
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import *  # nosec PYL-W0614
+from .setup_logging import print_out, print_err
 
 
 def PrintColor(color: str) -> str:

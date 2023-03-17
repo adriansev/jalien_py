@@ -140,7 +140,6 @@ def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
 
 def expand_path_grid(path_arg: str) -> str:
     """Given a string representing a GRID file (lfn), return a full path after interpretation of AliEn HOME location, current directory, . and .. and making sure there are only single /"""
-    global AlienSessionInfo
     is_dir = path_arg.endswith('/')
     exp_path = lfn_prefix_re.sub('', path_arg)  # lets remove any prefixes
     exp_path = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], exp_path)  # replace %ALIEN token with user grid home directory
@@ -152,11 +151,6 @@ def expand_path_grid(path_arg: str) -> str:
     exp_path = os.path.normpath(exp_path)
     if is_dir: exp_path = f'{exp_path}/'
     return exp_path  # noqa: R504
-
-
-
-
-
 
 
 def xrdcp_help() -> str:

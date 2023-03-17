@@ -8,6 +8,7 @@ from .global_vars import *  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 from .wb_async import *  # nosec PYL-W0614
 from .tools_stackcmd import push2stack
+from .setup_logging import print_out, print_err
 
 
 class AliEn:
@@ -97,7 +98,6 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
 
 def session_state_update (out_dict: dict) -> None:
     """Update global AlienSessionInfo with status of the latest command"""
-    global AlienSessionInfo
     if AlienSessionInfo:  # update global state of session
         AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
         current_dir = out_dict["metadata"]["currentdir"]
