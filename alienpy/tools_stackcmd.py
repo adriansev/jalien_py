@@ -1,7 +1,7 @@
 """alienpy:: command stack manipulation"""
 
 import collections
-from .global_vars import *
+from .global_vars import *  # nosec PYL-W0614
 
 
 deque = collections.deque

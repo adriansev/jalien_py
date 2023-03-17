@@ -3,7 +3,7 @@
 import sys
 import subprocess  # nosec B404:blacklist
 import shlex
-from .data_structs import *
+from .data_structs import *  # nosec PYL-W0614
 
 def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False, timeout: Union[str, int, None] = None) -> RET:
     """Run shell command in subprocess; if exists, print stdout and stderr"""

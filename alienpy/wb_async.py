@@ -22,12 +22,12 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         print("async_stagger module could not be imported! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
         sys.exit(1)
 
-from .version import *
-from .global_vars import *
-from .data_structs import *
-from .setup_logging import *
-from .connect_ssl import *
-from .tools_misc import *
+from .version import *  # nosec PYL-W0614
+from .global_vars import *  # nosec PYL-W0614
+from .data_structs import *  # nosec PYL-W0614
+from .setup_logging import *  # nosec PYL-W0614
+from .connect_ssl import *  # nosec PYL-W0614
+from .tools_misc import *  # nosec PYL-W0614
 
 #########################
 #   ASYNCIO MECHANICS

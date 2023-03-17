@@ -3,10 +3,10 @@
 import os
 import json
 
-from .global_vars import *
-from .tools_misc import *
-from .wb_async import *
-from .tools_stackcmd import *
+from .global_vars import *  # nosec PYL-W0614
+from .tools_misc import *  # nosec PYL-W0614
+from .wb_async import *  # nosec PYL-W0614
+from .tools_stackcmd import *  # nosec PYL-W0614
 
 
 class AliEn:
@@ -38,6 +38,38 @@ class AliEn:
                   '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'
                   '.ProcessMsg(cmd_list) : alias to ProcessCommandChain, it will have the same output as in the alien.py interaction\n'
                   '.wb() : return the session WebSocket to be used with other function within alien.py')
+
+
+class Msg:
+    """Class to create json messages to be sent to server"""
+    __slots__ = ('cmd', 'args', 'opts')
+
+    def __init__(self, cmd: str = '', args: Union[str, list, None] = None, opts: str = '') -> None:
+        self.cmd = cmd
+        self.opts = opts
+        if not args:
+            self.args = []
+        elif isinstance(args, str):
+            self.args = shlex.split(args)
+        elif isinstance(args, list):
+            self.args = args.copy()
+
+    def add_arg(self, arg: Union[str, list, None]) -> None:
+        if not arg: return
+        if isinstance(arg, str): self.args.extend(shlex.split(arg))
+        if isinstance(arg, list): self.args.extend(arg)
+
+    def msgdict(self) -> dict:
+        return CreateJsonCommand(self.cmd, self.args, self.opts, True)
+
+    def msgstr(self) -> str:
+        return CreateJsonCommand(self.cmd, self.args, self.opts)
+
+    def __call__(self) -> tuple:
+        return (self.cmd, self.args, self.opts)
+
+    def __bool__(self):
+        return bool(self.cmd)
 
 
 def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:

@@ -6,7 +6,7 @@ import sys
 import tempfile
 from collections import deque
 from pathlib import Path
-from .data_structs import *
+from .data_structs import *  # nosec PYL-W0614
 
 COLORS = COLORS_COLL()
 

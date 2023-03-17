@@ -4,8 +4,8 @@
 import uuid
 from pathlib import Path
 import xml.dom.minidom as MD  # nosec B408:blacklist
-from .data_structs import *
-from .tools_misc import *
+from .data_structs import *  # nosec PYL-W0614
+from .tools_misc import *  # nosec PYL-W0614
 
 
 def format_dst_fn(src_dir, src_file, dst, parent):

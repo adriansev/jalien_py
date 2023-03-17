@@ -23,10 +23,10 @@ except Exception:
     sys.exit(1)
 
 ##   GLOBALS
-from .global_vars import *
-from .data_structs import *
-from .tools_misc import *
-from .tools_files import *
+from .global_vars import *  # nosec PYL-W0614
+from .data_structs import *  # nosec PYL-W0614
+from .tools_misc import *  # nosec PYL-W0614
+from .tools_files import *  # nosec PYL-W0614
 
 
 TOKENCERT_NAME = f'{TMPDIR}/tokencert_{str(os.getuid())}.pem'

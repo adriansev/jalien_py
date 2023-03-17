@@ -4,6 +4,7 @@ from typing import NamedTuple
 from typing import Union
 import shlex
 import json
+import logging
 
 
 ##############################################
@@ -73,47 +74,47 @@ class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
 
 class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep the set of xrootd flags used for xrootd copy process"""
-    overwrite: bool
-    batch: int
-    tpc: str
-    hashtype: str
-    cksum: bool
-    timeout: int
-    rate: int
+    overwrite: bool = True
+    batch: int = 8
+    tpc: str = ''
+    hashtype: str = ''
+    cksum: bool = True
+    timeout: int = 0
+    rate: int = 0
 
 
 class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure to keep a generic copy task"""
-    src: str
-    dst: str
-    isUpload: bool
-    token_request: dict
-    lfn: str
+    src: str = ''
+    dst: str = ''
+    isUpload: bool = False
+    token_request: dict = {}
+    lfn: str = ''
 
 
 class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
     """Structure for commit of succesful xrootd write to file catalogue"""
-    envelope: str
-    size: str
-    lfn: str
-    perm: str
-    expire: str
-    pfn: str
-    se: str
-    guid: str
-    md5: str
+    envelope: str = ''
+    size: str = ''
+    lfn: str = ''
+    perm: str = ''
+    expire: str = ''
+    pfn: str = ''
+    se: str = ''
+    guid: str = ''
+    md5: str = ''
 
 
 class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
     """Map a lfn to file (and reverse)"""
-    lfn: str
-    file: str
+    lfn: str = ''
+    file: str = ''
 
 
 class KV(NamedTuple):  # pylint: disable=inherit-non-class
     """Assign a value to a key"""
-    key: str
-    val: str
+    key: str = ''
+    val: str = ''
 
 
 class RET(NamedTuple):  # pylint: disable=inherit-non-class
@@ -129,7 +130,8 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
             if self.ansdict:
                 json_out = json.dumps(self.ansdict, sort_keys = True, indent = 4)
                 print(json_out, flush = True)
-                if _DEBUG: logging.debug(json_out)
+                DEBUG = os.getenv('ALIENPY_DEBUG', '')
+                if DEBUG: logging.debug(json_out)
             else:
                 print('This command did not return a json dictionary', file = sys.stderr, flush = True)
             return
@@ -186,38 +188,6 @@ class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
     guid: str = ''
     size: str = ''
     md5: str = ''
-
-
-class Msg:
-    """Class to create json messages to be sent to server"""
-    __slots__ = ('cmd', 'args', 'opts')
-
-    def __init__(self, cmd: str = '', args: Union[str, list, None] = None, opts: str = '') -> None:
-        self.cmd = cmd
-        self.opts = opts
-        if not args:
-            self.args = []
-        elif isinstance(args, str):
-            self.args = shlex.split(args)
-        elif isinstance(args, list):
-            self.args = args.copy()
-
-    def add_arg(self, arg: Union[str, list, None]) -> None:
-        if not arg: return
-        if isinstance(arg, str): self.args.extend(shlex.split(arg))
-        if isinstance(arg, list): self.args.extend(arg)
-
-    def msgdict(self) -> dict:
-        return CreateJsonCommand(self.cmd, self.args, self.opts, True)
-
-    def msgstr(self) -> str:
-        return CreateJsonCommand(self.cmd, self.args, self.opts)
-
-    def __call__(self) -> tuple:
-        return (self.cmd, self.args, self.opts)
-
-    def __bool__(self):
-        return bool(self.cmd)
 
 
 if __name__ == '__main__':

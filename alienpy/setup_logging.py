@@ -4,7 +4,7 @@ import os
 import sys
 import logging
 from pathlib import Path
-from .global_vars import *
+from .global_vars import *  # nosec PYL-W0614
 
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE

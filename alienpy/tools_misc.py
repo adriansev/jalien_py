@@ -9,8 +9,8 @@ import socket
 import time
 import grp
 import pwd
-from .global_vars import *
-from .setup_logging import *
+from .global_vars import *  # nosec PYL-W0614
+from .setup_logging import *  # nosec PYL-W0614
 
 
 def PrintColor(color: str) -> str:
@@ -352,8 +352,6 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
-
-
 
 
 def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:

@@ -1,9 +1,9 @@
 '''alienpy:: XRootD related tooling/helpers'''
 
 import os
-from .global_vars import *
-from .data_structs import *
-from .wb_api import *
+from .global_vars import *  # nosec PYL-W0614
+from .data_structs import *  # nosec PYL-W0614
+from .wb_api import *  # nosec PYL-W0614
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:

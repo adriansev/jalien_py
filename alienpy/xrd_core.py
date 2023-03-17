@@ -3,19 +3,19 @@
 import datetime
 import sys
 import xml.dom.minidom as MD  # nosec B408:blacklist
-from .global_vars import *
-from .data_structs import *
-from .version import *
-from .tools_files import *
-from .xrd_tools import *
-from .tools_misc import *
+from .global_vars import *  # nosec PYL-W0614
+from .data_structs import *  # nosec PYL-W0614
+from .version import *  # nosec PYL-W0614
+from .tools_files import *  # nosec PYL-W0614
+from .xrd_tools import *  # nosec PYL-W0614
+from .tools_misc import *  # nosec PYL-W0614
 
 HAS_XROOTD = False
 try:
     from XRootD import client as xrd_client  # type: ignore
     HAS_XROOTD = True
 except Exception:
-    print("XRootD module could not be imported! Not fatal, but not XRootD transfers will work (any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
+    print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
 
 def _is_valid_xrootd() -> bool:
@@ -831,9 +831,17 @@ def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout
     return []
 
 
-
-
-
+def xrd_response2dict(response_status) -> dict:
+    """Convert a XRootD response status answer to a dict"""
+    if not response_status: return {}
+    if not HAS_XROOTD:
+        print_err('XRootD not present')
+        return {}
+    if not isinstance(response_status, xrd_client.responses.XRootDStatus):
+        print_err('Invalid argument type passed to xrd_response2dict')
+        return {}
+    return {'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
+            'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok}
 
 
 def xrdfs_q_config(fqdn_port: str) -> dict:
@@ -930,17 +938,6 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     return q_stats_dict
 
 
-def xrd_response2dict(response_status) -> dict:
-    """Convert a XRootD response status answer to a dict"""
-    if not response_status: return {}
-    if not HAS_XROOTD:
-        print_err('XRootD not present')
-        return {}
-    if not isinstance(response_status, xrd_client.responses.XRootDStatus):
-        print_err('Invalid argument type passed to xrd_response2dict')
-        return {}
-    return {'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
-            'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok}
 
 
 def xrd_statinfo2dict(response_statinfo) -> dict:

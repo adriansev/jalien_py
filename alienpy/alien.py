@@ -83,28 +83,26 @@ ALIENPY_EXECUTABLE = ''
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
-from .global_vars import *
+from .global_vars import *  # nosec PYL-W0614
 
 ##   Data strucutures definitons
-from .data_structs import *
+from .data_structs import *  # nosec PYL-W0614
 ###COLORS = COLORS_COLL()  # Instance of colors collection
 
 ##   VERSION STRINGS
-from .version import *
+from .version import *  # nosec PYL-W0614
 
 ##   LOGGING
-from .setup_logging import *
-
-
+from .setup_logging import *  # nosec PYL-W0614
 
 ##   General misc functions library
-from .tools_misc import *
+from .tools_misc import *  # nosec PYL-W0614
 
 # commands stack tools
-from .tools_stackcmd import *
+from .tools_stackcmd import *  # nosec PYL-W0614
 
 # shell related toold
-from .tools_shell import *
+from .tools_shell import *  # nosec PYL-W0614
 
 #########################
 #   ASYNCIO MECHANICS
@@ -113,7 +111,7 @@ from .tools_shell import *
 # Let's start the asyncio main thread
 #start_asyncio()
 #from .wb_async import *
-from .wb_api import *
+from .wb_api import *  # nosec PYL-W0614
 
 
 def setupHistory() -> None:
@@ -130,7 +128,7 @@ def setupHistory() -> None:
 
 
 # XRootD functions
-from .xrd_core import *
+from .xrd_core import *  # nosec PYL-W0614
 # Global XRootD preferences
 xrd_config_init()
 
