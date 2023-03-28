@@ -187,10 +187,13 @@ For the recursive copy of directories the following options (of the find command
 verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 {PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
+
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
 -l <count> : copy only <count> nr of files (for recursive copy)
 -o <offset> : skip first <offset> files found in the src directory (for recursive copy)
+-S SITE : Sort the returned list of files by the distance to the given site (for recursive copy)
+-e exclude_pattern: exclude files that match this pattern (for recursive copy)
 
 Further filtering of the files can be applied with the following options:
 -mindepth/-maxdepth N : restrict results to N directories depth relative to the base/searched for directory.
@@ -201,31 +204,12 @@ Further filtering of the files can be applied with the following options:
 '''
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 def pathtype_grid(wb, path: str) -> str:
     """Query if a lfn is a file or directory, return f, d or empty"""
-    if not wb: return ''
-    if not path: return ''
+    if not wb or not path: return ''
     ret_obj = SendMsg(wb, 'type', [path], opts = 'nomsg log')
     if ret_obj.exitcode != 0: return ''
     return str(ret_obj.ansdict['results'][0]["type"])[0]
-
-
-
-
-
 
 
 def commit(wb, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
@@ -427,9 +411,6 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     return RET(exitcode, stdout, stderr, ansdict)
 
 
-
-
-
 def extract_glob_pattern(path_arg: str) -> tuple:
     """Extract glob pattern from a path"""
     if not path_arg: return '', ''
@@ -449,14 +430,10 @@ def extract_glob_pattern(path_arg: str) -> tuple:
     return (base_path, pattern)
 
 
-
-
 def path_type(path_arg: str) -> tuple:
     """Check if path is local or grid; default is grid and local must have file: prefix"""
     location = 'local' if path_arg.startswith('file:') else 'grid'
     return (path_arg, location)
-
-
 
 
 

@@ -100,6 +100,188 @@ def xrd_config_init():
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
 
+def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+    """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
+    isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
+
+    # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
+    src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
+    arg_src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
+    src_specs = src_specs_remotes.pop(0) if src_specs_remotes else None  # whatever remains is the specifications
+
+    dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)
+    arg_dst = dst_specs_remotes.pop(0)
+    dst_specs = dst_specs_remotes.pop(0) if dst_specs_remotes else None
+
+    arg_src = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], arg_src)  # replace %ALIEN token with user grid home directory
+    arg_dst = re.sub(r"^\/*\%ALIEN[\/\s]*", AlienSessionInfo['alienHome'], arg_dst)  # replace %ALIEN token with user grid home directory
+
+    # lets process the pattern: extract it from src if is in the path globbing form
+    src_glob = False
+    if '*' in arg_src:  # we have globbing in src path
+        src_glob = True
+        arg_src, pattern = extract_glob_pattern(arg_src)
+    else:  # pattern is specified by argument
+        if type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+            pattern = pattern.pattern  # We pass the regex pattern into command as string
+            is_regex = True
+
+        # it was explictly requested that pattern is regex
+        if is_regex and type(pattern) is str and valid_regex(pattern) is None:
+            msg = f"makelist_lfn:: {pattern} failed to re.compile"
+            logging.error(msg)
+            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
+
+    slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
+    # N.B.!!! the check will be wrong when the same relative path is present local and on grid
+    # first let's check only prefixes
+    src, src_type = path_type(arg_src)
+    dst, dst_type = path_type(arg_dst)
+
+    isSrcLocal = (src_type == 'local')
+    isDownload = not isSrcLocal
+    if isSrcLocal:  # UPLOAD
+        src_stat = path_local_stat(src)
+        dst_stat = path_grid_stat(wb, dst)
+    else:           # DOWNLOAD
+        src_stat = path_grid_stat(wb, src)
+        dst_stat = path_local_stat(dst)
+        if not path_writable_any(dst_stat.path) and not parent > 1:
+            return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
+
+    if src_type == dst_type == 'grid':
+        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
+    if src_type == dst_type == 'local':
+        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
+
+    if not src_stat.type: return RET(2, '', f'Specified source {src_stat.path} not found!')
+
+    src = src_stat.path
+    dst = dst_stat.path
+
+    if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) on {src_type}')  # ENOENT /* No such file or directory */
+
+    if slashend_src:
+        if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
+        if not dst.endswith('/'): dst = f"{dst}/"  # if src is dir, dst must be dir
+
+    isSrcDir = (src_stat.type == 'd')
+    if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
+
+    # prepare destination locations
+    if isDownload:
+        try:  # we can try anyway, this is like mkdir -p
+            mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
+            mk_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            logging.error(traceback.format_exc())
+            msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {DEBUG_FILE}"
+            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+    else:  # this is upload to GRID
+        mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
+        if not dst_stat.type:  # dst does not exists
+            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
+            if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result  # noqa: R504
+
+    specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
+    specs_list = specs_split.split(specs) if specs else []
+
+    if strictspec: print_out("Strict specifications were enabled!! Command may fail!!")
+    if httpurl and isSrcLocal:
+        print_out("httpurl option is ignored for uploads")
+        httpurl = False
+
+    error_msg = ''  # container which accumulates the error messages
+    isWrite = not isDownload
+    if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID location
+        # to reduce the remote calls we treat files and directory on separate code-paths
+        if src_stat.type == 'f':  # single file
+            dst_filename = format_dst_fn(src, src, dst, parent)
+            # if overwrite the file validity checking will do md5
+            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
+
+            if not skip_file:
+                tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
+                if tokens and 'answer' in tokens:
+                    copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
+        else:  # directory to be listed
+            results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
+            if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
+                msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''} -a -s {src} {pattern}"
+                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+
+            for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
+                lfn = get_lfn_key(lfn_obj)
+                dst_filename = format_dst_fn(src, lfn, dst, parent)
+                # if overwrite the file validity checking will do md5
+                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
+                if skip_file: continue  # destination exists and is valid, no point to re-download
+                
+                tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
+                if not tokens or 'answer' not in tokens: continue
+                copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
+
+    else:  # src is LOCAL, we are UPLOADING
+        results_list = list_files_local(src, pattern, is_regex, " ".join(find_args))
+        if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
+            msg = f"No files found in: {src} /pattern: {pattern} /find_args: {' '.join(find_args)}"
+            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
+
+        for file in results_list.ansdict["results"]:
+            file_path = get_lfn_key(file)
+            lfn = format_dst_fn(src, file_path, dst, parent)
+            lfn_dst_stat = path_grid_stat(wb, lfn)  # check each destination lfn
+            if lfn_dst_stat.type == 'f':  # lfn exists
+                if not overwrite:
+                    print_out(f'{lfn} exists, skipping..')
+                    continue
+                md5sum = md5(file_path)
+                if md5sum == lfn_dst_stat.md5:
+                    print_out(f'{lfn} exists and md5 match, skipping..')
+                    continue
+                print_out(f'{lfn} exists and md5 does not match, deleting..')  # we want to overwrite so clear up the destination lfn
+                ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+
+            tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite, strictspec)
+            if not tokens or 'answer' not in tokens: continue
+            copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], lfn))
+    return RET(1, '', error_msg) if error_msg else RET(0)
+
+
+def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
+    """Process a list of lfns to add to XRootD copy jobs list"""
+    for cpfile in copylist_lfns:
+        if 'results' not in cpfile.token_request:
+            print_err(f"No token info for {cpfile}\nThis message should not happen! Please contact the developer if you see this!")
+            continue
+
+        if len(cpfile.token_request['results']) < 1:
+            print_err(f'Could not find working replicas for {cpfile.src}')
+            continue
+
+        if cpfile.isUpload:  # src is local, dst is lfn, request is replica(pfn)
+            for replica in cpfile.token_request['results']:
+                copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
+        else:  # src is lfn(remote), dst is local, request is replica(pfn)
+            size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
+            md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
+            file_in_zip = None
+            url_list_4meta = []
+            for replica in cpfile.token_request['results']:
+                url_components = replica['url'].rsplit('#', maxsplit = 1)
+                if len(url_components) > 1: file_in_zip = url_components[1]
+                # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
+                url_list_4meta.append(f'{url_components[0]}?xrd.wantprot=unix&authz={replica["envelope"]}')
+
+            # Create the metafile as a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
+            metafile = create_metafile(make_tmp_fn(cpfile.src, '.meta4', uuid5 = True), cpfile.src, cpfile.dst, size_4meta, md5_4meta, url_list_4meta)
+            if not metafile:
+                print_err(f"Could not create the download metafile for {cpfile.src}")
+                continue
+            if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
+            if DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
+            copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
+
 
 def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
@@ -236,6 +418,12 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     offset = get_arg_value(xrd_copy_command, '-o')
     if offset: find_args.extend(['-o', offset])
+
+    ref_site = get_arg_value(xrd_copy_command, '-S')
+    if ref_site: find_args.extend(['-S', ref_site])
+
+    exclude_pattern = get_arg_value(xrd_copy_command, '-e')
+    if exclude_pattern: find_args.extend(['-e', exclude_pattern])
 
     use_regex = False
     filtering_enabled = False
@@ -575,219 +763,6 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     return handler.copy_failed_list  # lets see what failed and try to recover
 
 
-
-def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
-    """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
-    isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
-
-    # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
-    src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
-    arg_src = src_specs_remotes.pop(0)  # first item is the file path, let's remove it; it remains disk specifications
-    src_specs = src_specs_remotes.pop(0) if src_specs_remotes else None  # whatever remains is the specifications
-
-    dst_specs_remotes = specs_split.split(arg_target, maxsplit = 1)
-    arg_dst = dst_specs_remotes.pop(0)
-    dst_specs = dst_specs_remotes.pop(0) if dst_specs_remotes else None
-
-    # lets process the pattern: extract it from src if is in the path globbing form
-    src_glob = False
-    if '*' in arg_src:  # we have globbing in src path
-        src_glob = True
-        arg_src, pattern = extract_glob_pattern(arg_src)
-    else:  # pattern is specified by argument
-        if type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
-            pattern = pattern.pattern  # We pass the regex pattern into command as string
-            is_regex = True
-
-        # it was explictly requested that pattern is regex
-        if is_regex and type(pattern) is str and valid_regex(pattern) is None:
-            msg = f"makelist_lfn:: {pattern} failed to re.compile"
-            logging.error(msg)
-            return RET(64, '', msg)  # EX_USAGE /* command line usage error */
-
-    slashend_src = arg_src.endswith('/')  # after extracting the globbing if present we record the slash
-    # N.B.!!! the check will be wrong when the same relative path is present local and on grid
-    # first let's check only prefixes
-    src, src_type = path_type(arg_src)
-    dst, dst_type = path_type(arg_dst)
-
-    isSrcLocal = (src_type == 'local')
-    isDownload = not isSrcLocal
-    if isSrcLocal:  # UPLOAD
-        src_stat = path_local_stat(src)
-        dst_stat = path_grid_stat(wb, dst)
-    else:           # DOWNLOAD
-        src_stat = path_grid_stat(wb, src)
-        dst_stat = path_local_stat(dst)
-        if not path_writable_any(dst_stat.path) and not parent > 1:
-            return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
-
-    if src_type == dst_type == 'grid':
-        return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
-    if src_type == dst_type == 'local':
-        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
-
-    if not src_stat.type: return RET(2, '', f'Specified source {src_stat.path} not found!')
-
-    src = src_stat.path
-    dst = dst_stat.path
-
-    if not src: return RET(2, '', f'{arg_src} => {src} does not exist (or not accessible) on {src_type}')  # ENOENT /* No such file or directory */
-
-    if slashend_src:
-        if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
-        if not dst.endswith('/'): dst = f"{dst}/"  # if src is dir, dst must be dir
-
-    isSrcDir = (src_stat.type == 'd')
-    if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
-
-    # prepare destination locations
-    if isDownload:
-        try:  # we can try anyway, this is like mkdir -p
-            mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
-            mk_path.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            logging.error(traceback.format_exc())
-            msg = f"Could not create local destination directory: {mk_path.as_posix()}\ncheck log file {DEBUG_FILE}"
-            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-    else:  # this is upload to GRID
-        mk_path = dst if dst.endswith('/') else Path(dst).parent.as_posix()
-        if not dst_stat.type:  # dst does not exists
-            ret_obj = SendMsg(wb, 'mkdir', ['-p', mk_path], opts = 'nomsg')  # do it anyway, there is not point in checking before
-            if retf_print(ret_obj, opts = 'noprint err') != 0: return ret_obj  # just return the mkdir result  # noqa: R504
-
-    specs = src_specs if isDownload else dst_specs  # only the grid path can have specs
-    specs_list = specs_split.split(specs) if specs else []
-
-    if strictspec: print_out("Strict specifications were enabled!! Command may fail!!")
-    if httpurl and isSrcLocal:
-        print_out("httpurl option is ignored for uploads")
-        httpurl = False
-
-    error_msg = ''  # container which accumulates the error messages
-    isWrite = not isDownload
-    if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID location
-        # to reduce the remote calls we treat files and directory on separate code-paths
-        if src_stat.type == 'f':  # single file
-            dst_filename = format_dst_fn(src, src, dst, parent)
-            # if overwrite the file validity checking will do md5
-            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
-
-            if not skip_file:
-                tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
-                if tokens and 'answer' in tokens:
-                    copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
-        else:  # directory to be listed
-            results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
-            if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
-                msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''} -a -s {src} {pattern}"
-                return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-
-            for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
-                lfn = get_lfn_key(lfn_obj)
-                dst_filename = format_dst_fn(src, lfn, dst, parent)
-                # if overwrite the file validity checking will do md5
-                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
-                if skip_file: continue  # destination exists and is valid, no point to re-download
-                
-                tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
-                if not tokens or 'answer' not in tokens: continue
-                copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
-
-    else:  # src is LOCAL, we are UPLOADING
-        results_list = list_files_local(src, pattern, is_regex, " ".join(find_args))
-        if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
-            msg = f"No files found in: {src} /pattern: {pattern} /find_args: {' '.join(find_args)}"
-            return RET(42, '', msg)  # ENOMSG /* No message of desired type */
-
-        for file in results_list.ansdict["results"]:
-            file_path = get_lfn_key(file)
-            lfn = format_dst_fn(src, file_path, dst, parent)
-            lfn_dst_stat = path_grid_stat(wb, lfn)  # check each destination lfn
-            if lfn_dst_stat.type == 'f':  # lfn exists
-                if not overwrite:
-                    print_out(f'{lfn} exists, skipping..')
-                    continue
-                md5sum = md5(file_path)
-                if md5sum == lfn_dst_stat.md5:
-                    print_out(f'{lfn} exists and md5 match, skipping..')
-                    continue
-                print_out(f'{lfn} exists and md5 does not match, deleting..')  # we want to overwrite so clear up the destination lfn
-                ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
-
-            tokens = lfn2fileTokens(wb, lfn2file(lfn, file_path), specs_list, isWrite, strictspec)
-            if not tokens or 'answer' not in tokens: continue
-            copy_list.append(CopyFile(file_path, lfn, isWrite, tokens['answer'], lfn))
-    return RET(1, '', error_msg) if error_msg else RET(0)
-
-
-def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
-    """Process a list of lfns to add to XRootD copy jobs list"""
-    for cpfile in copylist_lfns:
-        if 'results' not in cpfile.token_request:
-            print_err(f"No token info for {cpfile}\nThis message should not happen! Please contact the developer if you see this!")
-            continue
-
-        if len(cpfile.token_request['results']) < 1:
-            print_err(f'Could not find working replicas for {cpfile.src}')
-            continue
-
-        if cpfile.isUpload:  # src is local, dst is lfn, request is replica(pfn)
-            for replica in cpfile.token_request['results']:
-                copylist_xrd.append(CopyFile(cpfile.src, f"{replica['url']}?xrd.wantprot=unix&authz={replica['envelope']}", cpfile.isUpload, replica, cpfile.dst))
-        else:  # src is lfn(remote), dst is local, request is replica(pfn)
-            size_4meta = cpfile.token_request['results'][0]['size']  # size SHOULD be the same for all replicas
-            md5_4meta = cpfile.token_request['results'][0]['md5']  # the md5 hash SHOULD be the same for all replicas
-            file_in_zip = None
-            url_list_4meta = []
-            for replica in cpfile.token_request['results']:
-                url_components = replica['url'].rsplit('#', maxsplit = 1)
-                if len(url_components) > 1: file_in_zip = url_components[1]
-                # if is_pfn_readable(url_components[0]):  # it is a lot cheaper to check readability of replica than to try and fail a non-working replica
-                url_list_4meta.append(f'{url_components[0]}?xrd.wantprot=unix&authz={replica["envelope"]}')
-
-            # Create the metafile as a temporary uuid5 named file (the lfn can be retrieved from meta if needed)
-            metafile = create_metafile(make_tmp_fn(cpfile.src, '.meta4', uuid5 = True), cpfile.src, cpfile.dst, size_4meta, md5_4meta, url_list_4meta)
-            if not metafile:
-                print_err(f"Could not create the download metafile for {cpfile.src}")
-                continue
-            if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
-            if DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
-            copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
     """xrdcp stanalone system command"""
     if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')  # type: ignore [call-arg]
@@ -939,10 +914,7 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     merged_stats = {}
     for i in old_stats: merged_stats.update(i)
     q_stats_dict['stats'] = merged_stats
-
     return q_stats_dict
-
-
 
 
 def xrd_statinfo2dict(response_statinfo) -> dict:
@@ -1044,6 +1016,7 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     ret_obj = SendMsg(wb, 'mv', [lfn_backup, lfn])  # if the upload failed let's move back the backup to original lfn name'
     retf_print(ret_obj, 'debug')
     return ''
+
 
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
