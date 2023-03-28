@@ -1610,8 +1610,10 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
-    global AlienSessionInfo, JSON_OUT, ALIENPY_GLOBAL_WB
+    global AlienSessionInfo, ALIENPY_GLOBAL_WB
     if not cmd_chain: return int(1)
+    JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
+
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
         for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_chain = cmd_chain.replace(alias, alias_value)
@@ -1641,9 +1643,14 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         cmd = args.pop(0)
 
         # if globally enabled then enable per command OR if enabled for this command
-        JSON_OUT = JSON_OUT_GLOBAL or get_arg(args, '-json')
-        print_opts = 'debug json' if JSON_OUT else 'debug'
-        if JSON_OUT and 'json' not in print_opts: print_opts = f'{print_opts} {json}'
+        JSON_OUT_CMD = None
+        if get_arg(args, '-json'):
+            os.environ['ALIENPY_JSON_OUT'] = '1'
+            JSON_OUT_CMD = '1'
+        JSON_OUT = JSON_OUT_GLOBAL or JSON_OUT_CMD
+
+        print_opts = 'debug'
+        if JSON_OUT: print_opts = f'{print_opts} json'
 
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
@@ -1657,7 +1664,10 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
 
         AlienSessionInfo['exitcode'] = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
         if cmd == 'cd': SessionSave()
-        JSON_OUT = JSON_OUT_GLOBAL  # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
+
+        # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
+        if not JSON_OUT_GLOBAL and 'ALIENPY_JSON_OUT' in os.environ: del os.environ['ALIENPY_JSON_OUT']
+        
     return AlienSessionInfo['exitcode']
 
 
@@ -1761,14 +1771,14 @@ class AliEn:
 
 ###################################################
 def main():
-    global JSON_OUT_GLOBAL, ALIENPY_EXECUTABLE, DEBUG, DEBUG_FILE
+    global ALIENPY_EXECUTABLE, DEBUG, DEBUG_FILE
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
     # at exit delete all temporary files
     atexit.register(cleanup_temp)
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
-    JSON_OUT_GLOBAL = get_arg(sys.argv, '-json')
+    if get_arg(sys.argv, '-json'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
     DEBUG_ARG = get_arg(sys.argv, '-debug')
     if DEBUG_ARG:

@@ -206,9 +206,11 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
     DEBUG = os.getenv('ALIENPY_DEBUG', '')    
+    JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
+    JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
     
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
-    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if json output was requested, then make sure we get the full answer
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
@@ -256,6 +258,8 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
     DEBUG = os.getenv('ALIENPY_DEBUG', '')
+    JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
+    JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
 
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer

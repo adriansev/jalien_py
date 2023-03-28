@@ -16,8 +16,7 @@ HAS_TTY = sys.stdout.isatty()
 HAS_COLOR = HAS_TTY  # if it has tty then it supports colors
 
 # environment debug variable
-JSON_OUT = bool(os.getenv('ALIENPY_JSON'))
-JSON_OUT_GLOBAL = JSON_OUT
+if os.getenv('ALIENPY_JSON'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
