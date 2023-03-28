@@ -1503,8 +1503,6 @@ def getSessionVars(wb):
         sys.exit(1)
     csd_cmds_re = re.compile(r'.*_csd$')
     AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not csd_cmds_re.match(cmd["commandlist"])]
-    AlienSessionInfo['commandlist'].remove('jquota')
-    AlienSessionInfo['commandlist'].remove('fquota')
 
     # server commands, signature is : (wb, command, args, opts)
     for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
