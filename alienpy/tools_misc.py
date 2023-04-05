@@ -341,7 +341,11 @@ def check_ip_port(socket_object: tuple) -> bool:
 
 def check_port(address: str, port: Union[str, int]) -> list:
     """Check TCP connection to fqdn:port"""
-    ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
+    try:
+        ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
+    except:
+        print_out(f'check_port:: error getting address info for host: {address} ; port: {port}')
+        return []
     return [(*sock_obj[-1], check_ip_port(sock_obj)) for sock_obj in ip_list]
 
 
