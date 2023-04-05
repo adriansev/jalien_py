@@ -1570,6 +1570,8 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         args[0:0] = ['-F', '-l', '-a']
 
     if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
+        get_arg(args, '-nokeys')
+        get_arg(args, '-nomsg')
         return AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
 
     opts = ''  # let's proccess special server args
