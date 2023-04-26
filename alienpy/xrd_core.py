@@ -419,7 +419,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     offset = get_arg_value(xrd_copy_command, '-o')
     if offset: find_args.extend(['-o', offset])
 
-    ref_site = get_arg_value(xrd_copy_command, '-S')
+    ref_site = get_arg_value(xrd_copy_command, '-site')
     if ref_site: find_args.extend(['-S', ref_site])
 
     exclude_pattern = get_arg_value(xrd_copy_command, '-e')

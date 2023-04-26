@@ -192,7 +192,7 @@ verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
 -l <count> : copy only <count> nr of files (for recursive copy)
 -o <offset> : skip first <offset> files found in the src directory (for recursive copy)
--S SITE : Sort the returned list of files by the distance to the given site (for recursive copy)
+-site SITE : Sort the returned list of files by the distance to the given site (for recursive copy)
 -e exclude_pattern: exclude files that match this pattern (for recursive copy)
 
 Further filtering of the files can be applied with the following options:
