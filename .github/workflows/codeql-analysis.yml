@@ -53,7 +53,7 @@ jobs:
       run: sudo apt-get install -y libjson-c-dev libjson-c5 curl libcurl4-openssl-dev libcurl4 libtinyxml-dev
 
     - name: Install python base packages
-      run: python3 -m pip install --no-cache-dir --upgrade pip setuptools==65.5.1 wheel
+      run: python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
     - name: Install alienpy dependencies
       run: | # |
