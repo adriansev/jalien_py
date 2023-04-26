@@ -1636,7 +1636,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             continue
 
         # process the input and take care of pipe to shell
-        input_alien, __, pipe_to_shell_cmd = cmdline.partition('|')
+        input_alien, __, pipe_to_shell_cmd = cmdline.partition(' | ')
         if not input_alien:
             print_out("AliEn command before the | token was not found")
             continue
