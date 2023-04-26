@@ -69,7 +69,7 @@ jobs:
         sudo apt-get autoclean -y
 
     - name: Install python base packages
-      run: python3 -m pip install --no-cache-dir --upgrade pip==23.0.1 setuptools==65.5.1 wheel==0.40.0
+      run: python3 -m pip install --no-cache-dir --upgrade pip==23.0.1 setuptools==65.5.1 wheel
 
     - name: Install alienpy dependencies
       run: | # |
