@@ -12,6 +12,18 @@ import traceback
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
 
+def common_path(path_list: list) -> str:
+    """Return common path of a list of paths"""
+    if not path_list: return ''
+    if not isinstance(path_list, list): return ''
+    common = ''
+    try:
+        common = os.path.commonpath(path_list)
+    except:
+        pass
+    return common
+
+
 def format_dst_fn(src_dir, src_file, dst, parent):
     """Return the destination filename given the source dir/name, destination directory and number of parents to keep"""
     # let's get destination file name (relative path with parent value)
@@ -206,9 +218,6 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     return STAT_FILEPATH(norm_path, filetype, perm, uid, gid, ctime, mtime, guid, size, md5hash)
 
 
-
-
-
 def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
     if not search_dir: return RET(2, "", "No search directory specified")
@@ -285,15 +294,11 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     return RET(exitcode, stdout, '', ansdict)
 
 
-
-
-
 def file_set_atime(path: str):
     """Set atime of file to now"""
     if not os.path.isfile(path): return
     file_stat = os.stat(path)
     os.utime(path, (datetime.datetime.now().timestamp(), file_stat.st_mtime))
-
 
 
 def file2file_dict(fn: str) -> dict:
@@ -316,8 +321,6 @@ def file2file_dict(fn: str) -> dict:
     file_dict["owner"] = pwd.getpwuid(file_name.stat().st_uid).pw_name
     file_dict["gowner"] = gid2name(file_name.stat().st_gid)
     return file_dict
-
-
 
 
 def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex = None) -> bool:
@@ -419,7 +422,6 @@ def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, Non
     return True
 
 
-
 def lfn2tmp_fn(lfn: str = '', uuid5: bool = False) -> str:
     """make temporary file name that can be reconstructed back to the lfn"""
     if not lfn: return str(uuid.uuid4())
@@ -437,7 +439,6 @@ def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
     return lfn.replace(f'{TMPDIR}/', '').replace("%%", "/")
-
 
 
 if __name__ == '__main__':

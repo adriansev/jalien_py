@@ -102,16 +102,18 @@ def IsValidCert(fname: str) -> bool:
 def get_valid_certs() -> tuple:
     """Return valid names for user certificate or None"""
     if AlienSessionInfo['verified_cert']: return USERCERT_NAME, USERKEY_NAME
-    FOUND = INVALID = False
-    if path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME):
+    FOUND = path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME)
+    if not FOUND:
         msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection will not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
         logging.error(msg)
-        FOUND = True
-    if FOUND and not IsValidCert(USERCERT_NAME):
+        return None, None
+
+    INVALID = not IsValidCert(USERCERT_NAME)
+    if INVALID:
         msg = f'Invalid/expired user certificate!! Check the content of {USERCERT_NAME}'
         logging.error(msg)
-        INVALID = True
-    if not FOUND or INVALID: return None, None
+        return None, None
+
     AlienSessionInfo['verified_cert'] = True  # This means that we already checked
     return USERCERT_NAME, USERKEY_NAME
 

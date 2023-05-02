@@ -56,10 +56,7 @@ except ImportError:
     except ImportError:
         pass
 
-##################################################
-##   START LOGGING BEFORE ANYTHING ELSE
-from .setup_logging import print_out, print_err, setup_logging
-setup_logging()
+
 ##################################################
 #   GLOBAL POINTER TO WB CONNECTION  #############
 ALIENPY_GLOBAL_WB = None
@@ -70,6 +67,10 @@ ALIENPY_GLOBAL_WB = None
 ALIENPY_EXECUTABLE = ''
 
 from .global_vars import *  # nosec PYL-W0614
+
+##   START LOGGING BEFORE ANYTHING ELSE
+from .setup_logging import print_out, print_err, setup_logging
+setup_logging(DEBUG, DEBUG_FILE)
 
 ##   Data strucutures definitons
 from .data_structs import *  # nosec PYL-W0614

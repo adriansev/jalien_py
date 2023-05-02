@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from .global_vars import *  # nosec PYL-W0614
 
+
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE
 #############################################
@@ -26,8 +27,7 @@ def print_err(msg: str, toLog: bool = False):
 def setup_logging(debug: bool = False, debug_file:str = ''):
     """Setup logging machinery"""
     if not debug_file: debug_file = f'{Path.home().as_posix()}/alien_py.log'
-    if os.getenv('ALIENPY_DEBUG', ''): debug = True
-    
+
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
     

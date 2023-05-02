@@ -100,9 +100,13 @@ def xrd_config_init():
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
 
-def makelist_lfn(wb, arg_source, arg_target, find_args: list, parent: int, overwrite: bool, pattern: Union[None, REGEX_PATTERN_TYPE, str], is_regex: bool, copy_list: list, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None, copy_list: Union[None, list] = None, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 999, overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
+    if find_args is None: find_args = []
+    if copy_list is None or not isinstance(copy_list, list):
+        print_out(f'makelist_lfn:: copy_list arguments is not a list!!')
+        return RET()
 
     # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
     src_specs_remotes = specs_split.split(arg_source, maxsplit = 1)  # NO comma allowed in names (hopefully)
@@ -283,13 +287,18 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
-def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '') -> RET:
+def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '', api_src: Union[None, list] = None, api_dst: Union[None, list] = None) -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
     if xrd_copy_command is None: xrd_copy_command = []
+    if api_src is None: api_src =[]
+    if api_dst is None: api_dst =[]
+    if bool(api_src) ^ bool(api_dst): return RET(1, '', 'API _src,_dst used but only one is valid')
+    if len(api_src) != len(api_dst): return RET(1, '', 'API _src,_dst used but not of equal lenght')
+
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
 
-    if not xrd_copy_command or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
+    if not (api_src or xrd_copy_command) or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
         help_msg = xrdcp_help()
         return RET(0, help_msg)  # EX_USAGE /* command line usage error */
 
@@ -395,6 +404,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     parent_arg = get_arg_value(xrd_copy_command, '-parent')
     if parent_arg: parent = int(parent_arg)
 
+    # explicit specify a destination, the rest of arguments are source files
+    dst_arg_specified = get_arg_value(xrd_copy_command, '-dst')
+
     # find options for recursive copy of directories
     find_args = []
     if get_arg(xrd_copy_command, '-v'): print_out("Verbose mode not implemented, ignored; enable debugging with ALIENPY_DEBUG=1")
@@ -457,10 +469,17 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
     if use_regex: pattern = pattern_regex
-    copy_lfnlist = []  # list of lfn copy tasks
 
     inputfile_arg = get_arg_value(xrd_copy_command, '-input')  # input file with <source, destination> pairs
-    if inputfile_arg:
+
+    # Start of resolving src to dst pairs
+    copy_lfnlist = []  # list of lfn copy tasks
+
+    if api_src and api_dst:
+        for src,dst in zip(api_src, api_dst):
+            retobj = makelist_lfn(wb, src, dst, find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+            if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
+    elif inputfile_arg:
         cp_arg_list = fileline2list(inputfile_arg)
         if not cp_arg_list: return RET(1, '', f'Input file {inputfile_arg} not found or invalid content')
         for cp_line in cp_arg_list:
@@ -470,8 +489,16 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                 continue
             retobj = makelist_lfn(wb, cp_line_items[0], cp_line_items[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
             retf_print(retobj, "noout err")  # print error and continue with the other files
+    elif dst_arg_specified:
+            # the assumption is that every argument from arg list was removed and what remain is a list of sources
+            common_root_path = common_path(xrd_copy_command)
+            for src in xrd_copy_command:
+                retobj = makelist_lfn(wb, src, f'{dst_arg_specified}/{src.replace(common_root_path, "")}', find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+                if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
-        retobj = makelist_lfn(wb, xrd_copy_command[-2], xrd_copy_command[-1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
+        src = xrd_copy_command[-2]
+        dst = xrd_copy_command[-1]
+        retobj = makelist_lfn(wb, src, dst, find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504
 
     # at this point if any errors, the processing was already stopped
