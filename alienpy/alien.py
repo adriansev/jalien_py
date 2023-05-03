@@ -1602,7 +1602,8 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         if ret_obj.exitcode != 0: return ret_obj
         if not ret_obj.out:
             return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
-        shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = ret_obj.out, encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
+        print_out(ret_obj.out)
+        shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = f'{ret_obj.out}\n', encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
 
