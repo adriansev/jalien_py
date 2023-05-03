@@ -131,8 +131,6 @@ def get_hash_meta(meta_fn: str) -> tuple:
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
 
-
-
 def md5(input_file: str) -> str:
     """Compute the md5 digest of the specified file"""
     if not path_readable(input_file): return '-1'
@@ -155,8 +153,6 @@ def md5_mp(list_of_files: Union[None, list] = None) -> list:
     hash_list = []
     with mp.Pool(processes = NCPU) as pool: hash_list = pool.map(md5, list_of_files)
     return hash_list
-
-
 
 
 def expand_path_local(path_arg: str, strict: bool = False) -> str:
@@ -197,7 +193,6 @@ def path_writable_any(filepath: str = '') -> bool:
     paths_list = [p.as_posix() for p in Path(filepath).parents]
     if Path(filepath).is_dir(): paths_list.insert(0, filepath)
     return any(path_writable(p) for p in paths_list)
-
 
 
 def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
@@ -326,6 +321,8 @@ def file2file_dict(fn: str) -> dict:
 def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex = None) -> bool:
     """Return True if an file dict object pass the conditions in find_opts"""
     if not f_obj or not base_dir: return False
+    if f_obj['lfn'].endswith('.'): return False
+
     if not find_opts: return True
     opts = find_opts.split() if isinstance(find_opts, str) else find_opts.copy()
     lfn = get_lfn_key(f_obj)

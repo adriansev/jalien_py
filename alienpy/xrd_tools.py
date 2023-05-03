@@ -160,47 +160,49 @@ def xrdcp_help() -> str:
         cp <options> -input input_file
 where src|dst are local files if prefixed with file:// or file: or grid files otherwise
 and -input argument is a file with >src dst< pairs
-after each src,dst can be added comma separated specifiers in the form of: @disk:N,SE1,SE2,!SE3
-where disk selects the number of replicas and the following specifiers add (or remove) storage endpoints from the received list
+after each src,dst can be added comma separated specifiers list in the form of: @<QOS>:N,SE1,SE2,!SE3
+QOS is a tag of the storage element (usually "disk") followed by the N requested replicas
+Additional replicas can be requested by the name of storage elements. (additional to QOS specifications),
+or exclusion of storages (prefixing with exclamation mark).
 %ALIEN alias have the special meaning of AliEn user home directory
 options are the following :
 -h : print help
--dryrun : just print the src,dst pairs that would have been transfered without actually doing so
--f : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
--fastcheck : When already present destination is check for validity, check only size not also md5
--S <aditional streams> : uses num additional parallel streams to do the transfer. (max = 15)
--chunks <nr chunks> : number of chunks that should be requested in parallel
--chunksz <bytes> : chunk size (bytes)
--T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
--timeout <seconds> : the job will fail if did not finish in this nr of seconds
--retry <times> : retry N times the copy process if failed
+-dryrun                  : just print the src,dst pairs that would have been transfered without actually doing so
+-f                       : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
+-fastcheck               : When already present destination is check for validity, check only size not also md5
+-S <aditional streams>   : uses num additional parallel streams to do the transfer. (max = 15)
+-chunks <nr chunks>      : number of chunks that should be requested in parallel
+-chunksz <bytes>         : chunk size (bytes)
+-T <nr_copy_jobs>        : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-timeout <seconds>       : the job will fail if did not finish in this nr of seconds
+-retry <times>           : retry N times the copy process if failed
 -ratethreshold <bytes/s> : fail the job if the speed is lower than specified bytes/s
--noxrdzip: circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
+-noxrdzip                : circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
 N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
 If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
 
 For the recursive copy of directories the following options (of the find command) can be used:
--glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
--select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
--name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
--name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
-verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
--parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
-
--a : copy also the hidden files .* (for recursive copy)
--j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)
--l <count> : copy only <count> nr of files (for recursive copy)
--o <offset> : skip first <offset> files found in the src directory (for recursive copy)
--site SITE : Sort the returned list of files by the distance to the given site (for recursive copy)
--e exclude_pattern: exclude files that match this pattern (for recursive copy)
+-j jobid           : select only the files created by the job with jobid (for recursive copy)
+-l int             : copy only <count> nr of files (for recursive copy)
+-o int             : skip first <offset> files found in the src directory (for recursive copy)
+-e exclude_pattern : exclude files that match this pattern (for recursive copy)
 
 Further filtering of the files can be applied with the following options:
--mindepth/-maxdepth N : restrict results to N directories depth relative to the base/searched for directory.
-                        N.B. for in directory globbing (/path1/path2/*.sh : the base directory is /path1/path2)
--minsize/-maxsize N : restrict results to at least/at most N bytes in size
--min-ctime/-max-ctime UNIX_TIME: restrict results to at least/at most this UNIX_TIME (ms, 13 decimals integer)
--user/-group string_name : restrict results to specified user/group
+-glob    <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
+-select  <pattern>          : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
+-name    <pattern>          : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
+-name    <verb>_string      : where verb = begin|contain|ends|ext and string is the text selection criteria.
+verbs are aditive  e.g. -name begin_myf_contain_run1_ends_bla_ext_root
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
+
+-exclude     string            : (client-side) exclude result containing this string
+-exclude_re  pattern           : (client-side) exclude result matching this regex
+-user        string            : (client-side) match the user
+-group       string            : (client-side) match the group
+-jobid       string            : (client-side) match the jobid
+-minsize   / -maxsize    int   : (client-side) restrict results to min/max bytes (inclusive)
+-mindepth  / -maxdepth   int   : (client-side) restrict results to min/max depth
+-min-ctime / -max-ctime  int(unix time) : (client-side) restrict results age to min/max unix-time
 '''
 
 
@@ -291,6 +293,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
 
     # remove default from additional args
     filter_args_list = []
+    get_arg(find_args_list, '-v')
     get_arg(find_args_list, '-a')
     get_arg(find_args_list, '-s')
     get_arg(find_args_list, '-f')

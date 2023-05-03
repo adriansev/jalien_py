@@ -1087,11 +1087,21 @@ def DO_find2(wb, args: Union[None, list, str] = None) -> RET:
 Command formant: find2 <options> <directory>
 N.B. directory to be search for must be last element of command
 -glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
--select <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
--name <pattern> : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
--name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
-verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline <_> within!!!{PrintColor(COLORS.ColorReset)}
+-select <pattern>        : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
+-name <pattern>          : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
+-name <verb>_string      : where verb = begin|contain|ends|ext and string is the text selection criteria.
+verbs are aditive  e.g. -name begin_myf_contain_run1_ends_bla_ext_root
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
+
+-exclude     string            : (client-side) exclude result containing this string
+-exclude_re  pattern           : (client-side) exclude result matching this regex
+-user    string                : (client-side) match the user
+-group   string                : (client-side) match the group
+-jobid   string                : (client-side) match the jobid
+-minsize   / -maxsize    int   : (client-side) restrict results to min/max bytes (inclusive)
+-mindepth  / -maxdepth   int   : (client-side) restrict results to min/max depth
+-min-ctime / -max-ctime  int(unix time) : (client-side) restrict results age to min/max unix-time
+
 The server options:''')
         srv_answ = get_help_srv(wb, 'find')
         msg_srv = srv_answ.out
@@ -1102,9 +1112,9 @@ The server options:''')
     get_arg(args, '-a')
     get_arg(args, '-s')
     get_arg(args, '-f')
+    get_arg(args, '-d')
     get_arg(args, '-w')
     get_arg(args, '-wh')
-    get_arg(args, '-d')
 
     search_dir = args.pop()
     use_regex = False
@@ -1150,7 +1160,7 @@ The server options:''')
             return RET(22, '', msg)  # EINVAL /* Invalid argument */
 
     if use_regex: pattern = pattern_regex  # -select, -name usage overwrites glob usage
-    return list_files_grid(wb, search_dir, pattern, use_regex, args)
+    return list_files_grid(wb, search_dir = search_dir, pattern = pattern, is_regex = use_regex, find_args = args)
 
 
 def DO_quota(wb, args: Union[None, list] = None) -> RET:

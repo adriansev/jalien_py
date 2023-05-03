@@ -417,17 +417,47 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     # find options for recursive copy of directories
     find_args = []
     if get_arg(xrd_copy_command, '-v'): print_out("Verbose mode not implemented, ignored; enable debugging with ALIENPY_DEBUG=1")
-    if get_arg(xrd_copy_command, '-a'): print_out("-a is enabled as default")
-    if get_arg(xrd_copy_command, '-s'): print_out("-s is enabled as default")
-    if get_arg(xrd_copy_command, '-w'): print_out("-w flag not usefull for copy operations")
-    if get_arg(xrd_copy_command, '-wh'): print_out("-wh flag not usefull for copy operations")
-    if get_arg(xrd_copy_command, '-d'): print_out("-d flag not usefull for copy operations")
+
+    # find options not used or controlled
+    get_arg(xrd_copy_command, '-a')
+    get_arg(xrd_copy_command, '-s')
+    get_arg(xrd_copy_command, '-c')
+    get_arg(xrd_copy_command, '-w')
+    get_arg(xrd_copy_command, '-wh')
+    get_arg(xrd_copy_command, '-d')
 
     mindepth_arg = get_arg_value(xrd_copy_command, '-mindepth')
     if mindepth_arg: find_args.extend(['-mindepth', mindepth_arg])
 
     maxdepth_arg = get_arg_value(xrd_copy_command, '-maxdepth')
     if maxdepth_arg: find_args.extend(['-maxdepth', maxdepth_arg])
+
+    minsize_arg = get_arg_value(xrd_copy_command, '-minsize')
+    if minsize_arg: find_args.extend(['-minsize', minsize_arg])
+
+    maxsize_arg = get_arg_value(xrd_copy_command, '-maxsize')
+    if maxsize_arg: find_args.extend(['-maxsize', maxsize_arg])
+
+    minctime_arg = get_arg_value(xrd_copy_command, '-min-ctime')
+    if minctime_arg: find_args.extend(['-min-ctime', minctime_arg])
+
+    maxctime_arg = get_arg_value(xrd_copy_command, '-max-ctime')
+    if maxctime_arg: find_args.extend(['-max-ctime', maxctime_arg])
+
+    exclude_str_arg = get_arg_value(xrd_copy_command, '-exclude')
+    if exclude_str_arg: find_args.extend(['-exclude', exclude_str_arg])
+
+    exclude_re_arg = get_arg_value(xrd_copy_command, '-exclude_re')
+    if exclude_re_arg: find_args.extend(['-exclude_re', exclude_re_arg])
+
+    user_arg = get_arg_value(xrd_copy_command, '-user')
+    if user_arg: find_args.extend(['-user', user_arg])
+
+    group_arg = get_arg_value(xrd_copy_command, '-group')
+    if group_arg: find_args.extend(['-group', group_arg])
+
+    jobid_arg = get_arg_value(xrd_copy_command, '-jobid')
+    if jobid_arg: find_args.extend(['-jobid', jobid_arg])
 
     qid = get_arg_value(xrd_copy_command, '-j')
     if qid: find_args.extend(['-j', qid])
@@ -503,6 +533,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                 retobj = makelist_lfn(wb, src, f'{dst_arg_specified}/{src.replace(common_root_path, "")}', find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
                 if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
+        if len(xrd_copy_command) < 2:
+            return RET(1, '', 'Argument list invalid (less then 2 arguments)')    
         src = xrd_copy_command[-2]
         dst = xrd_copy_command[-1]
         retobj = makelist_lfn(wb, src, dst, find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
