@@ -105,7 +105,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
     isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
     if find_args is None: find_args = []
     if copy_list is None or not isinstance(copy_list, list):
-        print_out(f'makelist_lfn:: copy_list arguments is not a list!!')
+        print_out('makelist_lfn:: copy_list arguments is not a list!!')
         return RET()
 
     # lets extract the specs from both src and dst if any (to clean up the file-paths) and record specifications like disk=3,SE1,!SE2
