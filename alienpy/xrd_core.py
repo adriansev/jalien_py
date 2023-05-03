@@ -290,17 +290,24 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
 def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '', api_src: Union[None, list] = None, api_dst: Union[None, list] = None) -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
+
     if xrd_copy_command is None: xrd_copy_command = []
     if api_src is None: api_src =[]
     if api_dst is None: api_dst =[]
-    if bool(api_src) ^ bool(api_dst): return RET(1, '', 'API _src,_dst used but only one is valid')
+
+    if bool(api_src) ^ bool(api_dst): return RET(1, '', 'API _src,_dst used but only one is defined')
     if len(api_src) != len(api_dst): return RET(1, '', 'API _src,_dst used but not of equal lenght')
 
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
 
-    if not (api_src or xrd_copy_command) or len(xrd_copy_command) < 2 or is_help(xrd_copy_command):
+    if is_help(xrd_copy_command):
         help_msg = xrdcp_help()
-        return RET(0, help_msg)  # EX_USAGE /* command line usage error */
+        return RET(0, help_msg)
+
+    if (not api_src) and (len(xrd_copy_command) < 2):
+        print('lkjdlakjs')
+        help_msg = xrdcp_help()
+        return RET(22, '', f'\n{help_msg}')  # 22 /* Invalid argument */
 
     DEBUG = os.getenv('ALIENPY_DEBUG', '')
     xrd_config_init()  # reset XRootD preferences to cp oriented settings
@@ -1015,8 +1022,8 @@ def download_tmp(wb, lfn: str, overwrite: bool = False, verbose: bool = False) -
             return tmpfile
 
     if tmpfile in AlienSessionInfo['templist']: AlienSessionInfo['templist'].remove(tmpfile)  # just in case it is still in list
-    copycmd = f"-f {lfn} file:{tmpfile}"
-    ret_obj = DO_XrootdCp(wb, copycmd.split(), printout = 'silent')  # print only errors for temporary downloads
+    ret_obj = DO_XrootdCp(wb, xrd_copy_command = ['-fastcheck'], api_src = [f'{lfn}'], api_dst = [f'file:{tmpfile}'], printout = 'silent')  # print only errors for temporary downloads
+
     if ret_obj.exitcode == 0 and os.path.isfile(tmpfile):
         AlienSessionInfo['templist'].append(tmpfile)
         return tmpfile
@@ -1037,8 +1044,8 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     replicas = access_request["results"][0]["nSEs"]
     if "disk:" not in upload_specs: upload_specs = f'disk:{replicas}'
     if upload_specs: upload_specs = f'@{upload_specs}'
-    copycmd = f'-f file:{temp_file_name} {lfn}{upload_specs}'
-    ret_obj = DO_XrootdCp(wb, copycmd.split())
+
+    ret_obj = DO_XrootdCp(wb, xrd_copy_command = ['-fastcheck'], api_src = [f'file:{temp_file_name}'], api_dst = [f'{lfn}{upload_specs}'])
     if ret_obj.exitcode == 0: return lfn
     ret_obj = SendMsg(wb, 'mv', [lfn_backup, lfn])  # if the upload failed let's move back the backup to original lfn name'
     retf_print(ret_obj, 'debug')
