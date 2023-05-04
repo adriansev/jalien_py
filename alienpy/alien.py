@@ -567,6 +567,59 @@ def DO_SEqos(wb, args: list = None) -> RET:
     return RET(0, msg, '', {'results': sum_rez})
 
 
+def DO_siteJobs(wb, args: list = None) -> RET:
+    if not wb: return RET()
+    if not args or is_help(args):
+        msg = '''Command format: siteJobs <SITE ID> [ -id ] [ -running ] [ -status string] [ -user string ]
+        Print jobs id or information for jobs associated with a site; use getCE command to identify site names'''
+        return RET(0, msg)
+    site_arg = args.pop(0)
+
+    identified_site_names_obj = DO_getCE(wb, ['-name', site_arg])
+    if not identified_site_names_obj.ansdict:
+        return RET(1, '', f'No site names were identified by the label: {site_arg}')
+    identified_site_names_list_dict = identified_site_names_obj.ansdict
+    identified_site_names_list = [ce['ceName'] for ce in identified_site_names_list_dict]
+    site_str = ','.join(identified_site_names_list)
+
+    job_list_query = SendMsg(wb, 'ps', ['-s', site_str, '-a'], 'nomsg')
+    if 'results' not in job_list_query.ansdict or not job_list_query.ansdict['results']: return job_list_query
+    jobs_list_dict = job_list_query.ansdict['results']
+
+    select_status = get_arg_value(args, '-status')
+    select_user = get_arg_value(args, '-user')
+    show_only_id = get_arg(args, '-id')
+    show_only_running = get_arg(args, '-running') or get_arg(args, '-r')
+    if show_only_running: select_status = 'RUNNING'
+
+    def match_status(job: Union[dict, None] = None, status: str = '') -> bool:
+        if job is None or not status: return False
+        return status.casefold() in job['status'].casefold()
+
+    def match_user(job: Union[dict, None] = None, user: str = '') -> bool:
+        if job is None or not status: return False
+        return user.casefold() in job['owner'].casefold()
+
+    select_list = []
+    if select_status:
+        select_list = [job for job in jobs_list_dict if match_status(job, select_status) ]
+
+    if select_user:
+        if select_list: jobs_list_dict = select_list[:]
+        select_list = [job for job in jobs_list_dict if match_user(job, select_user) ]
+
+    if not select_list and (select_status or select_user): return RET(0, 'Selection(s) returned no match!')
+    if not select_list: select_list = jobs_list_dict
+
+    if show_only_id:
+        id_list = [job['id '] for job in select_list]
+        return RET(0, f'{os.linesep.join(id_list)}', '', select_list)
+
+    header = f'JobID{" "*8}MasterJobID{" "*2}Status{" "*6}User{" "*10}Name'
+    job_info = [f'{j["id "] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner "] : <14}{j["name"]}' for j in select_list]
+    return RET(0, f"{header}\n{f'{os.linesep}'.join(job_info)}", '', select_list)
+
+
 def queryML(args: list = None) -> RET:
     """submit: process submit commands for local jdl cases"""
     alimon = 'http://alimonitor.cern.ch/rest/'
@@ -1538,6 +1591,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
     AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
     AlienSessionInfo['cmd2func_map_client']['getCE'] = DO_getCE
+    AlienSessionInfo['cmd2func_map_client']['siteJobs'] = DO_siteJobs
     AlienSessionInfo['cmd2func_map_client']['find2'] = DO_find2
     AlienSessionInfo['cmd2func_map_client']['dirs'] = DO_dirs
     AlienSessionInfo['cmd2func_map_client']['popd'] = DO_popd
