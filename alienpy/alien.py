@@ -498,6 +498,59 @@ def DO_getSE(wb, args: list = None) -> RET:
     return RET(0, '\n'.join(rez_list), '', {'results': se_list})
 
 
+def DO_getCE(wb, args: list = None) -> RET:
+    if not wb: return []
+    if not args: args = []
+    if is_help(args):
+        msg = 'Command format: getCE [-name string] [-host string] [-part string]>\nReturn the informations for the selection'
+        return RET(0, msg)
+
+    ret_obj = SendMsg(wb, 'listCEs', [], 'nomsg')
+    if ret_obj.exitcode != 0: return ret_obj
+    if 'results' not in ret_obj.ansdict: return RET(1, '', 'Could not get the list of CEs')
+    ce_list_dict = ret_obj.ansdict['results']
+
+    header = f'Name{" "*24}Host{" "*46}State{" "*3}Type{" "*6}R{" "*5}W{" "*5}TTL{" "*7}Partitions'
+    if not args:
+        ce_info = [f'{ce["ceName"].replace("ALICE::","") : <28}{ce["host"] : <50}{ce["status"] : <8}{ce["type"] : <10}{ce["maxRunning"] : <6}{ce["maxQueued"] : <6}{ce["TTL"] : <10}{ce["partitions"].strip(",")}' for ce in ce_list_dict]
+        return RET(0, f"{header}\n{f'{os.linesep}'.join(ce_info)}", '', ce_list_dict)
+
+    select_name = get_arg_value(args, '-name')
+    select_host = get_arg_value(args, '-host')
+    select_part = get_arg_value(args, '-part')
+
+    def match_name(ce: Union[dict, None] = None, name: str = '') -> bool:
+        if ce is None or not name: return False
+        return name.casefold() in ce['ceName'].casefold()
+
+    def match_host(ce: Union[dict, None] = None, host: str = '') -> bool:
+        if ce is None or not host: return False
+        return host.casefold() in ce['host'].casefold()
+
+    def match_part(ce: Union[dict, None] = None, part: str = '') -> bool:
+        if ce is None or not part: return False
+        part_list = ce['partitions'].casefold().split(',')
+        return part.casefold() in part_list
+
+    select_list = []
+    if select_name:
+        select_list = [ce for ce in ce_list_dict if match_name(ce, select_name) ]
+
+    if select_host:
+        if select_list: ce_list_dict = select_list[:]
+        select_list = [ce for ce in ce_list_dict if match_name(ce, select_host) ]
+
+    if select_part:
+        if select_list: ce_list_dict = select_list[:]
+        select_list = [ce for ce in ce_list_dict if match_part(ce, select_part) ]
+
+    if not select_list:
+        return RET(0, 'Empty selection results')
+
+    ce_info = [f'{ce["ceName"].replace("ALICE::","") : <28}{ce["host"] : <50}{ce["status"] : <8}{ce["type"] : <10}{ce["maxRunning"] : <6}{ce["maxQueued"] : <6}{ce["TTL"] : <10}{ce["partitions"].strip(",")}' for ce in select_list]
+    return RET(0, f"{header}\n{f'{os.linesep}'.join(ce_info)}", '', select_list)
+
+
 def DO_SEqos(wb, args: list = None) -> RET:
     if not wb: return RET()
     if not args or is_help(args):
@@ -1484,6 +1537,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['run'] = DO_run
     AlienSessionInfo['cmd2func_map_client']['exec'] = DO_exec
     AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
+    AlienSessionInfo['cmd2func_map_client']['getCE'] = DO_getCE
     AlienSessionInfo['cmd2func_map_client']['find2'] = DO_find2
     AlienSessionInfo['cmd2func_map_client']['dirs'] = DO_dirs
     AlienSessionInfo['cmd2func_map_client']['popd'] = DO_popd
