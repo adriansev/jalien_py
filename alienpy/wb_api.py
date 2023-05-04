@@ -208,9 +208,15 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     DEBUG = os.getenv('ALIENPY_DEBUG', '')    
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
-    
+
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
-    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if json output was requested, then make sure we get the full answer
+
+    if JSON_OUT_GLOBAL or JSON_OUT:  
+        opts = opts.replace('nokeys', '')
+        if 'nomsg' not in opts: opts = f'{opts} nomsg'
+
+    # if DEBUG then make sure we get the full answer
+    if DEBUG:
         opts = opts.replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
