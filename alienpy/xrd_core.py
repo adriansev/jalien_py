@@ -305,7 +305,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         return RET(0, help_msg)
 
     if (not api_src) and (len(xrd_copy_command) < 2):
-        print('lkjdlakjs')
         help_msg = xrdcp_help()
         return RET(22, '', f'\n{help_msg}')  # 22 /* Invalid argument */
 

@@ -737,7 +737,8 @@ task name / detector name / [ / time [ / key = value]* ]
 -host: specify other ccdb server than alice-ccdb.cern.ch
 -history: use browse to list the whole history of the object
 -unixtime: print the unixtime
--get: download the specied object/objects - NOT IMPLEMENTED - WIP
+-get: download the specified object/objects - full path will be kept
+-dst: set a specific destination for download
 ''' )
 
     headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', }  
@@ -747,6 +748,11 @@ task name / detector name / [ / time [ / key = value]* ]
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
     do_compact = get_arg(args, '-compact')
+    do_download = get_arg(args, '-get')
+
+    dest_arg = get_arg_value(args, '-dst')
+    if not dest_arg: dest_arg = '.'
+    if not dest_arg.endswith('/'): dest_arg = f'{dest_arg}/'
 
     ccdb = host_arg if host_arg else ccdb_default_host
     if not ccdb.endswith('/'): ccdb = f'{ccdb}/'
@@ -757,6 +763,9 @@ task name / detector name / [ / time [ / key = value]* ]
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     q_dict = q.json()
+    q_path = q_dict.pop('path')
+    q_latest = q_dict.pop('latest')
+    q_patternMatching = q_dict.pop('patternMatching')
     list(map(ccdb_json_cleanup, q_dict['objects']))
 
     if not do_unixtime:
@@ -766,9 +775,31 @@ task name / detector name / [ / time [ / key = value]* ]
             i['Valid-From'] = unixtime2local(i['Valid-From'])
             i['Valid-Until'] = unixtime2local(i['Valid-Until'])
 
-    indent = None if do_compact else '  '
-    separators = (',', ':') if do_compact else (', ', ': ')
-    msg = json.dumps(q_dict, indent = indent, separators = separators).replace('\\"', '')
+    dir_list = [f'{d}/' for d in q_dict['subfolders']]
+    msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
+
+    from rich import print
+
+    def get_alien_endpoint(obj):
+        if not 'replicas' in obj: return ''
+        for i in obj['replicas']:
+            if i.startswith('alien'): return i
+
+    header = f'Filename{" "*39}Type{" "*24}LastMod{" "*27}Valid'
+    download_list = []
+    dest_list = []
+    msg_obj_list = []
+    for q in q_dict['objects']:
+        download_list.append(get_alien_endpoint(q))
+        dest_list.append(f'file:{dest_arg}{q["path"]}/{q["filename"].replace("<","_").replace(">","_")}')
+        msg_obj_list.append(f'{q["filename"]}    {q["ObjectType"]}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"')
+
+    if do_download:
+        return DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
+
+    msg_obj = f'{os.linesep}'.join(msg_obj_list)
+    if msg_obj: msg_obj = f'{header}\n{msg_obj}'
+    msg = f'{msg_dirs}\n{msg_obj}'
 
     return RET(0, msg, '', q_dict)
 
