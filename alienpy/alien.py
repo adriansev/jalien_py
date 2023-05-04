@@ -616,8 +616,52 @@ def DO_siteJobs(wb, args: list = None) -> RET:
         return RET(0, f'{os.linesep.join(id_list)}', '', select_list)
 
     header = f'JobID{" "*8}MasterJobID{" "*2}Status{" "*6}User{" "*10}Name'
-    job_info = [f'{j["id "] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner "] : <14}{j["name"]}' for j in select_list]
+    job_info = [f'{j["id"] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner"] : <14}{j["name"]}' for j in select_list]
     return RET(0, f"{header}\n{f'{os.linesep}'.join(job_info)}", '', select_list)
+
+
+def DO_jobInfo(wb, args: list = None) -> RET:
+    if not wb: return RET()
+    if not args or is_help(args):
+        msg = '''Command format: jobInfo id1,id2,.. [ -trace ] [ -proc ]
+        Print job information for specified ID(s)
+        -trace will show the trace messages
+        -proc will show the proc messages
+        '''
+        return RET(0, msg)
+
+    show_trace = get_arg(args, '-trace')
+    show_proc = get_arg(args, '-proc')
+    show_jdl = get_arg(args, '-jdl')
+
+    jobid = args.pop(0)
+    job_info_query = SendMsg(wb, 'ps', ['-j', jobid, '-trace', '-jdl'], 'nomsg')
+    if job_info_query.exitcode != 0 or 'results' not in job_info_query.ansdict or not job_info_query.ansdict['results']: return job_info_query
+    job_info_list_dict = job_info_query.ansdict['results']
+
+    job_list_messages = []
+    header = f'JobID{" "*8}MasterJobID{" "*2}Status{" "*6}User{" "*10}Name'
+
+    job_processed_list = []
+
+    for j in job_info_list_dict:
+        new_j = dict(j)
+        new_j['trace'] = convert_trace2dict(j['trace'])
+        new_j['jdl'] = convert_jdl2dict(j['jdl'])
+        job_processed_list.append(new_j)
+
+        if show_jdl:
+            mod_jdl = json.dumps(new_j["jdl"], separators=(',', ':'))
+            job_list_messages.append(f'{mod_jdl}\n')
+        else:
+            job_info = f'##################################################################\n{header}\n{j["id"] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner"] : <14}{j["name"]}\n\n'
+            machine_info = f'Machine info:\nWorkerNode: {new_j["trace"]["wn"]}\nWorkdir: {new_j["trace"]["workdir"]}\nLocal queue info:\n{f"{os.linesep}".join(new_j["trace"]["queue"])}\n\n'
+            state_info = f'State info:\n{f"{os.linesep}".join(new_j["trace"]["state"])}\n\n'
+            trace_info = f'Trace info:\n{f"{os.linesep}".join(new_j["trace"]["trace"])}\n\n'
+            proc_info = f'Proc info:\n{f"{os.linesep}".join(new_j["trace"]["proc"])}\n\n'
+            job_list_messages.append(f'{job_info}{machine_info}{state_info}{trace_info if show_trace else ""}{proc_info if show_proc else ""}')
+
+    return RET(0, f'{os.linesep}'.join(job_list_messages), '', job_processed_list)
 
 
 def queryML(args: list = None) -> RET:
@@ -1592,6 +1636,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['getSE'] = DO_getSE
     AlienSessionInfo['cmd2func_map_client']['getCE'] = DO_getCE
     AlienSessionInfo['cmd2func_map_client']['siteJobs'] = DO_siteJobs
+    AlienSessionInfo['cmd2func_map_client']['jobInfo'] = DO_jobInfo
     AlienSessionInfo['cmd2func_map_client']['find2'] = DO_find2
     AlienSessionInfo['cmd2func_map_client']['dirs'] = DO_dirs
     AlienSessionInfo['cmd2func_map_client']['popd'] = DO_popd

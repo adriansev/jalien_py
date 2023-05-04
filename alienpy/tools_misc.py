@@ -438,6 +438,55 @@ def import_aliases():
     if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
 
+def convert_trace2dict(trace:str = '') -> dict:
+    """Convert an JAliEn trace output to a somewhat usable dictionary"""
+    trace_dict = { 'state': [], 'trace': [], 'proc': [], 'workdir': '', 'wn': '', 'queue': []}
+    procfmt = []
+    for line in trace.split('\n'):
+        nice_line = convert_time(str(line))
+
+        rez = nice_line.split('[state     ]: ')
+        if len(rez) > 1:
+            trace_dict['state'].append(' '.join(rez))
+            continue
+        rez = nice_line.split('[trace     ]: ')
+        if len(rez) > 1:
+            trace_dict['trace'].append(' '.join(rez))
+            if 'Created workdir' in rez[1]:
+                trace_dict['workdir'] = rez[1].split(': ')[1]
+            if re.match('Running.*on.*', rez[1], re.IGNORECASE):
+                trace_dict['wn'] = rez[1].split()[-1]
+            if 'BatchId' in rez[1]:
+                q_info = rez[1].replace('BatchId', '').strip()
+                trace_dict['queue'].append(q_info)
+            continue
+        rez = nice_line.split('[proc      ]: ')
+        if len(rez) > 1:
+            trace_dict['proc'].append(' '.join(rez))
+            continue
+        rez = nice_line.split('[procfmt   ]: ')
+        if len(rez) > 1:
+            procfmt.append(' '.join(rez))
+            continue
+    trace_dict['proc'][0:0] = procfmt
+    return trace_dict
+
+
+def convert_jdl2dict(jdl:str = '') -> dict:
+    """Convert an JAliEn jdl to a dictionary"""
+    jdl_dict = dict()
+    for line in re.split(r';\s+', jdl):
+        line = re.sub(r'\s+', ' ', line).strip()
+        k, _, v = line.partition('=')
+        v = v.replace('"', '').strip()
+        if v.startswith('{') and v.endswith('}'):
+            v = v.replace('{', '').replace('}', '').strip()
+            v = v.split(', ')
+            list(map(str.strip, v))
+        jdl_dict[k.strip()] = v
+    return jdl_dict
+
+
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
