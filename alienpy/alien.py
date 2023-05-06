@@ -1911,6 +1911,8 @@ def JAlien(commands: str = '') -> int:
         setupHistory()  # enable history saving
 
     print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
+    if DEBUG:
+        print_out(f'Debug enabled, logfile is: {DEBUG_FILE}')
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
     if os.getenv('ALIENPY_PROMPT_CWD'): AlienSessionInfo['show_lpwd'] = True
     if not os.getenv('ALIENPY_NO_CWD_RESTORE'): SessionRestore(ALIENPY_GLOBAL_WB)
@@ -1991,7 +1993,6 @@ def main():
     # start the logging
     setup_logging(bool(DEBUG), DEBUG_FILE)
     if DEBUG:
-        print_out(f'Debug enabled, logfile is: {DEBUG_FILE}')
         ret_obj = DO_version()
         logging.debug('%s\n', ret_obj.out)
 
