@@ -513,7 +513,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     if api_src and api_dst:
         for src,dst in zip(api_src, api_dst):
-            retobj = makelist_lfn(wb, src, dst, find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+            retobj = makelist_lfn(wb, arg_source = src, arg_target = dst,
+                                  find_args = find_args, parent = parent,
+                                  overwrite = overwrite, pattern = pattern,
+                                  is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
             if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     elif inputfile_arg:
         cp_arg_list = fileline2list(inputfile_arg)
@@ -523,20 +526,29 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             if len(cp_line_items) > 2:
                 print_out(f'Line skipped, it has more than 2 arguments => f{cp_line.strip()}')
                 continue
-            retobj = makelist_lfn(wb, cp_line_items[0], cp_line_items[1], find_args, parent, overwrite, pattern, use_regex, copy_lfnlist, strictspec, httpurl)
+            retobj = makelist_lfn(wb, arg_source = cp_line_items[0], arg_target = cp_line_items[1],
+                                  find_args = find_args, parent = parent,
+                                  overwrite = overwrite, pattern = pattern,
+                                  is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
             retf_print(retobj, "noout err")  # print error and continue with the other files
     elif dst_arg_specified:
             # the assumption is that every argument from arg list was removed and what remain is a list of sources
             common_root_path = common_path(xrd_copy_command)
             for src in xrd_copy_command:
-                retobj = makelist_lfn(wb, src, f'{dst_arg_specified}/{src.replace(common_root_path, "")}', find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+                retobj = makelist_lfn(wb, arg_source = src, arg_target = f'{dst_arg_specified}/{src.replace(common_root_path, "")}',
+                                      find_args = find_args, parent = parent,
+                                      overwrite = overwrite, pattern = pattern,
+                                      is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
                 if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
         if len(xrd_copy_command) < 2:
-            return RET(1, '', 'Argument list invalid (less then 2 arguments)')    
+            return RET(1, '', 'Argument list invalid (less then 2 arguments)')
         src = xrd_copy_command[-2]
         dst = xrd_copy_command[-1]
-        retobj = makelist_lfn(wb, src, dst, find_args = find_args, parent = parent, overwrite = overwrite, pattern = pattern, is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+        retobj = makelist_lfn(wb, arg_source = src, arg_target = dst,
+                              find_args = find_args, parent = parent,
+                              overwrite = overwrite, pattern = pattern,
+                              is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504
 
     # at this point if any errors, the processing was already stopped
