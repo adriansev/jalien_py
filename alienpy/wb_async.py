@@ -26,7 +26,7 @@ from .version import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
 from .setup_logging import print_err
-from .connect_ssl import create_ssl_context
+from .connect_ssl import create_ssl_context, renewCredFilesInfo
 from .tools_misc import *  # nosec PYL-W0614
 
 #########################
@@ -40,6 +40,8 @@ start_asyncio()
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
+    global AlienSessionInfo
+
     if not host:
         msg = 'wb_create:: provided host argument is empty'
         print_err(msg)
@@ -82,7 +84,25 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             return None
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
-        ctx = create_ssl_context(use_usercert)  # will check validity of token and if invalid cert will be usercert
+
+        # create/refresh the definitions of cert files
+        certs_info = renewCredFilesInfo()
+
+        # Check the presence of user certs and bailout before anything else
+        if not AlienSessionInfo['token_cert'] and not AlienSessionInfo['user_cert']:
+            print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
+            sys.exit(126)
+
+        try:
+            ctx = create_ssl_context(use_usercert,
+                                    user_cert = certs_info.user_cert, user_key = certs_info.user_key,
+                                    token_cert = certs_info.token_cert, token_key = certs_info.token_key)
+        except Exception as e:
+            msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}\n{e!r}'
+            logging.error(msg)
+            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+            return None
+
         logging.info('Request connection to: %s:%s%s', host, port, path)
 
         socket_endpoint = None

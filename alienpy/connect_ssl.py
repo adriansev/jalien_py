@@ -39,6 +39,11 @@ TOKENCERT_NAME = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.get
 TOKENKEY_NAME  = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
+def get_certs_names() -> CertsInfo:
+    """Provide the standard file names for used certificates"""
+    return CertsInfo(USERCERT_NAME, USERKEY_NAME, TOKENCERT_NAME, TOKENKEY_NAME)
+
+
 def get_ca_path() -> str:
     """Return either the CA path or file; bailout application if not found"""
     DEBUG = os.getenv('ALIENPY_DEBUG', '')
@@ -101,10 +106,11 @@ def IsValidCert(fname: str) -> bool:
 
 def get_valid_certs() -> tuple:
     """Return valid names for user certificate or None"""
-    if AlienSessionInfo['verified_cert']: return USERCERT_NAME, USERKEY_NAME
+    if AlienSessionInfo['verified_cert']: return AlienSessionInfo['user_cert'], AlienSessionInfo['user_key']
+
     FOUND = path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME)
     if not FOUND:
-        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection will not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
+        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection might be not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
         logging.error(msg)
         return None, None
 
@@ -116,10 +122,6 @@ def get_valid_certs() -> tuple:
 
     AlienSessionInfo['verified_cert'] = True  # This means that we already checked
     return USERCERT_NAME, USERKEY_NAME
-
-
-# Have global variables for checked at the load time of user certificates
-USERCERT_VALID, USERKEY_VALID = get_valid_certs()
 
 
 def get_valid_tokens() -> tuple:
@@ -149,22 +151,33 @@ def get_valid_tokens() -> tuple:
     return (None, None)
 
 
-# Check the presence of user certs and bailout before anything else
-TOKENCERT_VALID, TOKENKEY_VALID = get_valid_tokens()
-if not USERCERT_VALID and not TOKENCERT_VALID:
-    print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
-    sys.exit(126)
+def renewCredFilesInfo() -> CertsInfo:
+    """Recheck and refresh the values of valid credential definitions"""
+    global AlienSessionInfo
+    token_cert, token_key = get_valid_tokens()
+    user_cert, user_key = get_valid_certs()
+
+    AlienSessionInfo['token_cert'] = token_cert
+    AlienSessionInfo['token_key'] = token_key
+    AlienSessionInfo['user_cert'] = user_cert
+    AlienSessionInfo['user_key'] = user_key
+    return CertsInfo(user_cert, user_key, token_cert, token_key)
 
 
-def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
+# Populate information in AlienSessionInfo
+_ = renewCredFilesInfo()
+
+
+def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key: str = '', token_cert: str = '', token_key: str = '') -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
-    if use_usercert or not TOKENCERT_VALID:
-        AlienSessionInfo['use_usercert'] = True
-        cert, key = USERCERT_VALID, USERKEY_VALID
-    else:
-        cert, key = TOKENCERT_VALID, TOKENKEY_VALID
 
-    if not cert:
+    if use_usercert or not token_cert:
+        if AlienSessionInfo: AlienSessionInfo['use_usercert'] = True
+        cert, key = user_cert, user_key
+    else:
+        cert, key = token_cert, token_key
+
+    if not cert or not key:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
 
@@ -199,7 +212,7 @@ def create_ssl_context(use_usercert: bool = False) -> ssl.SSLContext:
         print_err('Error loading certificate pair!! Check the content of {DEBUG_FILE}')
         os._exit(126)
 
-    if DEBUG: logging.debug('... SSL context done.')
+    if DEBUG: logging.debug('\n... SSL context done.')
     return ctx
 
 

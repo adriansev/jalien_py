@@ -79,7 +79,7 @@ from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import TOKENCERT_NAME, TOKENKEY_NAME, TOKENCERT_VALID, TOKENKEY_VALID, USERCERT_VALID, USERKEY_VALID, CertInfo, CertVerify, CertKeyMatch
+from .connect_ssl import CertInfo, CertVerify, CertKeyMatch, get_certs_names
 
 ##   General misc functions library
 from .tools_misc import *  # nosec PYL-W0614
@@ -103,6 +103,10 @@ from .xrd_core import *  # nosec PYL-W0614
 # Global XRootD preferences
 xrd_config_init()
 
+
+##################################
+#   START FUNCTIONS DEFINITIONS
+##################################
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
     """dirs"""
@@ -1058,6 +1062,7 @@ def token(wb, args: Union[None, list] = None) -> int:
     global AlienSessionInfo
     if not wb: return 1
     if not args: args = []
+    certs_info = get_certs_names()
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
     if ret_obj.exitcode != 0:
@@ -1070,27 +1075,29 @@ def token(wb, args: Union[None, list] = None) -> int:
         return int(42)  # ENOMSG
 
     try:
-        if path_readable(TOKENCERT_NAME):
-            os.chmod(TOKENCERT_NAME, 0o600)  # make it writeable
-            os.remove(TOKENCERT_NAME)
-        with open(TOKENCERT_NAME, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
-        os.chmod(TOKENCERT_NAME, 0o400)  # make it readonly
+        if path_readable(certs_info.token_cert):
+            os.chmod(certs_info.token_cert, 0o600)  # make it writeable
+            os.remove(certs_info.token_cert)
+        with open(certs_info.token_cert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
+        os.chmod(certs_info.token_cert, 0o400)  # make it readonly
     except Exception:
         print_err(f'Error writing to file the aquired token cert; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
     try:
-        if path_readable(TOKENKEY_NAME):
-            os.chmod(TOKENKEY_NAME, 0o600)  # make it writeable
-            os.remove(TOKENKEY_NAME)
-        with open(TOKENKEY_NAME, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
-        os.chmod(TOKENKEY_NAME, 0o400)  # make it readonly
+        if path_readable(certs_info.token_key):
+            os.chmod(certs_info.token_key, 0o600)  # make it writeable
+            os.remove(certs_info.token_key)
+        with open(certs_info.token_key, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
+        os.chmod(certs_info.token_key, 0o400)  # make it readonly
     except Exception:
         print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
+    AlienSessionInfo['token_cert'] = certs_info.token_cert
+    AlienSessionInfo['token_key'] = certs_info.token_key
     return int(0)
 
 
@@ -1545,45 +1552,45 @@ def DO_ping(wb, args: Union[list, None] = None) -> RET:
 def DO_tokendestroy(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Delete the token{cert,key}.pem files")
-    if os.path.exists(TOKENCERT_VALID): os.remove(TOKENCERT_VALID)
-    if os.path.exists(TOKENKEY_VALID): os.remove(TOKENKEY_VALID)
+    if os.path.exists(AlienSessionInfo['token_cert']): os.remove(AlienSessionInfo['token_cert'])
+    if os.path.exists(AlienSessionInfo['token_key']): os.remove(AlienSessionInfo['token_key'])
     return RET(0, "Token was destroyed! Re-connect for token re-creation.")
 
 
 def DO_certinfo(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print user certificate information", "")
-    return CertInfo(USERCERT_VALID)
+    return CertInfo(AlienSessionInfo['user_cert'])
 
 
 def DO_tokeninfo(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    return CertInfo(TOKENCERT_VALID)
+    return CertInfo(AlienSessionInfo['token_cert'])
 
 
 def DO_certverify(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
-    return CertVerify(USERCERT_VALID)
+    return CertVerify(AlienSessionInfo['user_cert'])
 
 
 def DO_tokenverify(args: Union[list, None] = None) -> RET:
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
-    return CertVerify(TOKENCERT_VALID)
+    return CertVerify(AlienSessionInfo['token_cert'])
 
 
 def DO_certkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user cert with key cert", "")
-    return CertKeyMatch(USERCERT_VALID, USERKEY_VALID)
+    return CertKeyMatch(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'])
 
 
 def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user token with key token", "")
-    return CertKeyMatch(TOKENCERT_VALID, TOKENKEY_VALID)
+    return CertKeyMatch(AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
 
 
 def make_func_map_clean_server():
@@ -1638,6 +1645,10 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
     AlienSessionInfo['cmd2func_map_nowb']['ccdb'] = DO_ccdb_query
 
+#####################
+# GLOBAL!! add to the list of client-side no-connection implementations
+make_func_map_nowb()
+#####################
 
 def make_func_map_client():
     """client side functions (new commands) that DO require connection to jcentral"""
@@ -1703,7 +1714,6 @@ def getSessionVars(wb):
     for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
     make_func_map_clean_server()
 
-    make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection implementations
     make_func_map_client()  # GLOBAL!! add to cmd2func_map_client the list of client-side implementations
 
     # these are aliases, or directly interpreted
@@ -1716,6 +1726,7 @@ def getSessionVars(wb):
 def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a session to AliEn services, including session globals and token regeneration"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
+    
     DEBUG = os.getenv('ALIENPY_DEBUG', '')
     wb = AlienConnect(wb, token_args, use_usercert, localConnect)
     ALIENPY_GLOBAL_WB = wb

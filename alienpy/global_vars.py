@@ -6,9 +6,9 @@ import sys
 import tempfile
 from collections import deque
 from pathlib import Path
-from .data_structs import *  # nosec PYL-W0614
+from .data_structs import COLORS_COLL  # nosec PYL-W0614
 
-COLORS = COLORS_COLL()
+COLORS = COLORS_COLL()  # definition of colors
 
 TMPDIR = tempfile.gettempdir()
 
@@ -36,7 +36,8 @@ emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
                     'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
                     'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
-                    'use_usercert': False, 'verified_cert': False, 'verified_token': False}
+                    'use_usercert': False, 'verified_cert': False, 'verified_token': False,
+                    'user_cert': '', 'user_key': '', 'token_cert': '', 'token_key': ''}
 
 
 if __name__ == '__main__':

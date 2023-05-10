@@ -4,7 +4,6 @@ import os
 import sys
 from typing import NamedTuple
 from typing import Union
-# import shlex
 import json
 import logging
 
@@ -117,6 +116,14 @@ class KV(NamedTuple):  # pylint: disable=inherit-non-class
     """Assign a value to a key"""
     key: str = ''
     val: str = ''
+
+
+class CertsInfo(NamedTuple):  # pylint: disable=inherit-non-class
+    """Store name information on certificates used for SSL context"""
+    user_cert: str = ''
+    user_key: str = ''
+    token_cert: str = ''
+    token_key: str = ''
 
 
 class RET(NamedTuple):  # pylint: disable=inherit-non-class
