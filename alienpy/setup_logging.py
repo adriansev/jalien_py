@@ -3,8 +3,17 @@
 import os
 import sys
 import logging
-from pathlib import Path
 from .global_vars import *  # nosec PYL-W0614
+
+HAS_PPRINT = False
+if os.getenv('ALIENPY_FANCY_PRINT'):
+    try:
+        from rich import print
+        # from rich.highlighter import ISO8601Highlighter, JSONHighlighter
+        HAS_PPRINT = True
+    except Exception:
+        msg = ("rich module could not be imported! Not fatal, but some pretty print features will not be available.\n Make sure you can do:\npython3 -c 'from rich.pretty import pprint'")
+        logging.error(msg)
 
 
 #############################################
@@ -24,9 +33,8 @@ def print_err(msg: str, toLog: bool = False):
         print(msg, file = sys.stderr, flush = True)
 
 
-def setup_logging(debug: bool = False, debug_file:str = ''):
+def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.log'):
     """Setup logging machinery"""
-    if not debug_file: debug_file = f'{Path.home().as_posix()}/alien_py.log'
 
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')

@@ -325,7 +325,6 @@ def GetHumanReadableSize(size, precision = 2):
 def check_ip_port(socket_object: tuple) -> bool:
     """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
     if not socket_object: return False
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     is_open = False
     # socket_object = (family, type, proto, canonname, sockaddr)
     with socket.socket(socket_object[0], socket_object[1], socket_object[2]) as s:  # Create a TCP socket

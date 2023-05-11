@@ -308,7 +308,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         help_msg = xrdcp_help()
         return RET(22, '', f'\n{help_msg}')  # 22 /* Invalid argument */
 
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     xrd_config_init()  # reset XRootD preferences to cp oriented settings
 
     # XRootD copy parameters

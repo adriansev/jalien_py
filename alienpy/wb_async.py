@@ -2,7 +2,6 @@
 
 import os
 import sys
-# import asyncio
 import socket
 
 try:
@@ -52,7 +51,6 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         print_err(msg)
         logging.error(msg)
         return None
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     port = str(abs(int(port)))  # make sure the port argument is positive
 
     QUEUE_SIZE = int(128)  # maximum length of the queue that holds incoming messages
@@ -158,7 +156,6 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
 @syncify
 async def IsWbConnected(wb) -> bool:
     """Check if websocket is connected with the protocol ping/pong"""
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     time_begin = time.perf_counter() if DEBUG_TIMING else None
     if DEBUG:
         logging.info('Called from: %s', sys._getframe().f_back.f_code.co_name)  # pylint: disable=protected-access

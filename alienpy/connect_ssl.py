@@ -4,7 +4,6 @@ import sys
 import os
 import logging
 import uuid
-from pathlib import Path
 import traceback
 
 try:
@@ -27,16 +26,9 @@ except Exception:
 
 ##   GLOBALS
 from .global_vars import *  # nosec PYL-W0614
-from .data_structs import *  # nosec PYL-W0614
+from .data_structs import CertsInfo  # nosec PYL-W0614
 from .tools_misc import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
-
-# Have global variables for certificate file names, defaults being over-ridden by env vars
-USERCERT_NAME = os.getenv('X509_USER_CERT', f'{Path.home().as_posix()}/.globus/usercert.pem')
-USERKEY_NAME  = os.getenv('X509_USER_KEY',  f'{Path.home().as_posix()}/.globus/userkey.pem')
-
-TOKENCERT_NAME = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
-TOKENKEY_NAME  = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 
 def get_certs_names() -> CertsInfo:
@@ -46,8 +38,6 @@ def get_certs_names() -> CertsInfo:
 
 def get_ca_path() -> str:
     """Return either the CA path or file; bailout application if not found"""
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
-
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
@@ -106,6 +96,7 @@ def IsValidCert(fname: str) -> bool:
 
 def get_valid_certs() -> tuple:
     """Return valid names for user certificate or None"""
+    global AlienSessionInfo
     if AlienSessionInfo['verified_cert']: return AlienSessionInfo['user_cert'], AlienSessionInfo['user_key']
 
     FOUND = path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME)
@@ -121,12 +112,14 @@ def get_valid_certs() -> tuple:
         return None, None
 
     AlienSessionInfo['verified_cert'] = True  # This means that we already checked
+    AlienSessionInfo['user_cert'] = USERCERT_NAME
+    AlienSessionInfo['user_key'] = USERKEY_NAME
     return USERCERT_NAME, USERKEY_NAME
 
 
 def get_valid_tokens() -> tuple:
     """Get the token filenames, including the temporary ones used as env variables"""
-    global TOKENCERT_NAME, TOKENKEY_NAME
+    global AlienSessionInfo, TOKENCERT_NAME, TOKENKEY_NAME
     random_str = None
     cert_suffix = None
     if not path_readable(TOKENCERT_NAME) and TOKENCERT_NAME.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
@@ -147,20 +140,16 @@ def get_valid_tokens() -> tuple:
 
     if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
         AlienSessionInfo['verified_token'] = True
+        AlienSessionInfo['token_cert'] = TOKENCERT_NAME
+        AlienSessionInfo['token_key'] = TOKENKEY_NAME
         return (TOKENCERT_NAME, TOKENKEY_NAME)
     return (None, None)
 
 
 def renewCredFilesInfo() -> CertsInfo:
     """Recheck and refresh the values of valid credential definitions"""
-    global AlienSessionInfo
     token_cert, token_key = get_valid_tokens()
     user_cert, user_key = get_valid_certs()
-
-    AlienSessionInfo['token_cert'] = token_cert
-    AlienSessionInfo['token_key'] = token_key
-    AlienSessionInfo['user_cert'] = user_cert
-    AlienSessionInfo['user_key'] = user_key
     return CertsInfo(user_cert, user_key, token_cert, token_key)
 
 
@@ -181,7 +170,6 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
         os._exit(126)
 
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
     ctx = ssl.SSLContext(ssl_protocol)

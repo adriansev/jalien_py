@@ -11,6 +11,13 @@ from .data_structs import COLORS_COLL  # nosec PYL-W0614
 COLORS = COLORS_COLL()  # definition of colors
 
 TMPDIR = tempfile.gettempdir()
+USER_HOME = Path.home().as_posix()
+
+# Have global variables for certificate file names, defaults being over-ridden by env vars
+USERCERT_NAME = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
+USERKEY_NAME  = os.getenv('X509_USER_KEY',  f'{USER_HOME}/.globus/userkey.pem')
+TOKENCERT_NAME = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
+TOKENKEY_NAME  = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
 
 HAS_TTY = sys.stdout.isatty()
 HAS_COLOR = HAS_TTY  # if it has tty then it supports colors
@@ -22,7 +29,7 @@ TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{Path.home().as_posix()}/alien_py.log')
+DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{USER_HOME}/alien_py.log')
 
 REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs

@@ -48,7 +48,6 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     wb = None
     nr_tries = 0
     init_begin = None
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
 
     if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
@@ -81,7 +80,6 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
 def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket connection to AliEn services either directly to alice-jcentral.cern.ch or trough a local found jbox instance"""
     if not token_args: token_args = []
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
 
     jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
@@ -205,7 +203,6 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')    
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
 
@@ -263,7 +260,6 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
         logging.info(msg)
         return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
 
@@ -315,7 +311,6 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
      - info/warn/err/debug : will log the stderr to that facility
      - json : will print just the json (if present)
     """
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     if 'json' in opts:
         if ret_obj.ansdict:
             json_out = json.dumps(ret_obj.ansdict, sort_keys = True, indent = 3)

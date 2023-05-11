@@ -38,12 +38,6 @@ except Exception:
     print("requests module could not be imported! Make sure you can do:\npython3 -c 'import requests'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-HAS_PPRINT = False
-try:
-    from rich.pretty import pprint
-    HAS_PPRINT = True
-except Exception:
-    print("rich module could not be imported! Not fatal, but some pretty print features will not be available.\n Make sure you can do:\npython3 -c 'from rich.pretty import pprint'", file = sys.stderr, flush = True)
 
 HAS_READLINE = False
 try:
@@ -66,11 +60,12 @@ ALIENPY_GLOBAL_WB = None
 ##################################################
 ALIENPY_EXECUTABLE = ''
 
+##   IMPORT GLOBAL VARIABLES
 from .global_vars import *  # nosec PYL-W0614
 
 ##   START LOGGING BEFORE ANYTHING ELSE
 from .setup_logging import print_out, print_err, setup_logging
-setup_logging(DEBUG, DEBUG_FILE)
+setup_logging(bool(DEBUG), DEBUG_FILE)
 
 ##   Data strucutures definitons
 from .data_structs import *  # nosec PYL-W0614
@@ -781,8 +776,6 @@ task name / detector name / [ / time [ / key = value]* ]
 
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
-
-    from rich import print
 
     def get_alien_endpoint(obj):
         if not 'replicas' in obj: return ''
@@ -1727,7 +1720,6 @@ def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert
     """Create a session to AliEn services, including session globals and token regeneration"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
     
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
     wb = AlienConnect(wb, token_args, use_usercert, localConnect)
     ALIENPY_GLOBAL_WB = wb
 
@@ -1737,11 +1729,11 @@ def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert
         session_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
         getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
         if session_begin:
-            msg = f">>>   Time for session initialization: {deltat_us_perf(session_begin)} us"
+            msg = f">>>   Time for session initialization: {deltat_ms_perf(session_begin)} ms"
             if DEBUG: logging.debug(msg)
             if TIME_CONNECT: print_out(msg)
 
-    # this is a reconnection, make sure on the server we are in the last known current directory
+    # if this is a reconnection, make sure on the server we are in the last known current directory
     if AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'], 'log')
 
     # if usercert connection always regenerate token if connected with usercert
@@ -1807,7 +1799,6 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         if ret_obj.exitcode != 0: return ret_obj
         if not ret_obj.out:
             return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
-        print_out(ret_obj.out)
         shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = f'{ret_obj.out}\n', encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)

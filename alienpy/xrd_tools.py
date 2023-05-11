@@ -249,7 +249,6 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args
     """
     if not search_dir: return RET(-1, "", "No search directory specified")
-    DEBUG = os.getenv('ALIENPY_DEBUG', '')
 
     if find_args is None: find_args = []
     find_args_list = find_args.split() if isinstance(find_args, str) else find_args.copy()
