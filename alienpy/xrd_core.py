@@ -11,7 +11,7 @@ from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 from .xrd_tools import *  # nosec PYL-W0614
-from .tools_misc import *  # nosec PYL-W0614
+from .tools_nowb import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 from .tools_shell import runShellCMD
 

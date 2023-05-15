@@ -1,4 +1,4 @@
-'''alienpy:: Misc tooling functions'''
+'''alienpy:: Misc tooling functions (local, not-networked usage)'''
 
 import ast
 import sys
@@ -10,6 +10,7 @@ import socket
 import time
 import grp
 import pwd
+from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 
@@ -118,19 +119,6 @@ def is_guid(guid: str) -> bool:
 def run_function(function_name: str, *args, **kwargs):
     """Python code:: run some arbitrary function name (found in globals) with arbitrary arguments"""
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
-
-
-def PrintDict(in_arg: Union[str, dict], compact: bool = False):
-    """Print a dictionary in a nice format"""
-    if isinstance(in_arg, str):
-        try:
-            in_arg = json.loads(in_arg)
-        except Exception as e:
-            print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
-    if isinstance(in_arg, dict):
-        indent = None if compact else 2
-        separators = (',', ':') if compact else None
-        print_out(json.dumps(in_arg, sort_keys = False, indent = indent, separators = separators))
 
 
 def cursor_vertical(lines: int = 0):
@@ -257,6 +245,7 @@ def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
 
 
 def writePidFile(filename: str):
+    if not filename: return
     try:
         with open(filename, 'w', encoding="ascii", errors="replace") as f: f.write(str(os.getpid()))
     except Exception:
@@ -355,6 +344,7 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
 
 def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
+    if 'AlienSessionInfo' not in globals(): return RET()
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
 
 
@@ -410,10 +400,7 @@ def name2regex(pattern_regex: str = '') -> str:
 
 def cleanup_temp(item: str = ''):
     """Remove from disk all recorded temporary files"""
-    try:
-        AlienSessionInfo
-    except NameError:
-        return
+    if 'AlienSessionInfo' not in globals(): return
     if not AlienSessionInfo['templist']: return
 
     def rm_item(i: str = ''):
@@ -429,10 +416,7 @@ def cleanup_temp(item: str = ''):
 
 def import_aliases():
     """Import defined aliases in the global session variable"""
-    try:
-        AlienSessionInfo
-    except NameError:
-        return
+    if 'AlienSessionInfo' not in globals(): return
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
     if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
@@ -484,6 +468,91 @@ def convert_jdl2dict(jdl:str = '') -> dict:
             list(map(str.strip, v))
         jdl_dict[k.strip()] = v
     return jdl_dict
+
+
+def queryML(args: list = None) -> RET:
+    """Query MonaLisa REST endpoint for information"""
+    alimon = 'http://alimonitor.cern.ch/rest/'
+    type_json = '?Accept=application/json'
+    type_xml = '?Accept=text/xml'
+    type_plain = '?Accept=text/plain'
+    type_default = ''
+    predicate = ''
+
+    if 'text' in args:
+        type_default = type_plain
+        args.remove('text')
+    if 'xml' in args:
+        type_default = type_xml
+        args.remove('xml')
+    if 'json' in args:
+        type_default = type_json
+        args.remove('json')
+
+    if args: predicate = args[0]
+    url = f'{alimon}{predicate}{type_default}'
+    exitcode = stdout = stderr = ansdict = ansraw = None
+
+    url_req = urlreq.Request(url)
+    with urlreq.urlopen(url_req) as req:  # nosec
+        ansraw = req.read().decode()
+        exitcode = 0 if (req.getcode() == 200) else req.getcode()
+
+    if type_default == type_json:
+        stdout = stderr = ''
+        ansdict = json.loads(ansraw)
+    else:
+        stdout, stderr = (ansraw, '') if exitcode == 0 else ('', ansraw)
+    return RET(exitcode, stdout, stderr, ansdict)
+
+
+def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
+    """Get a file and return an XML element structure"""
+    if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
+    p = Path(filepath).expanduser().resolve(strict = True)
+    if p.is_dir(): return ALIEN_COLLECTION_EL()
+    p_stat = p.stat()
+    turl = f'file://{p.as_posix()}'
+    return ALIEN_COLLECTION_EL(
+        name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
+        dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
+        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",
+        size = str(p_stat.st_size), turl = turl, type = 'f')
+
+
+def mk_xml_local(filepath_list: list):
+    """Create AliEn collection XML output for local files"""
+    xml_root = ET.Element('alien')
+    collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
+    for idx, item in enumerate(filepath_list, start = 1):
+        e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
+        ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
+    oxml = ET.tostring(xml_root, encoding = 'ascii')
+    dom = MD.parseString(oxml)  # nosec B318:blacklist
+    return dom.toprettyxml()
+
+
+def ccdb_json_cleanup(item_dict: dict) -> None:
+    item_dict.pop('createTime', None)
+    item_dict.pop('lastModified', None)
+    item_dict.pop('id', None)  # replaced by ETag
+    item_dict.pop('validFrom', None)
+    item_dict.pop('validUntil', None)
+    item_dict.pop('initialValidity', None)  # replaced by InitialValidityLimit
+    item_dict.pop('MD5', None)  # replaced by Content-MD5
+    item_dict.pop('fileName', None)  # replaced by Content-Disposition
+    content_disposition = item_dict.pop('Content-Disposition')
+    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
+    item_dict['filename'] = filename
+
+    item_dict.pop('contentType', None)
+    item_dict.pop('size', None)  # replaced by Content-Length
+    item_dict.pop('Created', None)  #  no need (??) to be shown (mail2dev if needed)
+    item_dict.pop('Content-Type', None)  #  useless for this application
+    item_dict.pop('UploadedFrom', None)  #  useless for this application
+    item_dict.pop('UploadedBy', None)  #  useless for this application
+    item_dict.pop('partName', None)  #  useless for this application
+    item_dict.pop('InitialValidityLimit', None)  #  unclear use for this field
 
 
 if __name__ == '__main__':

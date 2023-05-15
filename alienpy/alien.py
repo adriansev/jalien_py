@@ -38,27 +38,16 @@ except Exception:
     print("requests module could not be imported! Make sure you can do:\npython3 -c 'import requests'", file = sys.stderr, flush = True)
     sys.exit(1)
 
+###############################################################
+##   IMPORT ALIENPY SUB-MODULES
 
-HAS_READLINE = False
-try:
-    import readline as rl  # type: ignore
-    HAS_READLINE = True
-except ImportError:
-    try:
-        import gnureadline as rl  # type: ignore  # mypy: no-redef
-        HAS_READLINE = True
-    except ImportError:
-        pass
+### 1st dependencies that do not have internal imports/or minimal ones
 
+##   VERSION STRINGS
+from .version import *  # nosec PYL-W0614
 
-##################################################
-#   GLOBAL POINTER TO WB CONNECTION  #############
-ALIENPY_GLOBAL_WB = None
-##################################################
-##################################################
-#   GLOBAL VARS
-##################################################
-ALIENPY_EXECUTABLE = ''
+##   Data strucutures definitons
+from .data_structs import *  # nosec PYL-W0614
 
 ##   IMPORT GLOBAL VARIABLES
 from .global_vars import *  # nosec PYL-W0614
@@ -67,38 +56,41 @@ from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err, setup_logging
 setup_logging(bool(DEBUG), DEBUG_FILE)
 
-##   Data strucutures definitons
-from .data_structs import *  # nosec PYL-W0614
-
-##   VERSION STRINGS
-from .version import *  # nosec PYL-W0614
-
-##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import CertInfo, CertVerify, CertKeyMatch, get_certs_names
-
-##   General misc functions library
-from .tools_misc import *  # nosec PYL-W0614
-
-# commands stack tools
-from .tools_stackcmd import push2stack, deque_pop_pos
-
-# shell related toold
-from .tools_shell import *  # nosec PYL-W0614
-
-# Session save
-from .setup_cwd import SessionSave, SessionRestore
+### Complex dependencies
 
 #########################
 #   ASYNCIO MECHANICS
 #########################
 from .wb_api import *  # nosec PYL-W0614
+#########################
+
+##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
+from .connect_ssl import CertInfo, CertVerify, CertKeyMatch, get_certs_names
+
+##   General misc functions library
+from .tools_nowb import *  # nosec PYL-W0614
+
+##   Functions that use/connect to central services
+from .tools_wb import *  # nosec PYL-W0614
+
+# commands stack tools
+from .tools_stackcmd import push2stack, deque_pop_pos
+
+# shell related tools
+from .tools_shell import *  # nosec PYL-W0614
+
+# Session save
+from .setup_cwd import SessionSave, SessionRestore
+
+# Setup history
+from .tools_history import *  # nosec PYL-W0614
 
 # XRootD functions
 from .xrd_core import *  # nosec PYL-W0614
 # Global XRootD preferences
 xrd_config_init()
 
-
+################################################################
 ##################################
 #   START FUNCTIONS DEFINITIONS
 ##################################
@@ -663,65 +655,6 @@ def DO_jobInfo(wb, args: list = None) -> RET:
     return RET(0, f'{os.linesep}'.join(job_list_messages), '', job_processed_list)
 
 
-def queryML(args: list = None) -> RET:
-    """submit: process submit commands for local jdl cases"""
-    alimon = 'http://alimonitor.cern.ch/rest/'
-    type_json = '?Accept=application/json'
-    type_xml = '?Accept=text/xml'
-    type_plain = '?Accept=text/plain'
-    type_default = ''
-    predicate = ''
-
-    if 'text' in args:
-        type_default = type_plain
-        args.remove('text')
-    if 'xml' in args:
-        type_default = type_xml
-        args.remove('xml')
-    if 'json' in args:
-        type_default = type_json
-        args.remove('json')
-
-    if args: predicate = args[0]
-    url = f'{alimon}{predicate}{type_default}'
-    exitcode = stdout = stderr = ansdict = ansraw = None
-
-    url_req = urlreq.Request(url)
-    with urlreq.urlopen(url_req) as req:  # nosec
-        ansraw = req.read().decode()
-        exitcode = 0 if (req.getcode() == 200) else req.getcode()
-
-    if type_default == type_json:
-        stdout = stderr = ''
-        ansdict = json.loads(ansraw)
-    else:
-        stdout, stderr = (ansraw, '') if exitcode == 0 else ('', ansraw)
-    return RET(exitcode, stdout, stderr, ansdict)
-
-
-def ccdb_json_cleanup(item_dict: dict) -> None:
-    item_dict.pop('createTime', None)
-    item_dict.pop('lastModified', None)
-    item_dict.pop('id', None)  # replaced by ETag
-    item_dict.pop('validFrom', None)
-    item_dict.pop('validUntil', None)
-    item_dict.pop('initialValidity', None)  # replaced by InitialValidityLimit
-    item_dict.pop('MD5', None)  # replaced by Content-MD5
-    item_dict.pop('fileName', None)  # replaced by Content-Disposition
-    content_disposition = item_dict.pop('Content-Disposition')
-    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
-    item_dict['filename'] = filename
-
-    item_dict.pop('contentType', None)
-    item_dict.pop('size', None)  # replaced by Content-Length
-    item_dict.pop('Created', None)  #  no need (??) to be shown (mail2dev if needed)
-    item_dict.pop('Content-Type', None)  #  useless for this application
-    item_dict.pop('UploadedFrom', None)  #  useless for this application
-    item_dict.pop('UploadedBy', None)  #  useless for this application
-    item_dict.pop('partName', None)  #  useless for this application
-    item_dict.pop('InitialValidityLimit', None)  #  unclear use for this field
-
-
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
     if not args: return RET(2, '', 'empty query! Use at least a "/" as argument')
@@ -799,31 +732,6 @@ task name / detector name / [ / time [ / key = value]* ]
     msg = f'{msg_dirs}\n{msg_obj}'
 
     return RET(0, msg, '', q_dict)
-
-
-def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
-    """Get a file and return an XML element structure"""
-    if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
-    p = Path(filepath).expanduser().resolve(strict = True)
-    if p.is_dir(): return ALIEN_COLLECTION_EL()
-    p_stat = p.stat()
-    turl = f'file://{p.as_posix()}'
-    return ALIEN_COLLECTION_EL(
-        name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
-        dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
-        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",
-        size = str(p_stat.st_size), turl = turl, type = 'f')
-
-
-def mk_xml_local(filepath_list: list):
-    xml_root = ET.Element('alien')
-    collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
-    for idx, item in enumerate(filepath_list, start = 1):
-        e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
-        ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
-    oxml = ET.tostring(xml_root, encoding = 'ascii')
-    dom = MD.parseString(oxml)  # nosec B318:blacklist
-    return dom.toprettyxml()
 
 
 def DO_2xml(wb, args: Union[list, None] = None) -> RET:
@@ -1048,76 +956,6 @@ http : URIs will be for http end-points of enabled SEs
     if not out:
         return RET(1, '', f'Could not not create URIs for: {lfn}')
     return RET(0, out)
-
-
-def token(wb, args: Union[None, list] = None) -> int:
-    """(Re)create the tokencert and tokenkey files"""
-    global AlienSessionInfo
-    if not wb: return 1
-    if not args: args = []
-    certs_info = get_certs_names()
-
-    ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
-    if ret_obj.exitcode != 0:
-        logging.error('Token request returned error')
-        return retf_print(ret_obj, 'err')
-    tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
-    tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
-    if not tokencert_content or not tokenkey_content:
-        logging.error('Token request valid but empty fields!!')
-        return int(42)  # ENOMSG
-
-    try:
-        if path_readable(certs_info.token_cert):
-            os.chmod(certs_info.token_cert, 0o600)  # make it writeable
-            os.remove(certs_info.token_cert)
-        with open(certs_info.token_cert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
-        os.chmod(certs_info.token_cert, 0o400)  # make it readonly
-    except Exception:
-        print_err(f'Error writing to file the aquired token cert; check the log file {DEBUG_FILE}!')
-        logging.debug(traceback.format_exc())
-        return 5  # EIO
-
-    try:
-        if path_readable(certs_info.token_key):
-            os.chmod(certs_info.token_key, 0o600)  # make it writeable
-            os.remove(certs_info.token_key)
-        with open(certs_info.token_key, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
-        os.chmod(certs_info.token_key, 0o400)  # make it readonly
-    except Exception:
-        print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
-        logging.debug(traceback.format_exc())
-        return 5  # EIO
-
-    AlienSessionInfo['token_cert'] = certs_info.token_cert
-    AlienSessionInfo['token_key'] = certs_info.token_key
-    return int(0)
-
-
-def token_regen(wb, args: Union[None, list] = None):
-    global AlienSessionInfo
-    wb_usercert = None
-    if not args: args = []
-    if not AlienSessionInfo['use_usercert']:
-        wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
-        try:
-            wb_usercert = InitConnection(wb, args, use_usercert = True)  # we have to reconnect with the new token
-        except Exception:
-            logging.debug(traceback.format_exc())
-            return None  # we failed usercert connection
-
-    # now we are connected with usercert, so we can generate token
-    if token(wb_usercert, args) != 0: return wb_usercert
-    # we have to reconnect with the new token
-    wb_close(wb_usercert, code = 1000, reason = 'Re-initialize the connection with the new token')
-    AlienSessionInfo['use_usercert'] = False
-    wb_token_new = None
-    try:
-        wb_token_new = InitConnection(wb_token_new, args)
-        __ = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
-    except Exception:
-        logging.exception('token_regen:: error re-initializing connection')
-    return wb_token_new
 
 
 def DO_token(wb, args: Union[list, None] = None) -> RET:
@@ -1476,46 +1314,6 @@ def DO_prompt(args: Union[list, None] = None) -> RET:
     return RET(0)
 
 
-def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
-    """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
-    key = 'path' if fullpath else 'name'
-    ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-a', '-F', os.path.normpath(lfn)])
-    if ret_obj.exitcode != 0: return []
-    return [item[key] for item in ret_obj.ansdict['results']]
-
-
-def lfn_list(wb, lfn: str = ''):
-    """Completer function : for a given lfn return all options for latest leaf"""
-    if not wb: return []
-    if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
-    list_lfns = []
-    lfn_path = Path(lfn)
-    base_dir = '/' if lfn_path.parent.as_posix() == '/' else f'{lfn_path.parent.as_posix()}/'
-    name = f'{lfn_path.name}/' if lfn.endswith('/') else lfn_path.name
-
-    def item_format(base_dir, name, item):
-        # print_out(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
-        if name.endswith('/') and name != '/':
-            return f'{name}{item}' if base_dir == './' else f'{base_dir}{name}{item}'
-        return item if base_dir == './' else f'{base_dir}{item}'
-
-    if lfn.endswith('/'):
-        listing = get_list_entries(wb, lfn)
-        list_lfns = [item_format(base_dir, name, item) for item in listing]
-    else:
-        listing = get_list_entries(wb, base_dir)
-        list_lfns = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
-    return list_lfns
-
-
-def wb_ping(wb) -> float:
-    """Websocket ping function, it will return rtt in ms"""
-    init_begin = time.perf_counter()
-    if IsWbConnected(wb):
-        return float(deltat_ms_perf(init_begin))
-    return float(-1)
-
-
 def DO_ping(wb, args: Union[list, None] = None) -> RET:
     """Command implementation for ping functionality"""
     if args is None: args = []
@@ -1638,10 +1436,6 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
     AlienSessionInfo['cmd2func_map_nowb']['ccdb'] = DO_ccdb_query
 
-#####################
-# GLOBAL!! add to the list of client-side no-connection implementations
-make_func_map_nowb()
-#####################
 
 def make_func_map_client():
     """client side functions (new commands) that DO require connection to jcentral"""
@@ -1745,98 +1539,99 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     """Process a command line within shell or from command line mode input"""
     global AlienSessionInfo
     if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
+    if not 'AlienSessionInfo' in globals(): return RET(1, '', 'ProcessInput needs presence of global dict AlienSessionInfo')
     if args is None: args = []
-    ret_obj = None
+
+    if cmd not in AlienSessionInfo['commandlist'] and not os.getenv('ALIENPY_ALLOW_UNKNOWN_CMDS'):
+        similar_list = difflib.get_close_matches(cmd, AlienSessionInfo['commandlist'])
+        similar_cmds = None
+        if similar_list: similar_cmds = ' '.join(similar_list)
+        msg = f'WARNING! command >>> {cmd} <<< not in the list of known commands!'
+        if similar_cmds: msg = f'{msg}\nSimilar commands: {similar_cmds}'
+        return RET(1, '', msg)
+
+    opts = ''  # let's proccess special server args
+    if get_arg(args, '-nokeys') or get_arg(args, 'nokeys'): opts = f'{opts} nokeys'
+    if get_arg(args, '-nomsg') or get_arg(args, 'nomsg'): opts = f'{opts} nomsg'
+    if get_arg(args, '-showkeys') or get_arg(args, 'showkeys'): opts = f'{opts} showkeys'
+    if get_arg(args, '-showmsg') or get_arg(args, 'showmsg'): opts = f'{opts} showmsg'
+
+    # these commands do NOT need wb connection
+    if cmd in AlienSessionInfo['cmd2func_map_nowb']:
+        return AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
 
     # implement a time command for measurement of sent/recv delay; for the commands above we do not use timing
-    time_begin = msg_timing = None
+    time_begin = None
     if cmd == 'time':  # first to be processed is the time token, it will start the timing and be removed from command
         if not args or is_help(args): return RET(0, 'Command format: time command arguments')
         cmd = args.pop(0)
         time_begin = time.perf_counter()
 
     # early command aliases and default flags
-    if cmd == 'ls': args[0:0] = ['-F']
-    if cmd == 'll':
-        cmd = 'ls'
-        args[0:0] = ['-F', '-l']
-    if cmd == 'la':
-        cmd = 'ls'
-        args[0:0] = ['-F', '-a']
-    if cmd == 'lla':
-        cmd = 'ls'
-        args[0:0] = ['-F', '-l', '-a']
+    if cmd == 'ls':
+        args[0:0] = ['-F']
+    elif cmd == 'll':
+        cmd = 'ls'; args[0:0] = ['-F', '-l']
+    elif cmd == 'la':
+        cmd = 'ls'; args[0:0] = ['-F', '-a']
+    elif cmd == 'lla':
+        cmd = 'ls'; args[0:0] = ['-F', '-l', '-a']
 
-    if cmd in AlienSessionInfo['cmd2func_map_nowb']:  # these commands do NOT need wb connection
-        get_arg(args, '-nokeys')
-        get_arg(args, '-nomsg')
-        return AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
-
-    opts = ''  # let's proccess special server args
-    if get_arg(args, '-nokeys'): opts = f'{opts} nokeys'
-    if get_arg(args, '-nomsg'): opts = f'{opts} nomsg'
-    if get_arg(args, '-showkeys'): opts = f'{opts} showkeys'
-    if get_arg(args, '-showmsg'): opts = f'{opts} showmsg'
-
+    ret_obj = None
     # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
     if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in clien-side implementations list
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
+    if ret_obj is None: return RET(1, '', f'ProcessInput:: there was no return object!! Invalid state, contact developer!')
 
-    if time_begin: msg_timing = f">>>ProcessInput time: {deltat_ms_perf(time_begin)} ms"
+    if time_begin: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms')
+    
+    # make the assumption that only valid output (exitcode == 0) have a reason to be processed by a shell command
+    if ret_obj.exitcode != 0: return ret_obj
 
-    if cmd not in AlienSessionInfo['commandlist']:
-        similar_list = difflib.get_close_matches(cmd, AlienSessionInfo['commandlist'])
-        similar_cmds = None
-        if similar_list: similar_cmds = ' '.join(similar_list)
-        msg = f'WARNING! command >>> {cmd} <<< not in the list of known commands!'
-        if similar_cmds: msg = f'{msg}\nSimilar commands: {similar_cmds}'
-        print_err(msg)
-    if ret_obj is None: return RET(1, '', f"NO RETURN from command: {cmd} {chr(32).join(args)}")
+    if 'timing_ms' in ret_obj.ansdict['metadata']:
+        ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
 
-    if shellcmd:
-        if ret_obj.exitcode != 0: return ret_obj
-        if not ret_obj.out:
-            return RET(1, '', f'Command >>>{cmd} {chr(32).join(args)}<<< do not have output but exitcode == 0')
+    if shellcmd and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = f'{ret_obj.out}\n', encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
-        return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr)
+        return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr, ret_obj.ansdict)
 
-    if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
-    if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
-        ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
     return ret_obj
 
 
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
+    """Process a chain of commands delimited by ; or new line"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
-    if not cmd_chain: return int(1)
-    JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
+    if not 'AlienSessionInfo' in globals() or not cmd_chain:
+        print_err('ProcessCommandChain needs presence of global dict AlienSessionInfo and cmd_chain')
+        return 1
 
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
         for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_chain = cmd_chain.replace(alias, alias_value)
 
-    cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n
-
     # for each command, save exitcode and RET of the command
+    exitcode = None
+    cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n with regex
     for cmdline in cmdline_list:
         if not cmdline: continue
         if DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
-        if cmdline.startswith('!'):  # if shell command, just run it and return
-            capture_out = True
-            if '-noout' in cmdline:
-                cmdline = cmdline.replace(' -noout', '')
-                capture_out = False
+
+        # if shell command, just run it and return
+        if cmdline.startswith('!'):
+            capture_out = '-noout' in cmdline
+            if not capture_out: cmdline.replace(' -noout', '')
             ret_obj = runShellCMD(cmdline, capture_out)
-            AlienSessionInfo['exitcode'] = retf_print(ret_obj, 'debug')
+            exitcode = retf_print(ret_obj, 'debug')
+            AlienSessionInfo['exitcode'] = exitcode
             continue
 
         # process the input and take care of pipe to shell
         input_alien, __, pipe_to_shell_cmd = cmdline.partition(' | ')
         if not input_alien:
-            print_out("AliEn command before the | token was not found")
+            logging.err(f'AliEn command before the | token was not found\n{cmdline}')
             continue
 
         args = shlex.split(input_alien.strip())
@@ -1847,40 +1642,31 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         if get_arg(args, '-json'):
             os.environ['ALIENPY_JSON_OUT'] = '1'
             JSON_OUT_CMD = '1'
+        JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
         JSON_OUT = JSON_OUT_GLOBAL or JSON_OUT_CMD
 
-        print_opts = 'debug'
+        print_opts = 'debug' if DEBUG else ''
         if JSON_OUT: print_opts = f'{print_opts} json'
 
+        ret_obj = None
         if cmd in AlienSessionInfo['cmd2func_map_nowb']:
             ret_obj = AlienSessionInfo['cmd2func_map_nowb'][cmd](args)
         else:
             if wb is None:
-                # we are doing the connection recovery and exception treatment in AlienConnect()
+                # If not prezent init connection and if command is token-init (without help being invoked) then use usercert
                 wb = InitConnection(wb, args, use_usercert = (cmd == 'token-init' and not is_help(args)))
                 ALIENPY_GLOBAL_WB = wb
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
-        AlienSessionInfo['exitcode'] = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
+        exitcode = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
+        AlienSessionInfo['exitcode'] = exitcode
+
         if cmd == 'cd': SessionSave()
 
         # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
         if not JSON_OUT_GLOBAL and 'ALIENPY_JSON_OUT' in os.environ: del os.environ['ALIENPY_JSON_OUT']
-        
-    return AlienSessionInfo['exitcode']
-
-
-def setupHistory() -> None:
-    """Setup up history mechanics for readline module"""
-    if not HAS_READLINE: return
-    histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-    if not os.path.exists(histfile): Path(histfile).touch(exist_ok = True)
-    rl.set_history_length(-1)  # unlimited history
-    rl.read_history_file(histfile)
-
-    def startup_hook() -> None: rl.append_history_file(1, histfile)  # before next prompt save last line
-    rl.set_startup_hook(startup_hook)
+    return exitcode
 
 
 def JAlien(commands: str = '') -> int:
@@ -1894,23 +1680,8 @@ def JAlien(commands: str = '') -> int:
     # Start interactive/shell mode
     ALIENPY_GLOBAL_WB = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
-    if HAS_READLINE:
-        rl.parse_and_bind("tab: complete")
-        rl.set_completer_delims(" ")
 
-        def complete(text, state):
-            prompt_line = rl.get_line_buffer()
-            tokens = prompt_line.split()
-            results = []
-            if len(tokens) == 0:
-                results = [f'{x} ' for x in AlienSessionInfo['commandlist']]
-            elif len(tokens) == 1 and not prompt_line.endswith(' '):
-                results = [f'{x} ' for x in AlienSessionInfo['commandlist'] if x.startswith(text)] + [None]
-            else:
-                results = lfn_list(ALIENPY_GLOBAL_WB, text) + [None]
-            return results[state]
-        rl.set_completer(complete)
-        setupHistory()  # enable history saving
+    setupHistory(ALIENPY_GLOBAL_WB)  # Setup command history
 
     print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
     if DEBUG:
@@ -1970,6 +1741,9 @@ class AliEn:
 ###   CODE TO BE RUN BEFORE MAIN STARTS
 ###################################################
 
+#####################
+make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection implementations
+#####################
 
 ###################################################
 def main():

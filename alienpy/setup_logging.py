@@ -5,16 +5,6 @@ import sys
 import logging
 from .global_vars import *  # nosec PYL-W0614
 
-HAS_PPRINT = False
-if os.getenv('ALIENPY_FANCY_PRINT'):
-    try:
-        from rich import print
-        # from rich.highlighter import ISO8601Highlighter, JSONHighlighter
-        HAS_PPRINT = True
-    except Exception:
-        msg = ("rich module could not be imported! Not fatal, but some pretty print features will not be available.\n Make sure you can do:\npython3 -c 'from rich.pretty import pprint'")
-        logging.error(msg)
-
 
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE

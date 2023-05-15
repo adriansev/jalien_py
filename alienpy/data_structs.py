@@ -137,7 +137,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
         """Print the in json format the content of ansdict, if existent"""
         if 'json' in opts:
             if self.ansdict:
-                json_out = json.dumps(self.ansdict, sort_keys = True, indent = 4)
+                json_out = json.dumps(self.ansdict, sort_keys = True, indent = 2)
                 print(json_out, flush = True)
                 DEBUG = os.getenv('ALIENPY_DEBUG', '')
                 if DEBUG: logging.debug(json_out)

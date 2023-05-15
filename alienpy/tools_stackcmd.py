@@ -7,7 +7,7 @@ from .global_vars import *  # nosec PYL-W0614
 deque = collections.deque
 
 def push2stack(path: str):
-    if not str: return
+    if not str or 'AlienSessionInfo' not in globals(): return
     home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
     if home and home in path: path = path.replace(home, '~')
