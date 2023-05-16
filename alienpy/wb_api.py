@@ -3,6 +3,7 @@
 import os
 import json
 import shlex
+import traceback
 
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
@@ -10,7 +11,9 @@ from .setup_logging import print_out, print_err
 
 from .wb_async import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
+from .tools_wb import get_help_srv
 from .tools_stackcmd import push2stack, deque_pop_pos
+from .tools_files import path_readable
 
 
 def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False):

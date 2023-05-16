@@ -2,6 +2,7 @@
 
 import traceback
 from typing import Union
+import time
 from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
@@ -10,6 +11,7 @@ from .wb_async import IsWbConnected
 from .wb_api import SendMsg  # nosec PYL-W0614
 from .connect_ssl import get_certs_names
 from .tools_files import path_readable
+from .tools_nowb import deltat_ms_perf
 
 
 def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
