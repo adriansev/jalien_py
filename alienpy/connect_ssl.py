@@ -26,7 +26,6 @@ except Exception:
 
 ##   GLOBALS
 from .global_vars import *  # nosec PYL-W0614
-from .data_structs import CertsInfo  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 

@@ -4,16 +4,17 @@ import os
 import json
 import shlex
 import traceback
+from typing import Union
+import time
 
 from .global_vars import *  # nosec PYL-W0614
-from .data_structs import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 
 from .wb_async import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
-from .tools_wb import get_help_srv
 from .tools_stackcmd import push2stack, deque_pop_pos
 from .tools_files import path_readable
+from .connect_ssl import get_certs_names
 
 
 def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False):
@@ -454,6 +455,52 @@ def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
         if args[0] == '-': args = [AlienSessionInfo['prevdir']]
         if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
     return SendMsg(wb, 'cd', args, opts)
+
+
+def get_list_entries(wb, lfn, fullpath: bool = False) -> list:
+    """return a list of entries of the lfn argument, full paths if 2nd arg is True"""
+    key = 'path' if fullpath else 'name'
+    ret_obj = SendMsg(wb, 'ls', ['-nomsg', '-a', '-F', os.path.normpath(lfn)])
+    if ret_obj.exitcode != 0: return []
+    return [item[key] for item in ret_obj.ansdict['results']]
+
+
+def lfn_list(wb, lfn: str = ''):
+    """Completer function : for a given lfn return all options for latest leaf"""
+    if not wb: return []
+    if not lfn: lfn = '.'  # AlienSessionInfo['currentdir']
+    list_lfns = []
+    lfn_path = Path(lfn)
+    base_dir = '/' if lfn_path.parent.as_posix() == '/' else f'{lfn_path.parent.as_posix()}/'
+    name = f'{lfn_path.name}/' if lfn.endswith('/') else lfn_path.name
+
+    def item_format(base_dir, name, item):
+        # print_out(f'\nbase_dir: {base_dir} ; name: {name} ; item: {item}')
+        if name.endswith('/') and name != '/':
+            return f'{name}{item}' if base_dir == './' else f'{base_dir}{name}{item}'
+        return item if base_dir == './' else f'{base_dir}{item}'
+
+    if lfn.endswith('/'):
+        listing = get_list_entries(wb, lfn)
+        list_lfns = [item_format(base_dir, name, item) for item in listing]
+    else:
+        listing = get_list_entries(wb, base_dir)
+        list_lfns = [item_format(base_dir, name, item) for item in listing if item.startswith(name)]
+    return list_lfns
+
+
+def wb_ping(wb) -> float:
+    """Websocket ping function, it will return rtt in ms"""
+    init_begin = time.perf_counter()
+    if IsWbConnected(wb):
+        return float(deltat_ms_perf(init_begin))
+    return float(-1)
+
+
+def get_help_srv(wb, cmd: str = '') -> RET:
+    """Return the help option for server-side known commands"""
+    if not cmd: return RET(1, '', 'No command specified for help request')
+    return SendMsg(wb, f'{cmd} -h')
 
 
 class Msg:

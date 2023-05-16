@@ -40,14 +40,6 @@ except Exception:
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
 
-### 1st dependencies that do not have internal imports/or minimal ones
-
-##   VERSION STRINGS
-from .version import *  # nosec PYL-W0614
-
-##   Data strucutures definitons
-from .data_structs import *  # nosec PYL-W0614
-
 ##   IMPORT GLOBAL VARIABLES
 from .global_vars import *  # nosec PYL-W0614
 
@@ -60,7 +52,7 @@ setup_logging(bool(DEBUG), DEBUG_FILE)
 #########################
 #   ASYNCIO MECHANICS
 #########################
-from .wb_api import *  # nosec PYL-W0614
+from .wb_api import SendMsg, InitConnection, cd, retf_print  # nosec PYL-W0614
 #########################
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -68,9 +60,6 @@ from .connect_ssl import CertInfo, CertVerify, CertKeyMatch, get_certs_names
 
 ##   General misc functions library
 from .tools_nowb import *  # nosec PYL-W0614
-
-##   Functions that use/connect to central services
-from .tools_wb import *  # nosec PYL-W0614
 
 # commands stack tools
 from .tools_stackcmd import push2stack, deque_pop_pos

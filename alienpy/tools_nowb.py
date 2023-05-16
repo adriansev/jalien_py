@@ -12,7 +12,6 @@ import grp
 import pwd
 import urllib.request as urlreq
 
-from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 

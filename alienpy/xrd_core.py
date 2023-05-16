@@ -9,9 +9,8 @@ import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
 
 from .global_vars import *  # nosec PYL-W0614
-from .data_structs import *  # nosec PYL-W0614
-from .version import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
+from .wb_api import retf_print # nosec PYL-W0614
 from .xrd_tools import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err

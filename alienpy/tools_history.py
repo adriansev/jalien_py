@@ -1,14 +1,9 @@
 '''alienpy:: Setup history for interactive shell'''
 
 from typing import Union
-from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
-##from .wb_async import *  # nosec PYL-W0614
-from .wb_api import *  # nosec PYL-W0614
-
-##   Functions that use/connect to central services
-from .tools_wb import *  # nosec PYL-W0614
+from .wb_api import lfn_list  # nosec PYL-W0614
 
 
 HAS_READLINE = False
@@ -50,8 +45,6 @@ def setupHistory(wb) -> None:
     def startup_hook() -> None:
         rl.append_history_file(1, histfile)  # before next prompt save last line
     rl.set_startup_hook(startup_hook)
-
-
 
 
 if __name__ == '__main__':
