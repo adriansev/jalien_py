@@ -5,7 +5,6 @@ from typing import Union
 from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
-##from .wb_async import *  # nosec PYL-W0614
 from .wb_api import *  # nosec PYL-W0614
 from .connect_ssl import get_certs_names
 from .tools_files import path_readable

@@ -8,6 +8,7 @@ from .data_structs import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
 import multiprocessing as mp
 import traceback
+import xml.etree.ElementTree as ET  # nosec
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
@@ -436,6 +437,32 @@ def make_tmp_fn(lfn: str = '', ext: str = '', uuid5: bool = False) -> str:
 def get_lfn_name(tmp_name: str = '', ext: str = '') -> str:
     lfn = tmp_name.replace(ext, '') if ext else tmp_name.replace(f'_{str(os.getuid())}.alienpy_tmp', '')
     return lfn.replace(f'{TMPDIR}/', '').replace("%%", "/")
+
+
+def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
+    """Get a file and return an XML element structure"""
+    if not filepath or not os.path.isfile(filepath): return ALIEN_COLLECTION_EL()
+    p = Path(filepath).expanduser().resolve(strict = True)
+    if p.is_dir(): return ALIEN_COLLECTION_EL()
+    p_stat = p.stat()
+    turl = f'file://{p.as_posix()}'
+    return ALIEN_COLLECTION_EL(
+        name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
+        dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
+        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",
+        size = str(p_stat.st_size), turl = turl, type = 'f')
+
+
+def mk_xml_local(filepath_list: list):
+    """Create AliEn collection XML output for local files"""
+    xml_root = ET.Element('alien')
+    collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
+    for idx, item in enumerate(filepath_list, start = 1):
+        e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
+        ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
+    oxml = ET.tostring(xml_root, encoding = 'ascii')
+    dom = MD.parseString(oxml)  # nosec B318:blacklist
+    return dom.toprettyxml()
 
 
 if __name__ == '__main__':

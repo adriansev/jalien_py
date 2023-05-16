@@ -70,8 +70,8 @@ ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a r
 emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 
 # global session state;
-AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'commandlist': [], 'user': '', 'exitcode': int(-1), 'session_started': False,
-                    'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
+AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'user': '', 'exitcode': int(-1), 'session_started': False,
+                    'commandlist': [], 'commandlist_srv': [], 'cmd2func_map_nowb': {}, 'cmd2func_map_client': {}, 'cmd2func_map_srv': {}, 'templist': [], 'alias_cache': {},
                     'pathq': deque([]), 'show_date': False, 'show_lpwd': False,
                     'use_usercert': False, 'verified_cert': False, 'verified_token': False,
                     'user_cert': '', 'user_key': '', 'token_cert': '', 'token_key': ''}

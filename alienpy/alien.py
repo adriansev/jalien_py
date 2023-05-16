@@ -1383,39 +1383,9 @@ def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     return CertKeyMatch(AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
 
 
-def make_func_map_clean_server():
-    """Remove from server list the client-side re-implementations"""
-    global AlienSessionInfo
-    del AlienSessionInfo['cmd2func_map_srv']['cd']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cd')
-
-    del AlienSessionInfo['cmd2func_map_srv']['cp']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cp')
-
-    del AlienSessionInfo['cmd2func_map_srv']['ping']
-    list_remove_item(AlienSessionInfo['commandlist'], 'ping')
-
-    del AlienSessionInfo['cmd2func_map_srv']['ps']
-    list_remove_item(AlienSessionInfo['commandlist'], 'ps')
-
-    del AlienSessionInfo['cmd2func_map_srv']['submit']
-    list_remove_item(AlienSessionInfo['commandlist'], 'submit')
-
-    del AlienSessionInfo['cmd2func_map_srv']['token']
-    list_remove_item(AlienSessionInfo['commandlist'], 'token')
-
-    del AlienSessionInfo['cmd2func_map_srv']['user']
-    list_remove_item(AlienSessionInfo['commandlist'], 'user')
-
-    del AlienSessionInfo['cmd2func_map_srv']['cat']
-    list_remove_item(AlienSessionInfo['commandlist'], 'cat')
-
-    del AlienSessionInfo['cmd2func_map_srv']['toXml']
-    list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
-
-
 def make_func_map_nowb():
     """client side functions (new commands) that do not require connection to jcentral"""
+    if 'AlienSessionInfo' not in globals(): return
     if AlienSessionInfo['cmd2func_map_nowb']: return
     AlienSessionInfo['cmd2func_map_nowb']['prompt'] = DO_prompt
     AlienSessionInfo['cmd2func_map_nowb']['token-info'] = DO_tokeninfo
@@ -1438,6 +1408,7 @@ def make_func_map_nowb():
 
 def make_func_map_client():
     """client side functions (new commands) that DO require connection to jcentral"""
+    if 'AlienSessionInfo' not in globals(): return
     if AlienSessionInfo['cmd2func_map_client']: return
 
     # client side function (overrides) with signature : (wb, args, opts)
@@ -1482,56 +1453,33 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
 
 
-def getSessionVars(wb):
-    """Initialize the global session variables : cleaned up command list, user, home dir, current dir"""
-    global AlienSessionInfo
-    if AlienSessionInfo['user']: return  # user session variable is already set, then return
-    if not wb: return
-    # get the command list just once per session connection (a reconnection will skip this)
-    ret_obj = SendMsg(wb, 'commandlist', [])
-    # first executed commands, let's initialize the following (will be re-read at each ProcessReceivedMessage)
-    if not ret_obj.ansdict or 'results' not in ret_obj.ansdict:
-        print_err("Start session:: could not get command list, let's exit.")
-        sys.exit(1)
-    csd_cmds_re = re.compile(r'.*_csd$')
-    AlienSessionInfo['commandlist'] = [cmd["commandlist"] for cmd in ret_obj.ansdict["results"] if not csd_cmds_re.match(cmd["commandlist"])]
+def constructCmdList():
+    """Construct the command to function mappings and the command list"""
+    if 'AlienSessionInfo' not in globals(): return
+    if AlienSessionInfo['cmd2func_map_client']: return
+
+    # remove client side re-implementations of server commands
+    list_remove_item(AlienSessionInfo['commandlist'], 'cat')
+    list_remove_item(AlienSessionInfo['commandlist'], 'cd')
+    list_remove_item(AlienSessionInfo['commandlist'], 'cp')
+    list_remove_item(AlienSessionInfo['commandlist'], 'ping')
+    list_remove_item(AlienSessionInfo['commandlist'], 'ps')
+    list_remove_item(AlienSessionInfo['commandlist'], 'submit')
+    list_remove_item(AlienSessionInfo['commandlist'], 'token')
+    list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
+    list_remove_item(AlienSessionInfo['commandlist'], 'user')        
 
     # server commands, signature is : (wb, command, args, opts)
     for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg
-    make_func_map_clean_server()
 
-    make_func_map_client()  # GLOBAL!! add to cmd2func_map_client the list of client-side implementations
+    # add command to function mappins for client-side command implementations
+    make_func_map_client()
 
     # these are aliases, or directly interpreted
     AlienSessionInfo['commandlist'].extend(['ll', 'la', 'lla'])
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])    # add nowb cmds to list
     AlienSessionInfo['commandlist'] = sorted(set(AlienSessionInfo['commandlist']))
-
-
-def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert: bool = False, localConnect: bool = False):
-    """Create a session to AliEn services, including session globals and token regeneration"""
-    global AlienSessionInfo, ALIENPY_GLOBAL_WB
-    
-    wb = AlienConnect(wb, token_args, use_usercert, localConnect)
-    ALIENPY_GLOBAL_WB = wb
-
-    # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
-    if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars ONLY ONCE
-        AlienSessionInfo['session_started'] = True
-        session_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
-        getSessionVars(wb)  # no matter if command or interactive mode, we need alienHome, currentdir, user and commandlist
-        if session_begin:
-            msg = f">>>   Time for session initialization: {deltat_ms_perf(session_begin)} ms"
-            if DEBUG: logging.debug(msg)
-            if TIME_CONNECT: print_out(msg)
-
-    # if this is a reconnection, make sure on the server we are in the last known current directory
-    if AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'], 'log')
-
-    # if usercert connection always regenerate token if connected with usercert
-    if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
-    return wb
 
 
 def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET:
@@ -1589,7 +1537,8 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     # make the assumption that only valid output (exitcode == 0) have a reason to be processed by a shell command
     if ret_obj.exitcode != 0: return ret_obj
 
-    if 'timing_ms' in ret_obj.ansdict['metadata']:
+    # client side commands will not have metadata so neither 'timing_ms'
+    if 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
         ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
 
     if shellcmd and ret_obj.out:
@@ -1654,7 +1603,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         else:
             if wb is None:
                 # If not prezent init connection and if command is token-init (without help being invoked) then use usercert
-                wb = InitConnection(wb, args, use_usercert = (cmd == 'token-init' and not is_help(args)))
+                wb = InitConnection(wb, args, use_usercert = (cmd == 'token-init' and not is_help(args)), cmdlist_func = constructCmdList)
                 ALIENPY_GLOBAL_WB = wb
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
@@ -1678,7 +1627,7 @@ def JAlien(commands: str = '') -> int:
     if commands: return ProcessCommandChain(ALIENPY_GLOBAL_WB, commands)
 
     # Start interactive/shell mode
-    ALIENPY_GLOBAL_WB = InitConnection()  # we are doing the connection recovery and exception treatment in AlienConnect()
+    ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
 
     setupHistory(ALIENPY_GLOBAL_WB)  # Setup command history
@@ -1711,7 +1660,7 @@ class AliEn:
     __slots__ = ('internal_wb', 'opts')
 
     def __init__(self, opts = ''):
-        self.internal_wb = InitConnection()
+        self.internal_wb = InitConnection(cmdlist_func = constructCmdList)
         self.opts = opts
 
     def run(self, cmd, opts = '') -> Union[RET, str]:
