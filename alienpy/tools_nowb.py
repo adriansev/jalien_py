@@ -457,7 +457,7 @@ def convert_trace2dict(trace:str = '') -> dict:
 
 def convert_jdl2dict(jdl:str = '') -> dict:
     """Convert an JAliEn jdl to a dictionary"""
-    jdl_dict = dict()
+    jdl_dict = {}
     for line in re.split(r';\s+', jdl):
         line = re.sub(r'\s+', ' ', line).strip()
         k, _, v = line.partition('=')

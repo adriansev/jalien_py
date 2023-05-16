@@ -31,11 +31,6 @@ from .tools_nowb import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 
 
-def get_certs_names() -> CertsInfo:
-    """Provide the standard file names for used certificates"""
-    return CertsInfo(USERCERT_NAME, USERKEY_NAME, TOKENCERT_NAME, TOKENKEY_NAME)
-
-
 def get_ca_path() -> str:
     """Return either the CA path or file; bailout application if not found"""
     system_ca_path = '/etc/grid-security/certificates'
@@ -96,8 +91,7 @@ def IsValidCert(fname: str) -> bool:
 
 def get_valid_certs() -> tuple:
     """Return valid names for user certificate or None"""
-    global AlienSessionInfo
-    if AlienSessionInfo['verified_cert']: return AlienSessionInfo['user_cert'], AlienSessionInfo['user_key']
+    if 'AlienSessionInfo' in globals() and AlienSessionInfo['verified_cert']: return AlienSessionInfo['user_cert'], AlienSessionInfo['user_key']
 
     FOUND = path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME)
     if not FOUND:
@@ -111,17 +105,19 @@ def get_valid_certs() -> tuple:
         logging.error(msg)
         return None, None
 
-    AlienSessionInfo['verified_cert'] = True  # This means that we already checked
-    AlienSessionInfo['user_cert'] = USERCERT_NAME
-    AlienSessionInfo['user_key'] = USERKEY_NAME
+    if 'AlienSessionInfo' in globals():
+        AlienSessionInfo['verified_cert'] = True  # This means that we already checked
+        AlienSessionInfo['user_cert'] = USERCERT_NAME
+        AlienSessionInfo['user_key'] = USERKEY_NAME
     return USERCERT_NAME, USERKEY_NAME
 
 
 def get_valid_tokens() -> tuple:
     """Get the token filenames, including the temporary ones used as env variables"""
-    global AlienSessionInfo, TOKENCERT_NAME, TOKENKEY_NAME
+    global TOKENCERT_NAME, TOKENKEY_NAME
     random_str = None
     cert_suffix = None
+    ENV_TOKENCERT = ENV_TOKENKEY = None
     if not path_readable(TOKENCERT_NAME) and TOKENCERT_NAME.startswith('-----BEGIN CERTIFICATE-----'):  # and is not a file
         random_str = str(uuid.uuid4())
         cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
@@ -129,19 +125,22 @@ def get_valid_tokens() -> tuple:
         temp_cert.write(TOKENCERT_NAME.encode(encoding = "ascii", errors = "replace"))
         temp_cert.seek(0)
         TOKENCERT_NAME = temp_cert.name  # temp file was created, let's give the filename to tokencert
-        AlienSessionInfo['templist'].append(TOKENCERT_NAME)  # type: ignore[attr-defined]
+        ENV_TOKENCERT = True
     if not path_readable(TOKENKEY_NAME) and TOKENKEY_NAME.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)
         temp_key.write(TOKENKEY_NAME.encode(encoding = "ascii", errors = "replace"))
         temp_key.seek(0)
         TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
-        AlienSessionInfo['templist'].append(TOKENKEY_NAME)  # type: ignore[attr-defined]
+        ENV_TOKENKEY
 
     if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
-        AlienSessionInfo['verified_token'] = True
-        AlienSessionInfo['token_cert'] = TOKENCERT_NAME
-        AlienSessionInfo['token_key'] = TOKENKEY_NAME
+        if 'AlienSessionInfo' in globals():
+            AlienSessionInfo['verified_token'] = True
+            AlienSessionInfo['token_cert'] = TOKENCERT_NAME
+            AlienSessionInfo['token_key'] = TOKENKEY_NAME
+            if ENV_TOKENCERT: AlienSessionInfo['templist'].append(TOKENKEY_NAME)  # type: ignore[attr-defined]
+            if ENV_TOKENKEY: AlienSessionInfo['templist'].append(TOKENCERT_NAME)  # type: ignore[attr-defined]
         return (TOKENCERT_NAME, TOKENKEY_NAME)
     return (None, None)
 

@@ -6,7 +6,7 @@ import sys
 import tempfile
 from collections import deque
 from pathlib import Path
-from .data_structs import COLORS_COLL  # nosec PYL-W0614
+from .data_structs import * # nosec PYL-W0614
 
 HAS_PPRINT = False
 if os.getenv('ALIENPY_FANCY_PRINT'):
@@ -34,11 +34,20 @@ COLORS = COLORS_COLL()  # definition of colors
 TMPDIR = tempfile.gettempdir()
 USER_HOME = Path.home().as_posix()
 
-# Have global variables for certificate file names, defaults being over-ridden by env vars
-USERCERT_NAME = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
-USERKEY_NAME  = os.getenv('X509_USER_KEY',  f'{USER_HOME}/.globus/userkey.pem')
-TOKENCERT_NAME = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
-TOKENKEY_NAME  = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+def get_certs_names() -> CertsInfo:
+    """Provide the standard file names for used certificates"""
+    usercert = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
+    userkey = os.getenv('X509_USER_KEY',  f'{USER_HOME}/.globus/userkey.pem')
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+    return CertsInfo(usercert, userkey, tokencert, tokenkey)
+
+CERT_NAMES = get_certs_names()
+# Have global variables for certificate file names, defaults being overridden by env vars
+USERCERT_NAME = CERT_NAMES.user_cert
+USERKEY_NAME = CERT_NAMES.user_key
+TOKENCERT_NAME = CERT_NAMES.token_cert
+TOKENKEY_NAME = CERT_NAMES.token_key
 
 HAS_TTY = sys.stdout.isatty()
 HAS_COLOR = HAS_TTY  # if it has tty then it supports colors

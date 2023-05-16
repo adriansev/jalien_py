@@ -1,5 +1,6 @@
 '''alienpy:: Functions that use WebSocket to talk with central services'''
 
+import traceback
 from typing import Union
 from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
@@ -7,11 +8,11 @@ from .setup_logging import print_out, print_err
 ##from .wb_async import *  # nosec PYL-W0614
 from .wb_api import *  # nosec PYL-W0614
 from .connect_ssl import get_certs_names
+from .tools_files import path_readable
 
 
 def token(wb, args: Union[None, list] = None) -> int:
     """(Re)create the tokencert and tokenkey files"""
-    global AlienSessionInfo
     if not wb: return 1
     if not args: args = []
     certs_info = get_certs_names()
@@ -55,10 +56,10 @@ def token(wb, args: Union[None, list] = None) -> int:
 
 def token_regen(wb, args: Union[None, list] = None):
     """Do the disconnect, connect with user cert, generate token, re-connect with token procedure"""
-    global AlienSessionInfo
     wb_usercert = None
     if not args: args = []
-    if not AlienSessionInfo['use_usercert']:
+
+    if 'AlienSessionInfo' in globals() and not AlienSessionInfo['use_usercert']:
         wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
             wb_usercert = InitConnection(wb, args, use_usercert = True)  # we have to reconnect with the new token

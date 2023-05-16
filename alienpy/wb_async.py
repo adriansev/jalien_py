@@ -39,7 +39,6 @@ start_asyncio()
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
-    global AlienSessionInfo
 
     if not host:
         msg = 'wb_create:: provided host argument is empty'
@@ -87,7 +86,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         certs_info = renewCredFilesInfo()
 
         # Check the presence of user certs and bailout before anything else
-        if not AlienSessionInfo['token_cert'] and not AlienSessionInfo['user_cert']:
+        if not certs_info.token_cert and not certs_info.user_cert:
             print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
             sys.exit(126)
 
