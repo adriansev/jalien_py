@@ -131,7 +131,7 @@ def get_valid_tokens() -> tuple:
         temp_key.write(TOKENKEY_NAME.encode(encoding = "ascii", errors = "replace"))
         temp_key.seek(0)
         TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
-        ENV_TOKENKEY
+        ENV_TOKENKEY = True
 
     if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
         if 'AlienSessionInfo' in globals():

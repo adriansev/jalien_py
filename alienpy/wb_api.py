@@ -206,7 +206,7 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
     elif isinstance(result, dict):
         out_dict = result
     else:
-        msg = f'retf_result2ret:: Wrong type of argument'
+        msg = 'retf_result2ret:: Wrong type of argument'
         logging.error(msg)
         return RET(42, '', msg)  # type: ignore [call-arg]
 
@@ -305,7 +305,7 @@ def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False
         except Exception as e:
             print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
             return
-    if isinstance(in_arg, dict) or isinstance(in_arg, list):
+    if isinstance(in_arg, (dict, list)):
         indent = None if compact else 2
         separators = (',', ':') if compact else None
         if 'HAS_PPRINT' in globals() and HAS_PPRINT:

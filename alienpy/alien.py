@@ -515,7 +515,7 @@ def DO_getCE(wb, args: list = None) -> RET:
 
     if select_host:
         if select_list: ce_list_dict = select_list[:]
-        select_list = [ce for ce in ce_list_dict if match_name(ce, select_host) ]
+        select_list = [ce for ce in ce_list_dict if match_host(ce, select_host) ]
 
     if select_part:
         if select_list: ce_list_dict = select_list[:]
@@ -665,7 +665,6 @@ task name / detector name / [ / time [ / key = value]* ]
     ccdb_default_host = 'http://alice-ccdb.cern.ch/'
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
-    do_compact = get_arg(args, '-compact')
     do_download = get_arg(args, '-get')
 
     dest_arg = get_arg_value(args, '-dst')
@@ -681,9 +680,9 @@ task name / detector name / [ / time [ / key = value]* ]
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     q_dict = q.json()
-    q_path = q_dict.pop('path')
-    q_latest = q_dict.pop('latest')
-    q_patternMatching = q_dict.pop('patternMatching')
+    # q_path = q_dict.pop('path')
+    # q_latest = q_dict.pop('latest')
+    # q_patternMatching = q_dict.pop('patternMatching')
     list(map(ccdb_json_cleanup, q_dict['objects']))
 
     if not do_unixtime:
@@ -1517,7 +1516,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
-    if ret_obj is None: return RET(1, '', f'ProcessInput:: there was no return object!! Invalid state, contact developer!')
+    if ret_obj is None: return RET(1, '', 'ProcessInput:: there was no return object!! Invalid state, contact developer!')
 
     msg_timing = f'>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms' if time_begin else ''
 
