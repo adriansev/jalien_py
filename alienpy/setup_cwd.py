@@ -4,7 +4,7 @@ import os
 import logging
 from .global_vars import *  # nosec PYL-W0614
 from .tools_nowb import read_conf_file
-from .tools_wb import cd
+from .wb_api import cd
 
 
 def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")

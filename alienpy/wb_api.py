@@ -10,8 +10,6 @@ from .setup_logging import print_out, print_err
 
 from .wb_async import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
-from .tools_wb import cd  # nosec PYL-W0614
-
 from .tools_stackcmd import push2stack, deque_pop_pos
 
 
@@ -371,6 +369,88 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     if 'nokeys' in opts: args.insert(0, '-nokeys')
     jsoncmd = {"command": cmd, "options": args}
     return jsoncmd if get_dict else json.dumps(jsoncmd)
+
+
+
+def token(wb, args: Union[None, list] = None) -> int:
+    """(Re)create the tokencert and tokenkey files"""
+    if not wb: return 1
+    if not args: args = []
+    certs_info = get_certs_names()
+
+    ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
+    if ret_obj.exitcode != 0:
+        logging.error('Token request returned error')
+        return retf_print(ret_obj, 'err')
+    tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
+    tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
+    if not tokencert_content or not tokenkey_content:
+        logging.error('Token request valid but empty fields!!')
+        return int(42)  # ENOMSG
+
+    try:
+        if path_readable(certs_info.token_cert):
+            os.chmod(certs_info.token_cert, 0o600)  # make it writeable
+            os.remove(certs_info.token_cert)
+        with open(certs_info.token_cert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
+        os.chmod(certs_info.token_cert, 0o400)  # make it readonly
+    except Exception:
+        print_err(f'Error writing to file the aquired token cert; check the log file {DEBUG_FILE}!')
+        logging.debug(traceback.format_exc())
+        return 5  # EIO
+
+    try:
+        if path_readable(certs_info.token_key):
+            os.chmod(certs_info.token_key, 0o600)  # make it writeable
+            os.remove(certs_info.token_key)
+        with open(certs_info.token_key, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
+        os.chmod(certs_info.token_key, 0o400)  # make it readonly
+    except Exception:
+        print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
+        logging.debug(traceback.format_exc())
+        return 5  # EIO
+    if 'AlienSessionInfo' in globals(): 
+        AlienSessionInfo['token_cert'] = certs_info.token_cert
+        AlienSessionInfo['token_key'] = certs_info.token_key
+    return int(0)
+
+
+def token_regen(wb, args: Union[None, list] = None):
+    """Do the disconnect, connect with user cert, generate token, re-connect with token procedure"""
+    wb_usercert = None
+    if not args: args = []
+
+    if 'AlienSessionInfo' in globals() and not AlienSessionInfo['use_usercert']:
+        wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
+        try:
+            wb_usercert = InitConnection(wb, args, use_usercert = True)  # we have to reconnect with the new token
+        except Exception:
+            logging.debug(traceback.format_exc())
+            return None  # we failed usercert connection
+
+    # now we are connected with usercert, so we can generate token
+    if token(wb_usercert, args) != 0: return wb_usercert
+    # we have to reconnect with the new token
+    wb_close(wb_usercert, code = 1000, reason = 'Re-initialize the connection with the new token')
+    if 'AlienSessionInfo' in globals(): AlienSessionInfo['use_usercert'] = False
+    wb_token_new = None
+    try:
+        wb_token_new = InitConnection(wb_token_new, args)
+        __ = SendMsg(wb_token_new, 'pwd', [], opts = 'nokeys')  # just to refresh cwd
+    except Exception:
+        logging.exception('token_regen:: error re-initializing connection')
+    return wb_token_new
+
+
+def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
+    """Override cd to add to home and to prev functions"""
+    if args is None: args = []
+    if isinstance(args, str): args = args.split()
+    if is_help(args): return get_help_srv(wb, 'cd')
+    if args:
+        if args[0] == '-': args = [AlienSessionInfo['prevdir']]
+        if 'nocheck' not in opts and AlienSessionInfo['currentdir'].rstrip('/') == args[0].rstrip('/'): return RET(0)  # type: ignore [call-arg]
+    return SendMsg(wb, 'cd', args, opts)
 
 
 class Msg:
