@@ -52,7 +52,7 @@ setup_logging(bool(DEBUG), DEBUG_FILE)
 #########################
 #   ASYNCIO MECHANICS
 #########################
-from .wb_api import SendMsg, InitConnection, cd, retf_print  # nosec PYL-W0614
+from .wb_api import SendMsg, InitConnection, cd, retf_print, get_help_srv, token_regen, wb_ping # nosec PYL-W0614
 #########################
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
