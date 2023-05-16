@@ -28,6 +28,7 @@ except Exception:
 from .global_vars import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
+from .setup_logging import print_err
 
 
 def get_ca_path() -> str:
