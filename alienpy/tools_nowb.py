@@ -10,9 +10,13 @@ import socket
 import time
 import grp
 import pwd
+import xml.etree.ElementTree as ET  # nosec
+import urllib.request as urlreq
+
 from .data_structs import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
+from .tools_files import md5
 
 
 def PrintColor(color: str) -> str:

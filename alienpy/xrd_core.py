@@ -5,7 +5,9 @@ import sys
 import xml.dom.minidom as MD  # nosec B408:blacklist
 import zipfile
 import traceback
+import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
+
 from .global_vars import *  # nosec PYL-W0614
 from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
@@ -954,8 +956,6 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     # if xml is requested or xmltodict missing
     if xml:
         if xml_raw: return response
-        # xml_stats = ET.fromstring(response)
-        # return ET.dump(xml_stats)
         xml_stats = MD.parseString(response)  # nosec B318:blacklist
         indent = '  '
         newl = '\n'

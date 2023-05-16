@@ -26,7 +26,6 @@ from typing import Callable
 from typing import Iterator
 import traceback
 import time
-import urllib.request as urlreq
 from urllib.parse import urlparse
 import xml.dom.minidom as MD  # nosec
 import xml.etree.ElementTree as ET  # nosec
@@ -588,7 +587,7 @@ def DO_siteJobs(wb, args: list = None) -> RET:
         return status.casefold() in job['status'].casefold()
 
     def match_user(job: Union[dict, None] = None, user: str = '') -> bool:
-        if job is None or not status: return False
+        if job is None or not user: return False
         return user.casefold() in job['owner'].casefold()
 
     select_list = []
@@ -1585,8 +1584,8 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
     if ret_obj is None: return RET(1, '', f'ProcessInput:: there was no return object!! Invalid state, contact developer!')
 
-    if time_begin: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms')
-    
+    msg_timing = f'>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms' if time_begin else ''
+
     # make the assumption that only valid output (exitcode == 0) have a reason to be processed by a shell command
     if ret_obj.exitcode != 0: return ret_obj
 
@@ -1598,6 +1597,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         if msg_timing: shell_run.stdout = f'{shell_run.stdout}\n{msg_timing}'
         return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr, ret_obj.ansdict)
 
+    if msg_timing: ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n{msg_timing}')
     return ret_obj
 
 
