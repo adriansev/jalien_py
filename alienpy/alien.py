@@ -12,7 +12,6 @@ import collections
 import datetime
 import difflib
 import json
-import re
 import signal
 from pathlib import Path
 import subprocess  # nosec
@@ -24,7 +23,6 @@ from typing import Union
 from typing import Optional
 from typing import Callable
 from typing import Iterator
-import traceback
 import time
 from urllib.parse import urlparse
 import xml.dom.minidom as MD  # nosec
@@ -56,7 +54,7 @@ from .wb_api import SendMsg, InitConnection, cd, retf_print, get_help_srv, token
 #########################
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import CertInfo, CertVerify, CertKeyMatch, get_certs_names
+from .connect_ssl import CertInfo, CertVerify, CertKeyMatch  # , get_certs_names
 
 ##   General misc functions library
 from .tools_nowb import *  # nosec PYL-W0614

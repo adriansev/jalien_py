@@ -2,7 +2,6 @@
 
 from typing import Union
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
 from .wb_api import lfn_list  # nosec PYL-W0614
 
 

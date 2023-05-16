@@ -13,7 +13,7 @@ import pwd
 import urllib.request as urlreq
 
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
+from .setup_logging import print_out  # , print_err
 
 
 def PrintColor(color: str) -> str:

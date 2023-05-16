@@ -12,7 +12,7 @@ from .setup_logging import print_out, print_err
 
 from .wb_async import *  # nosec PYL-W0614
 from .tools_nowb import *  # nosec PYL-W0614
-from .tools_stackcmd import push2stack, deque_pop_pos
+from .tools_stackcmd import push2stack  # , deque_pop_pos
 from .tools_files import path_readable
 from .connect_ssl import get_certs_names
 
