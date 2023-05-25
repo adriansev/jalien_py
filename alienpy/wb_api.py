@@ -8,12 +8,18 @@ import traceback
 from typing import Union
 import time
 
+try:
+    import websockets.exceptions as wb_exceptions
+except Exception:
+    print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.exceptions as wb_exceptions'", file = sys.stderr, flush = True)
+    sys.exit(1)
+
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 
 from .async_tools import syncify
-from .wb_async import wb_create, wb_close, wb_sendmsg
-from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help
+from .wb_async import wb_create, wb_close, wb_sendmsg, wb_sendmsg_multi, IsWbConnected
+from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable
 from .tools_stackcmd import push2stack  # , deque_pop_pos
 from .tools_files import path_readable
 from .connect_ssl import get_certs_names
@@ -289,12 +295,12 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
             logging.exception('SendMsgMulti:: Abnormal connection status!!!')
         if result_list is None: time.sleep(0.2)
 
-    if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms(time_begin))
+    if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
     if not result_list: return []
     if 'rawstr' in opts: return result_list
     time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
-    if time_begin_decode: logging.debug('SendMsg::Result decoded: %s ms', deltat_ms(time_begin_decode))
+    if time_begin_decode: logging.debug('SendMsg::Result decoded: %s ms', deltat_ms_perf(time_begin_decode))
     return ret_obj_list  # noqa: R504
 
 
