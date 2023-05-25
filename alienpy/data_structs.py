@@ -1,8 +1,7 @@
 '''alienpy:: Definitions of data structures'''
 
 import sys
-from typing import NamedTuple
-from typing import Union
+from typing import Union, NamedTuple
 
 
 ##############################################

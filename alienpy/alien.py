@@ -18,11 +18,7 @@ import subprocess  # nosec
 import logging
 import shlex
 import statistics
-from typing import NamedTuple
-from typing import Union
-from typing import Optional
-from typing import Callable
-from typing import Iterator
+from typing import Union, NamedTuple, Optional, Callable, Iterator
 import time
 from urllib.parse import urlparse
 import xml.dom.minidom as MD  # nosec

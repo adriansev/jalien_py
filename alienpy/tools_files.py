@@ -1,14 +1,18 @@
 '''alienpy:: file and path manipulation tools/helpers - not-networked'''
 
 
+import datetime
 import multiprocessing as mp
+import logging
+from pathlib import Path
 import traceback
 import xml.etree.ElementTree as ET  # nosec
-import uuid
-from pathlib import Path
 import xml.dom.minidom as MD  # nosec B408:blacklist
+from typing import Union
+import uuid
 
-from .tools_nowb import *  # nosec PYL-W0614
+from .global_vars import *  # nosec PYL-W0614
+from .tools_nowb import uid2name, gid2name  # nosec PYL-W0614
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
