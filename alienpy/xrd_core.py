@@ -7,6 +7,7 @@ import zipfile
 import traceback
 import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
+import logging
 
 from .global_vars import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614

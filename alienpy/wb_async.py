@@ -3,6 +3,7 @@
 import os
 import sys
 import socket
+import logging
 
 try:
     import websockets.client as wb_client
