@@ -1,11 +1,8 @@
 '''alienpy:: Definitions of data structures'''
 
-import os
 import sys
 from typing import NamedTuple
 from typing import Union
-import json
-import logging
 
 
 ##############################################
