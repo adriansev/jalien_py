@@ -815,7 +815,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
             cksum_type, cksum_preset = get_hash_meta(copy_job.src)
             # If the remote file had no hash registered
             if not cksum_type or not cksum_preset:
-                logging.error(f'COPY:: MD5 missing for {copy_job.lfn}')
+                logging.error('COPY:: MD5 missing for %s', copy_job.lfn)
                 cksum_mode = 'none'; cksum_type = cksum_preset = '';
 
         delete_invalid_cksum = (not cksum_mode == 'none')  # if no checksumming mode, disable rmBadCksum
