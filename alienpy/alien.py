@@ -55,7 +55,7 @@ from .connect_ssl import CertInfo, CertVerify, CertKeyMatch
 ##   General misc functions library
 from .tools_nowb import (exitcode, signal_handler, cleanup_temp, import_aliases, list_remove_item, convert_trace2dict, convert_jdl2dict,
                          ccdb_json_cleanup, unixtime2local, file2list, queryML, convert_time, check_port, exit_message,
-                         get_arg, get_arg_value, PrintColor)
+                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key)
 
 from .tools_files import mk_xml_local, file2file_dict
 
@@ -72,8 +72,8 @@ from .setup_cwd import SessionSave, SessionRestore
 from .tools_history import setupHistory
 
 # XRootD functions
-from .xrd_tools import lfn2meta, lfn2uri
-from .xrd_core import xrd_config_init, HAS_XROOTD, xrd_client, DO_XrootdCp
+from .xrd_tools import lfn2meta, lfn2uri, expand_path_grid
+from .xrd_core import xrd_config_init, HAS_XROOTD, xrd_client, DO_XrootdCp, xrdfs_ping, xrdfs_q_config, xrdfs_q_stats, xrdstat2dict, xrdfs_stat, xrdstat_flags2dict
 # Global XRootD preferences
 xrd_config_init()
 
