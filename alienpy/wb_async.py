@@ -4,6 +4,7 @@ import os
 import sys
 import socket
 import logging
+import time
 
 try:
     import websockets.client as wb_client
@@ -22,9 +23,9 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         print("async_stagger module could not be imported! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
         sys.exit(1)
 
-from .version import *  # nosec PYL-W0614
 from .global_vars import *  # nosec PYL-W0614
-# from .tools_nowb import *  # nosec PYL-W0614
+from .version import ALIENPY_VERSION_STR  # nosec PYL-W0614
+from .tools_nowb import deltat_ms_perf
 
 from .setup_logging import print_err
 from .connect_ssl import create_ssl_context, renewCredFilesInfo
