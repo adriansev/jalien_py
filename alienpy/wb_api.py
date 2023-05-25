@@ -1,5 +1,6 @@
 """WEBSOCKET:: API for WebSOcket communications"""
 
+import sys
 import os
 import json
 import shlex
