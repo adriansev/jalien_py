@@ -5,6 +5,7 @@ import datetime
 import multiprocessing as mp
 import logging
 from pathlib import Path
+import pwd
 import traceback
 import xml.etree.ElementTree as ET  # nosec
 import xml.dom.minidom as MD  # nosec B408:blacklist
@@ -12,7 +13,8 @@ from typing import Union
 import uuid
 
 from .global_vars import *  # nosec PYL-W0614
-from .tools_nowb import uid2name, gid2name  # nosec PYL-W0614
+from .setup_logging import print_out, print_err
+from .tools_nowb import uid2name, gid2name, get_arg_value, get_lfn_key, valid_regex, time_unix2simple  # nosec PYL-W0614
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
@@ -291,7 +293,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     ansdict = {"results": results_list_filtered}
     lfn_list = [get_lfn_key(lfn_obj) for lfn_obj in results_list_filtered]
     stdout = '\n'.join(lfn_list)
-    return RET(exitcode, stdout, '', ansdict)
+    return RET(0, stdout, '', ansdict)
 
 
 def file_set_atime(path: str):
