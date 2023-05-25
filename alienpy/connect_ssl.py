@@ -169,7 +169,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
 
     if not cert or not key:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
-        os._exit(126)
+        os.exit(126)
 
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
@@ -191,7 +191,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     except Exception:
         logging.exception('Could not load verify location!!!\n')
         print_err(f'Verify location could not be loaded!!! check content of >>> {ca_verify_location} <<< and the log')
-        os._exit(126)  # EIO /* I/O error */
+        os.exit(126)  # EIO /* I/O error */
 
     if DEBUG: logging.debug('SSL context:: Loading cert,key pair:\n%s\n%s', cert, key)
     try:
@@ -199,7 +199,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     except Exception:
         logging.exception('Could not load certificates!!!\n')
         print_err(f'Error loading certificate pair!! Check the content of {DEBUG_FILE}')
-        os._exit(126)  # EIO /* I/O error */
+        os.exit(126)  # EIO /* I/O error */
 
     if DEBUG: logging.debug('\n... SSL context done.')
     return ctx
