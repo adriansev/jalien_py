@@ -5,6 +5,7 @@ import os
 import logging
 import uuid
 import traceback
+import datetime
 
 try:
     import ssl
@@ -26,26 +27,27 @@ except Exception:
 
 ##   GLOBALS
 from .global_vars import *  # nosec PYL-W0614
-from .tools_nowb import *  # nosec PYL-W0614
-from .tools_files import *  # nosec PYL-W0614
+from .tools_files import path_readable  # nosec PYL-W0614
 from .setup_logging import print_err
 
 
 def get_ca_path() -> str:
-    """Return either the CA path or file; bailout application if not found"""
+    """Return either the CA path or file, priority given to X509_CERT_FILE and X509_CERT_DIR"""
+    x509file = os.getenv('X509_CERT_FILE', default = '')
+    if x509file and os.path.isfile(x509file):
+        if DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
+        return x509file
+    if x509file: logging.error('X509_CERT_FILE set to %s but file is not accessible', x509file)
+
+    x509dir = os.getenv('X509_CERT_DIR', default = '')
+    if x509dir and os.path.isdir(x509dir):
+        if DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
+        return x509dir
+    if x509dir: logging.error('X509_CERT_DIR set to %s but directory is not accessible', x509dir)
+
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
-
-    x509file = os.getenv('X509_CERT_FILE') if os.path.isfile(str(os.getenv('X509_CERT_FILE'))) else ''
-    if x509file:
-        if DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
-        return x509file
-
-    x509dir = os.getenv('X509_CERT_DIR') if os.path.isdir(str(os.getenv('X509_CERT_DIR'))) else ''
-    if x509dir:
-        if DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
-        return x509dir
 
     capath_default = None
     if os.path.exists(alice_cvmfs_ca_path_lx):
@@ -55,7 +57,7 @@ def get_ca_path() -> str:
     else:
         if os.path.exists(system_ca_path): capath_default = system_ca_path
 
-    if not capath_default:
+    if not capath_default or not os.path.isdir(capath_default):
         msg = "No CA location or files specified or found!!! Connection will not be possible!!"
         print_err(msg)
         logging.error(msg)
@@ -175,7 +177,6 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
     ctx.check_hostname = False
-    if DEBUG: logging.debug("SSL context:: Load verify locations")
 
     ca_verify_location = get_ca_path()
     cafile = capath = None
@@ -184,20 +185,21 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     else:
         capath = ca_verify_location
 
+    if DEBUG: logging.debug('SSL context:: Loading verify location:\n%s', ca_verify_location)
     try:
         ctx.load_verify_locations(cafile = cafile, capath = capath)
     except Exception:
-        logging.exception('Could not load verify location >>> %s <<<\n', ca_verify_location)  # EIO /* I/O error */
+        logging.exception('Could not load verify location!!!\n')
         print_err(f'Verify location could not be loaded!!! check content of >>> {ca_verify_location} <<< and the log')
-        os._exit(126)
+        os._exit(126)  # EIO /* I/O error */
 
-    if DEBUG: logging.debug('SSL context:: Loading cert,key pair\n%s\n%s', cert, key)
+    if DEBUG: logging.debug('SSL context:: Loading cert,key pair:\n%s\n%s', cert, key)
     try:
         ctx.load_cert_chain(certfile = cert, keyfile = key)
     except Exception:
-        logging.exception('Could not load certificates!!!\n')  # EIO /* I/O error */
-        print_err('Error loading certificate pair!! Check the content of {DEBUG_FILE}')
-        os._exit(126)
+        logging.exception('Could not load certificates!!!\n')
+        print_err(f'Error loading certificate pair!! Check the content of {DEBUG_FILE}')
+        os._exit(126)  # EIO /* I/O error */
 
     if DEBUG: logging.debug('\n... SSL context done.')
     return ctx
