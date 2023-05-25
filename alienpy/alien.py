@@ -46,14 +46,14 @@ setup_logging(bool(DEBUG), DEBUG_FILE)
 #########################
 #   ASYNCIO MECHANICS
 #########################
-from .wb_api import SendMsg, InitConnection, cd, retf_print, get_help_srv, token_regen, wb_ping # nosec PYL-W0614
+from .wb_api import SendMsg, InitConnection, cd, retf_print, get_help_srv, token_regen, wb_ping
 #########################
 
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import CertInfo, CertVerify, CertKeyMatch  # , get_certs_names
+from .connect_ssl import CertInfo, CertVerify, CertKeyMatch
 
 ##   General misc functions library
-from .tools_nowb import *  # nosec PYL-W0614
+from .tools_nowb import exitcode, signal_handler, cleanup_temp, import_aliases, list_remove_item
 
 # commands stack tools
 from .tools_stackcmd import push2stack, deque_pop_pos
@@ -65,7 +65,7 @@ from .tools_shell import *  # nosec PYL-W0614
 from .setup_cwd import SessionSave, SessionRestore
 
 # Setup history
-from .tools_history import *  # nosec PYL-W0614
+from .tools_history import setupHistory
 
 # XRootD functions
 from .xrd_core import *  # nosec PYL-W0614
