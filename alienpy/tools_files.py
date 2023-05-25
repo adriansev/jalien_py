@@ -13,8 +13,8 @@ from typing import Union
 import uuid
 
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
-from .tools_nowb import uid2name, gid2name, get_arg_value, get_lfn_key, valid_regex, time_unix2simple  # nosec PYL-W0614
+from .setup_logging import print_err
+from .tools_nowb import uid2name, gid2name, get_arg_value, get_lfn_key, valid_regex, time_unix2simple, time_str2unixmili
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
 
