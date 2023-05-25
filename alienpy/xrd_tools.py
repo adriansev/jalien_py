@@ -4,7 +4,7 @@ import os
 from .global_vars import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 from .wb_api import SendMsg, SendMsgMulti, CreateJsonCommand, retf_print
-from .tools_nowb import get_arg
+from .tools_nowb import get_arg, PrintColor
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
