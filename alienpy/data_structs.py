@@ -133,31 +133,6 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     err: str = ''
     ansdict: dict = {}
 
-    def print(self, opts: str = '') -> None:
-        """Print the in json format the content of ansdict, if existent"""
-        if 'json' in opts:
-            if self.ansdict:
-                json_out = json.dumps(self.ansdict, sort_keys = True, indent = 2)
-                print(json_out, flush = True)
-                DEBUG = os.getenv('ALIENPY_DEBUG', '')
-                if DEBUG: logging.debug(json_out)
-            else:
-                print('This command did not return a json dictionary', file = sys.stderr, flush = True)
-            return
-
-        if self.exitcode != 0:
-            if 'info' in opts: logging.info(self.err)
-            if 'warn' in opts: logging.warning(self.err)
-            if 'err' in opts: logging.error(self.err)
-            if 'debug' in opts: logging.debug(self.err)
-            if self.err and not ('noerr' in opts or 'noprint' in opts):
-                print(f'{self.err.strip()}', file = sys.stderr, flush = True)
-        else:
-            if self.out and not ('noout' in opts or 'noprint' in opts):
-                print(f'{self.out.strip()}', flush = True)
-
-    __call__ = print
-
     def __bool__(self) -> bool:
         return bool(self.exitcode == 0)
 
