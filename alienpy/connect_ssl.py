@@ -27,7 +27,7 @@ except Exception:
 
 ##   GLOBALS
 from .global_vars import *  # nosec PYL-W0614
-from .tools_files import path_readable  # nosec PYL-W0614
+from .tools_files import path_readable
 from .tools_nowb import PrintColor
 from .setup_logging import print_err
 

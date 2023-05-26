@@ -10,10 +10,13 @@ import socket
 import time
 import grp
 import pwd
+import shutil
+from pathlib import Path
 import urllib.request as urlreq
 
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out  # , print_err
+from .setup_logging import print_out, print_err
+from .tools_shell import runShellCMD, is_cmd
 
 
 def PrintColor(color: str) -> str:
@@ -528,6 +531,45 @@ def ccdb_json_cleanup(item_dict: dict) -> None:
     item_dict.pop('UploadedBy', None)  #  useless for this application
     item_dict.pop('partName', None)  #  useless for this application
     item_dict.pop('InitialValidityLimit', None)  #  unclear use for this field
+
+
+def getCAcerts() -> RET:
+    GLOBUS_DIR = f'{USER_HOME}/.globus'
+    if not os.path.isdir(GLOBUS_DIR):
+        return RET(1, '', f'Could not find the user globus directory: {GLOBUS_DIR}')
+    if not is_cmd('git'):
+        return RET(1, '', 'git command not available')
+    if not is_cmd('rsync'):
+        return RET(1, '', 'rsync command not available')
+
+    CA_DIR = f'{GLOBUS_DIR}/certificates'
+    CA_DIR_TEMP = f'{GLOBUS_DIR}/aliencas_temp'
+
+    if os.path.isdir(CA_DIR_TEMP): shutil.rmtree(CA_DIR_TEMP, ignore_errors= True)
+    Path(CA_DIR_TEMP).mkdir(parents = True, exist_ok = True)
+
+    result = runShellCMD(f'git clone --single-branch --branch master --depth=1 https://github.com/alisw/alien-cas.git {CA_DIR_TEMP}', captureout = True, do_shell = True, timeout = 20)
+    if result.exitcode != 0:
+        return RET(1, '', 'Could not clone alien-cas repository!!!')
+    shutil.rmtree(f'{CA_DIR_TEMP}/.git', ignore_errors= True)
+
+    if os.path.isdir(CA_DIR): shutil.rmtree(CA_DIR, ignore_errors= True)
+    Path(CA_DIR).mkdir(parents = True, exist_ok = True)
+
+    result = runShellCMD(f'find {CA_DIR_TEMP} -type d -maxdepth 1 -mindepth 1 -exec rsync -av {{}}/ {CA_DIR} \;', captureout = True, do_shell = True, timeout = 5)
+    if result.exitcode != 0:
+        return RET(1, '', 'Could not rsync content to destination!!!')
+    shutil.rmtree(f'{CA_DIR_TEMP}', ignore_errors= True)
+
+    # check if openssl rehash (openssl >= 1.1) present
+    result = runShellCMD('openssl rehash 2>/dev/null', captureout = True, do_shell = True, timeout = 20)
+    # if the command gives error that means that is present and return error due to bad arguments
+    if result.exitcode == 1:
+        result = runShellCMD(f'openssl rehash {CA_DIR}', captureout = True, do_shell = True, timeout = 20)
+    else:
+        if is_cmd('c_rehash'):
+            result = runShellCMD(f'c_rehash {CA_DIR}', captureout = True, do_shell = True, timeout = 20)
+    return RET(0)
 
 
 if __name__ == '__main__':

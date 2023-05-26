@@ -4,6 +4,7 @@ import re
 import sys
 import subprocess  # nosec B404:blacklist
 import shlex
+from shutil import which
 from .data_structs import *  # nosec PYL-W0614
 from .setup_logging import print_err
 
@@ -36,6 +37,10 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     if except_msg: msg_err = f'{except_msg}\n{msg_err}'
     return RET(exitcode, msg_out, msg_err)
 
+
+def is_cmd(cmd:str = ''):
+    """Check if cmd is available in shell"""
+    return which(cmd) is not None
 
 
 if __name__ == '__main__':

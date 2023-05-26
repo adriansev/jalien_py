@@ -55,7 +55,7 @@ from .connect_ssl import CertInfo, CertVerify, CertKeyMatch
 ##   General misc functions library
 from .tools_nowb import (exitcode, signal_handler, cleanup_temp, import_aliases, list_remove_item, convert_trace2dict, convert_jdl2dict,
                          ccdb_json_cleanup, unixtime2local, file2list, queryML, convert_time, check_port, exit_message,
-                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf)
+                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf, getCAcerts)
 
 from .tools_files import mk_xml_local, file2file_dict, md5
 
@@ -1372,6 +1372,12 @@ def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
     return CertKeyMatch(AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
 
 
+def DO_getCAcerts(args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if len(args) > 0 and is_help(args): return RET(0, "Download CA certificates in ~/.globus/certificates", "")
+    return getCAcerts()
+
+
 def make_func_map_nowb():
     """client side functions (new commands) that do not require connection to jcentral"""
     if 'AlienSessionInfo' not in globals(): return
@@ -1393,6 +1399,7 @@ def make_func_map_nowb():
     AlienSessionInfo['cmd2func_map_nowb']['logout'] = DO_exit
     AlienSessionInfo['cmd2func_map_nowb']['checkAddr'] = DO_checkAddr
     AlienSessionInfo['cmd2func_map_nowb']['ccdb'] = DO_ccdb_query
+    AlienSessionInfo['cmd2func_map_nowb']['getCAcerts'] = DO_getCAcerts
 
 
 def make_func_map_client():
