@@ -13,11 +13,14 @@ except Exception:
     print("Python ssl module could not be imported! Make sure you can do:\npython3 -c 'import ssl'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-try:
-    import cryptography
-except Exception:
-    print("cryptography module could not be imported! Make sure you can do:\npython3 -c 'import cryptography'", file = sys.stderr, flush = True)
-    sys.exit(1)
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    try:
+        import cryptography
+    except Exception:
+        print("cryptography module could not be imported! Make sure you can do:\npython3 -c 'import cryptography'", file = sys.stderr, flush = True)
+        sys.exit(1)
 
 try:
     import OpenSSL
