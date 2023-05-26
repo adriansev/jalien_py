@@ -6,6 +6,7 @@ import datetime
 import json
 import re
 from typing import Union
+import logging
 import socket
 import time
 import grp
@@ -556,7 +557,7 @@ def getCAcerts() -> RET:
     if os.path.isdir(CA_DIR): shutil.rmtree(CA_DIR, ignore_errors= True)
     Path(CA_DIR).mkdir(parents = True, exist_ok = True)
 
-    result = runShellCMD(f'find {CA_DIR_TEMP} -type d -maxdepth 1 -mindepth 1 -exec rsync -av {{}}/ {CA_DIR} \;', captureout = True, do_shell = True, timeout = 5)
+    result = runShellCMD(f'find {CA_DIR_TEMP} -type d -maxdepth 1 -mindepth 1 -exec rsync -av {{}}/ {CA_DIR} \\;', captureout = True, do_shell = True, timeout = 5)
     if result.exitcode != 0:
         return RET(1, '', 'Could not rsync content to destination!!!')
     shutil.rmtree(f'{CA_DIR_TEMP}', ignore_errors= True)
