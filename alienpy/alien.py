@@ -18,7 +18,7 @@ import subprocess  # nosec
 import logging
 import shlex
 import statistics
-from typing import Union, NamedTuple, Optional, Callable, Iterator
+from typing import Union, NamedTuple
 import time
 from urllib.parse import urlparse
 import xml.dom.minidom as MD  # nosec
@@ -1463,7 +1463,7 @@ def constructCmdList():
     list_remove_item(AlienSessionInfo['commandlist'], 'submit')
     list_remove_item(AlienSessionInfo['commandlist'], 'token')
     list_remove_item(AlienSessionInfo['commandlist'], 'toXml')
-    list_remove_item(AlienSessionInfo['commandlist'], 'user')        
+    list_remove_item(AlienSessionInfo['commandlist'], 'user')
 
     # server commands, signature is : (wb, command, args, opts)
     for cmd in AlienSessionInfo['commandlist']: AlienSessionInfo['cmd2func_map_srv'][cmd] = SendMsg

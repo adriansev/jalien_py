@@ -71,7 +71,7 @@ def AlienConnect(wb = None, token_args: Union[None, list] = None, use_usercert: 
     jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
     # If presentent with existing socket, let's try to close it
-    if wb: wb_close(wb, code = 1000, reason = 'Close previous websocket')
+    if wb: _ = wb_close(wb, code = 1000, reason = 'Close previous websocket')
 
     # let's try to get a websocket
     if localConnect:
@@ -384,12 +384,12 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     return jsoncmd if get_dict else json.dumps(jsoncmd)
 
 
-
 def token(wb, args: Union[None, list] = None) -> int:
     """(Re)create the tokencert and tokenkey files"""
     if not wb: return 1
     if not args: args = []
     certs_info = get_certs_names()
+    _ = is_help(args, clean_args = True)
 
     ret_obj = SendMsg(wb, 'token', args, opts = 'nomsg')
     if ret_obj.exitcode != 0:
@@ -434,7 +434,7 @@ def token_regen(wb, args: Union[None, list] = None):
     if not args: args = []
 
     if 'AlienSessionInfo' in globals() and not AlienSessionInfo['use_usercert']:
-        wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
+        _ = wb_close(wb, code = 1000, reason = 'Lets connect with usercert to be able to generate token')
         try:
             wb_usercert = InitConnection(wb, args, use_usercert = True)  # we have to reconnect with the new token
         except Exception:
@@ -444,7 +444,7 @@ def token_regen(wb, args: Union[None, list] = None):
     # now we are connected with usercert, so we can generate token
     if token(wb_usercert, args) != 0: return wb_usercert
     # we have to reconnect with the new token
-    wb_close(wb_usercert, code = 1000, reason = 'Re-initialize the connection with the new token')
+    _ = wb_close(wb_usercert, code = 1000, reason = 'Re-initialize the connection with the new token')
     if 'AlienSessionInfo' in globals(): AlienSessionInfo['use_usercert'] = False
     wb_token_new = None
     try:

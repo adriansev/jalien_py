@@ -175,11 +175,14 @@ def deltat_us_perf(t0: Union[str, float, None] = None) -> str:
     return f"{(time.perf_counter() - float(t0)) * 1000000:.3f}"
 
 
-def is_help(args: Union[str, list]) -> bool:
+def is_help(args: Union[str, list], clean_args: bool = False) -> bool:
     if not args: return False
     if isinstance(args, str): args = args.split()
     help_opts = ('-h', '--h', '-help', '--help')
-    return any(opt in args for opt in help_opts)
+    help_arg_present = any(opt in args for opt in help_opts)
+    if help_arg_present and clean_args:
+        for opt in help_opts: get_arg(args, opt)
+    return help_arg_present
 
 
 def read_conf_file(conf_file: str) -> dict:
