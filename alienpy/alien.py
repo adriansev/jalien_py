@@ -888,6 +888,7 @@ def DO_ps(wb, args: Union[list, None] = None) -> RET:
 
 def DO_cat(wb, args: Union[list, None] = None) -> RET:
     """cat lfn :: apply cat on a downloaded lfn as a temporary file"""
+    if not args: return RET(1, '', 'DO_cat:: empty args!!')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'cat')
     return DO_run(wb, args, external = True)
@@ -895,6 +896,7 @@ def DO_cat(wb, args: Union[list, None] = None) -> RET:
 
 def DO_less(wb, args: Union[list, None] = None) -> RET:
     """less lfn :: apply less on a downloaded lfn as a temporary file"""
+    if not args: return RET(1, '', 'DO_less:: empty args!!')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'less')
     return DO_run(wb, args, external = True)
@@ -902,6 +904,7 @@ def DO_less(wb, args: Union[list, None] = None) -> RET:
 
 def DO_more(wb, args: Union[list, None] = None) -> RET:
     """more lfn :: apply more on a downloaded lfn as a temporary file"""
+    if not args: return RET(1, '', 'DO_more:: empty args!!')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'more')
     return DO_run(wb, args, external = True)
@@ -1558,7 +1561,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_chain = cmd_chain.replace(alias, alias_value)
 
     # for each command, save exitcode and RET of the command
-    exitcode = None
+    exitcode = -1
     cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n with regex
     for cmdline in cmdline_list:
         if not cmdline: continue

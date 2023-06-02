@@ -144,12 +144,12 @@ def InitConnection(wb = None, token_args: Union[None, list] = None, use_usercert
     return wb
 
 
-def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') -> Union[RET, str]:
+def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') -> RET:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
         msg = "SendMsg:: websocket not initialized"
         logging.info(msg)
-        return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
+        return RET(1, '', msg)  # type: ignore [call-arg]
     if not args: args = []
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
@@ -170,7 +170,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
 
     if not jsonmsg:
         logging.info("SendMsg:: json message is empty!")
-        return '' if 'rawstr' in opts else RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")  # type: ignore [call-arg]
+        return RET(1, '', f"SendMsg:: empty json with args:: {cmdline} {' '.join(args)} /opts= {opts}")  # type: ignore [call-arg]
 
     if DEBUG:
         logging.debug(f"Called from: {sys._getframe().f_back.f_code.co_name}\n>>>   SEND COMMAND:: {jsonmsg}")  # pylint: disable=protected-access
@@ -194,7 +194,6 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         logging.error(msg)
         return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM  
 
-    if 'rawstr' in opts: return result
     time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
     if time_begin_decode: logging.debug('SendMsg::Result decoded: %s us', deltat_us_perf(time_begin_decode))
@@ -260,7 +259,7 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     if not wb:
         msg = "SendMsg:: websocket not initialized"
         logging.info(msg)
-        return '' if 'rawstr' in opts else RET(1, '', msg)  # type: ignore [call-arg]
+        return RET(1, '', msg)  # type: ignore [call-arg]
     if not cmds_list: return []
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
@@ -298,7 +297,6 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
 
     if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
     if not result_list: return []
-    if 'rawstr' in opts: return result_list
     time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj_list = [retf_result2ret(result) for result in result_list]
     if time_begin_decode: logging.debug('SendMsg::Result decoded: %s ms', deltat_ms_perf(time_begin_decode))
@@ -395,8 +393,10 @@ def token(wb, args: Union[None, list] = None) -> int:
     if ret_obj.exitcode != 0:
         logging.error('Token request returned error')
         return retf_print(ret_obj, 'err')
-    tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
-    tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
+    tokencert_content = tokenkey_content = None
+    if 'results' in ret_obj.ansdict and len(ret_obj.ansdict.get('results')) > 0:
+        tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
+        tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
     if not tokencert_content or not tokenkey_content:
         logging.error('Token request valid but empty fields!!')
         return int(42)  # ENOMSG
