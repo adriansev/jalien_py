@@ -181,8 +181,8 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
 
     # prepare destination locations
     if isDownload:
+        mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
         try:  # we can try anyway, this is like mkdir -p
-            mk_path = Path(dst) if dst.endswith('/') else Path(dst).parent  # if destination is file create it dir parent
             mk_path.mkdir(parents=True, exist_ok=True)
         except Exception:
             logging.error(traceback.format_exc())
@@ -645,7 +645,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
             job_lfn = failed_lfn_copy_jobs2[0].token_request['lfn']
             job_isWrite = failed_lfn_copy_jobs2[0].isUpload
             tokens_retry2 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
-            if not tokens_retry2 or 'answer' not in tokens_retry1: continue
+            if not tokens_retry2 or 'answer' not in tokens_retry2: continue
             to_recover_list_try2.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry2['answer'], job_lfn))
 
         if to_recover_list_try2:

@@ -1,0 +1,24 @@
+{
+  "include": [ "alienpy" ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".git",
+    "attic"
+  ],
+
+  "ignore": [ "attic" ],
+
+  "strict": [ "alienpy" ],
+
+  "defineConstant": { },
+
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+
+  "pythonVersion": "3.9",
+  "pythonPlatform": "Linux",
+
+  "reportMissingImports": false
+
+}

@@ -113,16 +113,17 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
         socket_endpoint = None
         # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
         # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
+        init_begin_socket = None
         try:
             if DEBUG:
                 logging.debug('TRY ENDPOINT: %s:%s', host, port)
-                init_begin = time.perf_counter()
+                init_begin_socket = time.perf_counter()
             if os.getenv('ALIENPY_NO_STAGGER'):
                 socket_endpoint = socket.create_connection((host, int(port)))
             else:
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
-            if DEBUG:
-                logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
+            if init_begin_socket:
+                logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin_socket))
         except Exception as e:
             msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
             logging.error(msg)
@@ -134,14 +135,15 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             socket_endpoint_port = socket_endpoint.getpeername()[1]
             logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
             try:
-                if DEBUG: init_begin = time.perf_counter()
+                init_begin_wb = None
+                if DEBUG: init_begin_wb = time.perf_counter()
                 wb = await wb_client.connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions=[deflateFact],
                                              max_queue=QUEUE_SIZE, max_size=MSG_SIZE,
                                              ping_interval=PING_INTERVAL, ping_timeout=PING_TIMEOUT,
                                              close_timeout=CLOSE_TIMEOUT, extra_headers=headers_list)
 
-                if DEBUG:
-                    logging.debug('WEBSOCKET DELTA: %s ms', deltat_ms_perf(init_begin))
+                if init_begin_wb:
+                    logging.debug('WEBSOCKET DELTA: %s ms', deltat_ms_perf(init_begin_wb))
 
             except wb_exceptions.InvalidStatusCode as e:
                 msg = f'Invalid status code {e.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
