@@ -269,7 +269,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     file_list = None  # make a list of filepaths (that match a regex or a glob)
     if is_single_file:
         file_list = [directory]
-    elif is_regex:
+    elif is_regex and regex:
         file_list = [os.path.join(root, f) for (root, dirs, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
     else:
         file_list = [p.expanduser().resolve(strict = True).as_posix() for p in list(Path(directory).glob(f'**/{pattern}')) if p.is_file()]

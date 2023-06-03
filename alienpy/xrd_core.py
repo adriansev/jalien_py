@@ -9,6 +9,7 @@ import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
 import logging
 import shlex
+import subprocess
 import uuid
 import time
 

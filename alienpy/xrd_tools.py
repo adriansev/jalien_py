@@ -1,6 +1,9 @@
 '''alienpy:: XRootD related tooling/helpers'''
 
 import os
+import subprocess
+import shlex
+
 from .global_vars import *  # nosec PYL-W0614
 from .tools_files import *  # nosec PYL-W0614
 from .wb_api import SendMsg, SendMsgMulti, CreateJsonCommand, retf_print

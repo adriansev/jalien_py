@@ -394,9 +394,10 @@ def token(wb, args: Union[None, list] = None) -> int:
         logging.error('Token request returned error')
         return retf_print(ret_obj, 'err')
     tokencert_content = tokenkey_content = None
-    if 'results' in ret_obj.ansdict and len(ret_obj.ansdict.get('results')) > 0:
-        tokencert_content = ret_obj.ansdict.get('results')[0].get('tokencert', '')
-        tokenkey_content = ret_obj.ansdict.get('results')[0].get('tokenkey', '')
+    ret_results = ret_obj.ansdict if ret_obj.ansdict and 'results' in ret_obj.ansdict else []
+    if len(ret_results) > 0:
+        tokencert_content = ret_results[0].get('tokencert', '')
+        tokenkey_content = ret_results[0].get('tokenkey', '')
     if not tokencert_content or not tokenkey_content:
         logging.error('Token request valid but empty fields!!')
         return int(42)  # ENOMSG
