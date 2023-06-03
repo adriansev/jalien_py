@@ -260,10 +260,10 @@ def writePidFile(filename: str):
         logging.exception('Error writing the pid file: %s', filename)
 
 
-def list_remove_item(target_list: list, item_list):
+def list_remove_item(target: list, item):
     """Remove all instances of item from list"""
-    if not target_list: return
-    target_list[:] = [el for el in target_list if el != item_list]
+    if not target: return
+    target[:] = [el for el in target if el != item]
 
 
 def get_arg(target: list, item) -> bool:
@@ -277,21 +277,39 @@ def get_arg(target: list, item) -> bool:
 def get_arg_value(target: list, item):
     """Remove inplace all instances of item and item+1 from list and return item+1"""
     val = None
-    for x in target:
+    idx_to_be_removed = []
+    l = len(target)
+    # cannot get the value and remove from list in the same time
+    for idx, x in enumerate(target):
         if x == item:
-            val = target.pop(target.index(x) + 1)
-            target.pop(target.index(x))
+            # if current index (starts at 0) is greater then len - 1, just return
+            if idx + 1 + 1 > l: return val1
+            val = target[idx + 1]
+            idx_to_be_removed.append(idx + 1)
+
+    idx_to_be_removed.reverse()
+    for idx in idx_to_be_removed: target.pop(idx)
+    list_remove_item(target, item)
     return val  # noqa: R504
 
 
 def get_arg_2values(target: list, item):
     """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
     val1 = val2 = None
-    for x in target:
+    idx_to_be_removed = []
+    l = len(target)
+    for idx, x in enumerate(target):
         if x == item:
-            val2 = target.pop(target.index(x) + 2)
-            val1 = target.pop(target.index(x) + 1)
-            target.pop(target.index(x))
+            # if current index (starts at 0) is greater then len - 2, just return
+            if idx + 2 + 1 > l: return val1, val2
+            val2 = target[idx + 2]
+            val1 = target[idx + 1]
+            idx_to_be_removed.append(idx + 1)
+            idx_to_be_removed.append(idx + 2)
+
+    idx_to_be_removed.reverse()
+    for idx in idx_to_be_removed: target.pop(idx)
+    list_remove_item(target, item)
     return val1, val2
 
 
