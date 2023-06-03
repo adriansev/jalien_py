@@ -1,1 +1,95 @@
-/home/adrian/.flake8
+[flake8]
+exclude = .git,__pycache__,attic,build,dist
+ignore =
+    # line too long (164 > 79 characters)
+    E501,
+    # String literal formatting using f-string
+    SFS301,
+    # class name 'ALIEN_COLLECTION_EL' should use CapWords convention
+    N801,
+    # function name should be lowercase
+    N802,
+    # variable '_XRDVER_1' in function should be lowercase
+    N806,
+    # variable 'aclId' in class scope should not be mixedCase
+    N815,
+    # camelcase 'xml.etree.ElementTree' imported as acronym 'ET'
+    # N817,
+    # unexpected spaces around keyword / parameter equals
+    E251,
+    # multiple statements on one line (colon)
+    E701,
+    # multiple statements on one line (semicolon)
+    E702,
+    # multiple statements on one line (def)
+    E704,
+    # Double quotes found but single quotes preferred
+    Q000,
+    # Single quote multiline found but double quotes preferred
+    Q001,
+    # Missing docstring in public function
+    D103,
+    # Missing docstring in public method
+    D102,
+    # Missing docstring in magic method
+    D105,
+    # Missing docstring in __init__
+    D107,
+    # First line should end with a period
+    D400,
+    # Import statements are in the wrong order
+    I100,
+    #First line should be in imperative mood; try rephrasing
+    D401,
+    # 1 blank line required after class docstring
+    D204,
+    # Use precise exception handlers.
+    PIE786,
+    # Missing type annotation for function argument
+    ANN001,
+    # Missing type annotation for *args
+    ANN002,
+    # Missing type annotation for **kwargs
+    ANN003,
+    # Missing type annotation for self in method
+    ANN101,
+    # Missing return type annotation for public function
+    ANN201,
+    # Missing return type annotation for protected function
+    ANN202,
+    # Missing return type annotation for special method
+    ANN204,
+    # unexpected spaces around keyword / parameter equals
+    # E251,
+    # First word of the first line should be properly capitalized
+    D403,
+    # argument name 'toLog' should be lowercase
+    N803,
+    # 1 blank line required between summary line and description
+    D205,
+    # prefer-logging-interpolation: Use lazy % formatting in logging functions
+    PIE803,
+    # Function "SendMsg" has 5 returns that exceeds max allowed 3
+    CFQ004,
+    # Function "lfnAccessUrl" has 7 arguments that exceeds max allowed 6
+    CFQ002,
+    # unecessary variable assignement before return statement.
+    # R504,
+    # Function list_files_grid has length 154 that exceeds max allowed length 100
+    CFQ001,
+    # 'requests' imported but unused
+    F401,
+    # local variable 'cksum' is assigned to but never used
+    F841,
+    # Use 'contextlib.suppress(Exception)'
+    SIM105,
+    # prefer-isinstance-type-compare: Use isinstance for comparing types.
+    PIE789,
+
+
+
+
+
+
+
+
