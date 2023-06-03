@@ -132,15 +132,15 @@ def get_valid_tokens() -> tuple:
         cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)
         temp_cert.write(TOKENCERT_NAME.encode(encoding = "ascii", errors = "replace"))
-        temp_cert.seek(0)
         TOKENCERT_NAME = temp_cert.name  # temp file was created, let's give the filename to tokencert
+        temp_cert.close()
         ENV_TOKENCERT = True
     if not path_readable(TOKENKEY_NAME) and TOKENKEY_NAME.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)
         temp_key.write(TOKENKEY_NAME.encode(encoding = "ascii", errors = "replace"))
-        temp_key.seek(0)
         TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
+        temp_key.close()
         ENV_TOKENKEY = True
 
     if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
@@ -176,7 +176,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
 
     if not cert or not key:
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
-        sys.exit(126)
+        return None
 
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
     ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
@@ -198,7 +198,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     except Exception:
         logging.exception('Could not load verify location!!!\n')
         print_err(f'Verify location could not be loaded!!! check content of >>> {ca_verify_location} <<< and the log')
-        sys.exit(126)  # EIO /* I/O error */
+        return None  # EIO /* I/O error */
 
     if DEBUG: logging.debug('SSL context:: Loading cert,key pair:\n%s\n%s', cert, key)
     try:
@@ -206,7 +206,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     except Exception:
         logging.exception('Could not load certificates!!!\n')
         print_err(f'Error loading certificate pair!! Check the content of {DEBUG_FILE}')
-        sys.exit(126)  # EIO /* I/O error */
+        return None  # EIO /* I/O error */
 
     if DEBUG: logging.debug('\n... SSL context done.')
     return ctx

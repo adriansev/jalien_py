@@ -102,6 +102,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
             return None
 
+        if not ctx:
+            msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}'
+            logging.error(msg)
+            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+            return None
+
         logging.info('Request connection to: %s:%s%s', host, port, path)
 
         socket_endpoint = None

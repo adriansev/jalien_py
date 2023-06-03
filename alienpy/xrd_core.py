@@ -8,6 +8,7 @@ import traceback
 import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
 import logging
+import shlex
 import uuid
 import time
 
