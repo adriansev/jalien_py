@@ -17,6 +17,10 @@ ignore =
     # N817,
     # unexpected spaces around keyword / parameter equals
     E251,
+    E201,
+    E202,
+    E265,
+    E266,
     # multiple statements on one line (colon)
     E701,
     # multiple statements on one line (semicolon)
@@ -85,6 +89,8 @@ ignore =
     SIM105,
     # prefer-isinstance-type-compare: Use isinstance for comparing types.
     PIE789,
+    W391,
+    
 
 
 
