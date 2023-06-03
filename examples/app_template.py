@@ -2,22 +2,32 @@
 
 import sys
 
-# import alienpy code
+# import alienpy functions
 try:
+    from alienpy.wb_api import PrintDict, retf_print
     from alienpy.alien import *  # nosec PYL-W0614
 except Exception:
     try:
+        from xjalienfs.wb_api import PrintDict, retf_print
         from xjalienfs.alien import *  # nosec PYL-W0614
     except Exception:
         print("Can't load alienpy, exiting...")
         sys.exit(1)
 
+# enable automatic pretty printing
+#from rich import print
+
+########################################
+##   REQUIRED INITIAILZATION
 
 # Enable and setup logging
 setup_logging()
 
 # Create connection to JAliEn services
-wb = InitConnection()
+wb = InitConnection(cmdlist_func = constructCmdList)
+
+##   END OF INITIALIZATION
+########################################
 
 # Running commands
 # There are 2 ways to run commands:
@@ -44,11 +54,11 @@ wb = InitConnection()
 #                   info|warn|err|debug will log the error string of the object to the corresponging facilities
 #                   noerr|noprint will disable the printing of the "err" string
 
-# client stile interaction - single command
+# client style interaction - single command
 ret_int = ProcessCommandChain(wb, 'pwd')
 print(f'exit code of above command: {ret_int}\n')
 
-# client stile interaction - multiple commands
+# client style interaction - multiple commands
 ret_int = ProcessCommandChain(wb, 'll; whoami -v')
 print(f'exit code of above command: {ret_int}\n')
 
@@ -83,5 +93,13 @@ print('\n')
 # in fact _ANYTHING_ can be used directly but it require the study of alien.py code
 print('Usage of direct usage of token-info command implementation:')
 ret_obj = DO_tokeninfo()
-ret_obj.print()
+
+## def retf_print(ret_obj: RET, opts: str = '') -> int:
+## Process a RET object; it will return the exitcode
+## opts content will steer the logging and message printing:
+## - noprint : silence all stdout/stderr printing
+## - noerr/noout : silence the respective messages
+## - info/warn/err/debug : will log the stderr to that facility
+## - json : will print just the json of the RET object (if present)
+cmd_exitcode = retf_print(ret_obj)
 
