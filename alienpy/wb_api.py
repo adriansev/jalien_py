@@ -394,7 +394,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         logging.error('Token request returned error')
         return retf_print(ret_obj, 'err')
     tokencert_content = tokenkey_content = None
-    ret_results = ret_obj.ansdict if ret_obj.ansdict and 'results' in ret_obj.ansdict else []
+    ret_results = ret_obj.ansdict['results'] if ret_obj.ansdict and 'results' in ret_obj.ansdict else []
     if len(ret_results) > 0:
         tokencert_content = ret_results[0].get('tokencert', '')
         tokenkey_content = ret_results[0].get('tokenkey', '')
