@@ -1386,7 +1386,11 @@ def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
 
 def DO_getCAcerts(args: Union[list, None] = None) -> RET:
     if args is None: args = []
-    if len(args) > 0 and is_help(args): return RET(0, "Download CA certificates in ~/.globus/certificates", "")
+    if len(args) > 0 and is_help(args): return RET(0, """Download CA certificates from ALICE alien-cas repository in ~/.globus/certificates
+to use them preferentially do:
+export X509_CERT_DIR=$HOME/.globus/certificates
+or just
+export ALIENPY_USE_LOCAL_CAS=1""", "")
     return getCAcerts()
 
 
