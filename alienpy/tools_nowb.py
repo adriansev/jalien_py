@@ -278,12 +278,12 @@ def get_arg_value(target: list, item):
     """Remove inplace all instances of item and item+1 from list and return item+1"""
     val = None
     idx_to_be_removed = []
-    l = len(target)
+    arg_list_size = len(target)
     # cannot get the value and remove from list in the same time
     for idx, x in enumerate(target):
         if x == item:
             # if current index (starts at 0) is greater then len - 1, just return
-            if idx + 1 + 1 > l: return val
+            if idx + 1 + 1 > arg_list_size: return val
             val = target[idx + 1]
             idx_to_be_removed.append(idx + 1)
 
@@ -297,11 +297,11 @@ def get_arg_2values(target: list, item):
     """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
     val1 = val2 = None
     idx_to_be_removed = []
-    l = len(target)
+    arg_list_size = len(target)
     for idx, x in enumerate(target):
         if x == item:
             # if current index (starts at 0) is greater then len - 2, just return
-            if idx + 2 + 1 > l: return val1, val2
+            if idx + 2 + 1 > arg_list_size: return val1, val2
             val2 = target[idx + 2]
             val1 = target[idx + 1]
             idx_to_be_removed.append(idx + 1)
@@ -357,7 +357,7 @@ def check_port(address: str, port: Union[str, int]) -> list:
     """Check TCP connection to fqdn:port"""
     try:
         ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
-    except:
+    except Exception:
         print_out(f'check_port:: error getting address info for host: {address} ; port: {port}')
         return []
     return [(*sock_obj[-1], check_ip_port(sock_obj)) for sock_obj in ip_list]
@@ -547,12 +547,12 @@ def ccdb_json_cleanup(item_dict: dict) -> None:
 
     item_dict.pop('contentType', None)
     item_dict.pop('size', None)  # replaced by Content-Length
-    item_dict.pop('Created', None)  #  no need (??) to be shown (mail2dev if needed)
-    item_dict.pop('Content-Type', None)  #  useless for this application
-    item_dict.pop('UploadedFrom', None)  #  useless for this application
-    item_dict.pop('UploadedBy', None)  #  useless for this application
-    item_dict.pop('partName', None)  #  useless for this application
-    item_dict.pop('InitialValidityLimit', None)  #  unclear use for this field
+    item_dict.pop('Created', None)  # no need (??) to be shown (mail2dev if needed)
+    item_dict.pop('Content-Type', None)  # useless for this application
+    item_dict.pop('UploadedFrom', None)  # useless for this application
+    item_dict.pop('UploadedBy', None)  # useless for this application
+    item_dict.pop('partName', None)  # useless for this application
+    item_dict.pop('InitialValidityLimit', None)  # unclear use for this field
 
 
 def getCAcerts() -> RET:

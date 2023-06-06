@@ -1,10 +1,8 @@
 """alienpy:: command stack manipulation"""
 
-import collections
+from collections import deque
 from .global_vars import *  # nosec PYL-W0614
 
-
-deque = collections.deque
 
 def push2stack(path: str):
     if not str or 'AlienSessionInfo' not in globals(): return
@@ -18,6 +16,7 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
     if abs(pos) > len(dq) - 1: return ''
     pos = - pos
     dq.rotate(pos)
+    val = ''
     if pos > 0:
         val = dq.pop()
         if len(dq) > 1: dq.rotate(- (pos - 1))
@@ -30,5 +29,3 @@ def deque_pop_pos(dq: deque, pos: int = 1) -> str:
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-    
-

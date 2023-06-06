@@ -79,10 +79,10 @@ from .xrd_core import (xrd_config_init, HAS_XROOTD, xrd_client, DO_XrootdCp,
 # Global XRootD preferences
 xrd_config_init()
 
-################################################################
 ##################################
 #   START FUNCTIONS DEFINITIONS
 ##################################
+
 
 def DO_dirs(wb, args: Union[str, list, None] = None) -> RET:
     """dirs"""
@@ -662,7 +662,7 @@ task name / detector name / [ / time [ / key = value]* ]
 -dst: set a specific destination for download
 ''' )
 
-    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', }  
+    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', }
 
     listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
     ccdb_default_host = 'http://alice-ccdb.cern.ch/'
@@ -699,7 +699,7 @@ task name / detector name / [ / time [ / key = value]* ]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
 
     def get_alien_endpoint(obj):
-        if not 'replicas' in obj: return ''
+        if 'replicas' not in obj: return ''
         for i in obj['replicas']:
             if i.startswith('alien'): return i
 
@@ -1495,7 +1495,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     """Process a command line within shell or from command line mode input"""
     global AlienSessionInfo
     if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
-    if not 'AlienSessionInfo' in globals(): return RET(1, '', 'ProcessInput needs presence of global dict AlienSessionInfo')
+    if 'AlienSessionInfo' not in globals(): return RET(1, '', 'ProcessInput needs presence of global dict AlienSessionInfo')
     if args is None: args = []
 
     if cmd not in AlienSessionInfo['commandlist'] and not os.getenv('ALIENPY_ALLOW_UNKNOWN_CMDS'):
@@ -1562,7 +1562,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
 def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     """Process a chain of commands delimited by ; or new line"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
-    if not 'AlienSessionInfo' in globals() or not cmd_chain:
+    if 'AlienSessionInfo' not in globals() or not cmd_chain:
         print_err('ProcessCommandChain needs presence of global dict AlienSessionInfo and cmd_chain')
         return 1
 
@@ -1702,6 +1702,7 @@ class AliEn:
 #####################
 make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection implementations
 #####################
+
 
 ###################################################
 def main():

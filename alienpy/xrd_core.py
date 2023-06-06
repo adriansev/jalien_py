@@ -2,24 +2,23 @@
 
 import datetime
 import sys
-import xml.dom.minidom as MD  # nosec B408:blacklist
 import zipfile
 import traceback
-import xml.dom.minidom as MD  # nosec
 from urllib.parse import urlparse
 import logging
 import shlex
 import subprocess
 import uuid
 import time
+import xml.dom.minidom as MD  # nosec B408:blacklist
 
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
 from .tools_shell import runShellCMD
 from .wb_api import retf_print, SendMsg
-from .tools_files import ( path_local_stat, path_writable_any, common_path,
-                         format_dst_fn, fileIsValid, create_metafile,
-                         make_tmp_fn, get_hash_meta, list_files_local, md5,  get_size_meta, get_lfn_name )
+from .tools_files import (path_local_stat, path_writable_any, common_path,
+                          format_dst_fn, fileIsValid, create_metafile,
+                          make_tmp_fn, get_hash_meta, list_files_local, md5, get_size_meta, get_lfn_name)
 from .xrd_tools import path_type, pathtype_grid, expand_path_grid, path_grid_stat, lfn2fileTokens, extract_glob_pattern, list_files_grid, xrdcp_help, commitFileList
 from .tools_nowb import is_help, get_arg, get_arg_value, valid_regex, get_lfn_key, is_int, name2regex, fileline2list, PrintColor, GetHumanReadableSize, deltat_ms_perf, now_str
 
@@ -388,7 +387,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         print_out('No longer used flag! md5 verification of present destination is default; disable with -fastcheck')
     
     fastcheck = get_arg(xrd_copy_command, '-fastcheck')
-    overwrite = not fastcheck 
+    overwrite = not fastcheck
     
     get_arg(xrd_copy_command, '-cksum')
     cksum = True
@@ -538,14 +537,14 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
                                   is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
             retf_print(retobj, "noout err")  # print error and continue with the other files
     elif dst_arg_specified:
-            # the assumption is that every argument from arg list was removed and what remain is a list of sources
-            common_root_path = common_path(xrd_copy_command)
-            for src in xrd_copy_command:
-                retobj = makelist_lfn(wb, arg_source = src, arg_target = f'{dst_arg_specified}/{src.replace(common_root_path, "")}',
-                                      find_args = find_args, parent = parent,
-                                      overwrite = overwrite, pattern = pattern,
-                                      is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
-                if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
+        # the assumption is that every argument from arg list was removed and what remain is a list of sources
+        common_root_path = common_path(xrd_copy_command)
+        for src in xrd_copy_command:
+            retobj = makelist_lfn(wb, arg_source = src, arg_target = f'{dst_arg_specified}/{src.replace(common_root_path, "")}',
+                                    find_args = find_args, parent = parent,
+                                    overwrite = overwrite, pattern = pattern,
+                                    is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+            if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
         if len(xrd_copy_command) < 2:
             return RET(1, '', 'Argument list invalid (less then 2 arguments)')
@@ -818,7 +817,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
             cksum_type = 'md5'
             cksum_preset = ''
         else:  # for downloads we already have the md5 value, lets use that
-            cksum_mode = 'target';
+            cksum_mode = 'target'
             cksum_type, cksum_preset = get_hash_meta(copy_job.src)
             # If the remote file had no hash registered
             if not cksum_type or not cksum_preset:

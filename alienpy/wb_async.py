@@ -94,8 +94,8 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
 
         try:
             ctx = create_ssl_context(use_usercert,
-                                    user_cert = certs_info.user_cert, user_key = certs_info.user_key,
-                                    token_cert = certs_info.token_cert, token_key = certs_info.token_key)
+                                     user_cert = certs_info.user_cert, user_key = certs_info.user_key,
+                                     token_cert = certs_info.token_cert, token_key = certs_info.token_key)
         except Exception as e:
             msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}\n{e!r}'
             logging.error(msg)

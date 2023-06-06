@@ -26,7 +26,7 @@ def common_path(path_list: list) -> str:
     common = ''
     try:
         common = os.path.commonpath(path_list)
-    except:
+    except Exception:
         pass
     return common
 
@@ -143,7 +143,7 @@ def md5(input_file: str) -> str:
     if not path_readable(input_file): return '-1'
     from hashlib import md5 as hash_md5
     BLOCKSIZE = 65536
-    
+
     if hash_md5.__getattribute__('__text_signature__') and 'usedforsecurity' in hash_md5.__getattribute__('__text_signature__'):
         hasher = hash_md5(usedforsecurity = False)
     else:

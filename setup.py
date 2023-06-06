@@ -5,10 +5,10 @@ import traceback
 
 
 try:
-    from alienpy.version import *  # nosec PYL-W0614
+    from alienpy.version import ALIENPY_VERSION_HASH, ALIENPY_VERSION_DATE, ALIENPY_VERSION_STR
 except Exception:
     try:
-        from xjalienfs.version import *  # nosec PYL-W0614
+        from xjalienfs.version import ALIENPY_VERSION_HASH, ALIENPY_VERSION_DATE, ALIENPY_VERSION_STR
     except Exception:
         traceback.print_exc()
         print('Failed to get version from file. Using 0.0.0')
@@ -57,31 +57,31 @@ setuptools.setup(
         "Documentation": "https://jalien.docs.cern.ch",
         "CERN Mattermost/JAliEn": "https://mattermost.web.cern.ch/alice/channels/jalien",
         },
-    entry_points = { 'console_scripts': [
-                                        'alien.py = alienpy.alien:main',
-                                        'alien_cmd = alienpy.alien:main',
-                                        'alien_cp = alienpy.alien:main',
-                                        'alien_find = alienpy.alien:main',
-                                        'alien_guid2lfn = alienpy.alien:main',
-                                        'alien_lfn2guid = alienpy.alien:main',
-                                        'alien_ls = alienpy.alien:main',
-                                        'alien_mirror = alienpy.alien:main',
-                                        'alien_mkdir = alienpy.alien:main',
-                                        'alien_mv = alienpy.alien:main',
-                                        'alien_pfn = alienpy.alien:main',
-                                        'alien_ps = alienpy.alien:main',
-                                        'alien_pwd = alienpy.alien:main',
-                                        'alien_rm = alienpy.alien:main',
-                                        'alien_rmdir = alienpy.alien:main',
-                                        'alien_stat = alienpy.alien:main',
-                                        'alien_submit = alienpy.alien:main',
-                                        'alien_whereis = alienpy.alien:main',
-                                        'alien-cert-info = alienpy.alien:cmd_cert_info',
-                                        'alien-token-info = alienpy.alien:cmd_token_info',
-                                        'alien-token-init = alienpy.alien:cmd_token_init',
-                                        'alien-token-destroy = alienpy.alien:cmd_token_destroy',
-                                        'alien_home = alienpy.alien:cmd_home'
-                                        ]
+    entry_points = {'console_scripts': [
+                                       'alien.py = alienpy.alien:main',
+                                       'alien_cmd = alienpy.alien:main',
+                                       'alien_cp = alienpy.alien:main',
+                                       'alien_find = alienpy.alien:main',
+                                       'alien_guid2lfn = alienpy.alien:main',
+                                       'alien_lfn2guid = alienpy.alien:main',
+                                       'alien_ls = alienpy.alien:main',
+                                       'alien_mirror = alienpy.alien:main',
+                                       'alien_mkdir = alienpy.alien:main',
+                                       'alien_mv = alienpy.alien:main',
+                                       'alien_pfn = alienpy.alien:main',
+                                       'alien_ps = alienpy.alien:main',
+                                       'alien_pwd = alienpy.alien:main',
+                                       'alien_rm = alienpy.alien:main',
+                                       'alien_rmdir = alienpy.alien:main',
+                                       'alien_stat = alienpy.alien:main',
+                                       'alien_submit = alienpy.alien:main',
+                                       'alien_whereis = alienpy.alien:main',
+                                       'alien-cert-info = alienpy.alien:cmd_cert_info',
+                                       'alien-token-info = alienpy.alien:cmd_token_info',
+                                       'alien-token-init = alienpy.alien:cmd_token_init',
+                                       'alien-token-destroy = alienpy.alien:cmd_token_destroy',
+                                       'alien_home = alienpy.alien:cmd_home'
+                                       ]
                     },
     scripts = [ 'examples/alien_wbtime', ],
     keywords = 'CERN ALICE JAliEn GRID',

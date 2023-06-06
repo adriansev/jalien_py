@@ -304,8 +304,8 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         ctx.load_verify_locations(cafile = cafile, capath = capath)
     except Exception:
         logging.debug(traceback.format_exc())
-        return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */    
-    
+        return RET(5, "", f"Could not load verify location >>>{ca_verify_location}<<<")  # EIO /* I/O error */
+
     try:
         ctx.check_privatekey()
         return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}')
@@ -316,5 +316,3 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-    
-    

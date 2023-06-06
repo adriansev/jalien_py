@@ -37,13 +37,15 @@ COLORS = COLORS_COLL()  # definition of colors
 TMPDIR = tempfile.gettempdir()
 USER_HOME = Path.home().as_posix()
 
+
 def get_certs_names() -> CertsInfo:
     """Provide the standard file names for used certificates"""
     usercert = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
-    userkey = os.getenv('X509_USER_KEY',  f'{USER_HOME}/.globus/userkey.pem')
+    userkey = os.getenv('X509_USER_KEY', f'{USER_HOME}/.globus/userkey.pem')
     tokencert = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY',  f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
     return CertsInfo(usercert, userkey, tokencert, tokenkey)
+
 
 CERT_NAMES = get_certs_names()
 # Have global variables for certificate file names, defaults being overridden by env vars

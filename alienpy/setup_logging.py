@@ -28,7 +28,7 @@ def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.l
 
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
-    
+
     MSG_LVL = logging.DEBUG if debug else logging.INFO
     line_fmt = '%(levelname)s:%(asctime)s %(message)s'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
@@ -56,5 +56,4 @@ def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.l
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-    
-    
+

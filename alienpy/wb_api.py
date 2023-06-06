@@ -156,7 +156,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
 
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
 
-    if JSON_OUT_GLOBAL or JSON_OUT:  
+    if JSON_OUT_GLOBAL or JSON_OUT:
         opts = opts.replace('-nokeys', '').opts.replace('nokeys', '')
         if 'nomsg' not in opts: opts = f'{opts} nomsg'
 
@@ -192,7 +192,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
         msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {DEBUG_FILE}"
         print_err(msg)
         logging.error(msg)
-        return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM  
+        return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM
 
     time_begin_decode = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     ret_obj = retf_result2ret(result)
@@ -223,13 +223,13 @@ def retf_result2ret(result: Union[str, dict, None]) -> RET:
         logging.error(msg)
         return RET(42, '', msg)  # type: ignore [call-arg]
 
-    session_state_update(out_dict)  ## ALWAYS UPDATE GLOBAL STATE
+    session_state_update(out_dict)  # ALWAYS UPDATE GLOBAL STATE
     message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
     output = '\n'.join(message_list)
     return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
 
 
-def session_state_update (out_dict: dict) -> None:
+def session_state_update(out_dict: dict) -> None:
     """Update global AlienSessionInfo with status of the latest command"""
     if 'AlienSessionInfo' in globals():  # update global state of session
         AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
@@ -363,7 +363,7 @@ def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None,
     if not cmdline: return ''
     if args is None: args = []
     if isinstance(cmdline, dict):
-        if not 'command' in cmdline or 'options' not in cmdline: return ''
+        if 'command' not in cmdline or 'options' not in cmdline: return ''
         out_dict = cmdline.copy()
         if 'showmsg' in opts: opts = opts.replace('nomsg', '')
         if 'showkeys' in opts: opts = opts.replace('nokeys', '')
@@ -423,7 +423,7 @@ def token(wb, args: Union[None, list] = None) -> int:
         print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
-    if 'AlienSessionInfo' in globals(): 
+    if 'AlienSessionInfo' in globals():
         AlienSessionInfo['token_cert'] = certs_info.token_cert
         AlienSessionInfo['token_key'] = certs_info.token_key
     return int(0)

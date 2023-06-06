@@ -26,6 +26,8 @@ ignore =
     E266,
     # unexpected spaces around keyword / parameter equals
     # E251,
+    # module level import not at top of file
+    E402,
     # multiple statements on one line (colon)
     E701,
     # multiple statements on one line (semicolon)

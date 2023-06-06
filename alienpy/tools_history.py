@@ -16,6 +16,7 @@ except ImportError:
     except ImportError:
         pass
 
+
 def setupHistory(wb) -> None:
     """Setup up history mechanics for readline module"""
     if not HAS_READLINE or 'AlienSessionInfo' not in globals() or not wb: return

@@ -13,7 +13,7 @@ def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".
 def SessionSave():
     """Save CWD and previous CWD in .alienpy_session file"""
     session_filename = GetSessionFilename()
-    if not 'AlienSessionInfo' in globals(): return
+    if 'AlienSessionInfo' not in globals(): return
     try:
         with open(session_filename, "w", encoding="ascii", errors="replace") as f:
             line1 = f"CWD = {AlienSessionInfo['currentdir']}\n"
