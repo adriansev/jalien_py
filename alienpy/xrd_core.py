@@ -385,15 +385,15 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     f_arg = get_arg(xrd_copy_command, '-f')
     if f_arg:
         print_out('No longer used flag! md5 verification of present destination is default; disable with -fastcheck')
-    
+
     fastcheck = get_arg(xrd_copy_command, '-fastcheck')
     overwrite = not fastcheck
-    
+
     get_arg(xrd_copy_command, '-cksum')
     cksum = True
- 
+
     dryrun = get_arg(xrd_copy_command, '-dryrun')
- 
+
     tpc = 'none'
     if get_arg(xrd_copy_command, '-tpc'): tpc = 'first'
     if tpc != 'none': return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
@@ -541,9 +541,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         common_root_path = common_path(xrd_copy_command)
         for src in xrd_copy_command:
             retobj = makelist_lfn(wb, arg_source = src, arg_target = f'{dst_arg_specified}/{src.replace(common_root_path, "")}',
-                                    find_args = find_args, parent = parent,
-                                    overwrite = overwrite, pattern = pattern,
-                                    is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
+                                  find_args = find_args, parent = parent,
+                                  overwrite = overwrite, pattern = pattern,
+                                  is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
             if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
         if len(xrd_copy_command) < 2:
