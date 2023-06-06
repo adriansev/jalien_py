@@ -441,7 +441,7 @@ def common_path(path_list: list) -> str:
     try:
         common = os.path.commonpath(path_list)
     except Exception:
-        pass
+        logger.exception('common_path:: exception')
     return common
 
 
