@@ -226,7 +226,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
                 # if overwrite the file validity checking will do md5
                 skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
                 if skip_file: continue  # destination exists and is valid, no point to re-download
-                
+
                 tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
                 if not tokens or 'answer' not in tokens: continue
                 copy_list.append(CopyFile(lfn, dst_filename, isWrite, tokens['answer'], lfn))
