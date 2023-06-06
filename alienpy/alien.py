@@ -55,9 +55,8 @@ from .connect_ssl import CertInfo, CertVerify, CertKeyMatch
 ##   General misc functions library
 from .tools_nowb import (exitcode, signal_handler, cleanup_temp, import_aliases, list_remove_item, convert_trace2dict, convert_jdl2dict,
                          ccdb_json_cleanup, unixtime2local, file2list, queryML, convert_time, check_port, exit_message,
-                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf, getCAcerts)
-
-from .tools_files import mk_xml_local, file2file_dict, md5
+                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf, getCAcerts,
+                         mk_xml_local, file2file_dict, md5)
 
 # commands stack tools
 from .tools_stackcmd import push2stack, deque_pop_pos
@@ -1387,11 +1386,14 @@ def DO_tokenkeymatch(args: Union[list, None] = None) -> RET:
 def DO_getCAcerts(args: Union[list, None] = None) -> RET:
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, """Download CA certificates from ALICE alien-cas repository in ~/.globus/certificates
+-h/-help : this help information
+1st argument string will be taken as destination for certificates directory
 to use them preferentially do:
 export X509_CERT_DIR=$HOME/.globus/certificates
 or just
 export ALIENPY_USE_LOCAL_CAS=1""", "")
-    return getCAcerts()
+    dest_dir = args[0] if len(args) > 0 else ''
+    return getCAcerts(dest_dir)
 
 
 def make_func_map_nowb():

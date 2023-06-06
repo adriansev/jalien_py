@@ -20,9 +20,8 @@ from .setup_logging import print_out, print_err
 
 from .async_tools import syncify
 from .wb_async import wb_create, wb_close, wb_sendmsg, wb_sendmsg_multi, IsWbConnected
-from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable
+from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable, path_readable
 from .tools_stackcmd import push2stack  # , deque_pop_pos
-from .tools_files import path_readable
 from .connect_ssl import get_certs_names
 
 
