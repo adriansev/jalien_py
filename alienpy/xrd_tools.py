@@ -22,7 +22,7 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
             return {}
         access_type = 'write'
         size = int(os.stat(local_file).st_size)
-        md5sum = '' # md5(local_file)
+        md5sum = ''  # md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576 and not specs:  # we have a special lfn
             specs.append('disk:4')  # and no specs defined then default to disk:4
@@ -439,7 +439,6 @@ def path_type(path_arg: str) -> tuple:
     """Check if path is local or grid; default is grid and local must have file: prefix"""
     location = 'local' if path_arg.startswith('file:') else 'grid'
     return (path_arg, location)
-
 
 
 if __name__ == '__main__':

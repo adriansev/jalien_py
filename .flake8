@@ -15,12 +15,17 @@ ignore =
     N815,
     # camelcase 'xml.etree.ElementTree' imported as acronym 'ET'
     # N817,
+    # closing bracket does not match indentation of opening bracket's line
+    E123,
     # unexpected spaces around keyword / parameter equals
     E251,
     E201,
     E202,
+    E231,
     E265,
     E266,
+    # unexpected spaces around keyword / parameter equals
+    # E251,
     # multiple statements on one line (colon)
     E701,
     # multiple statements on one line (semicolon)
@@ -63,8 +68,6 @@ ignore =
     ANN202,
     # Missing return type annotation for special method
     ANN204,
-    # unexpected spaces around keyword / parameter equals
-    # E251,
     # First word of the first line should be properly capitalized
     D403,
     # argument name 'toLog' should be lowercase

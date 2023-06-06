@@ -68,7 +68,6 @@ if HAS_XROOTD:
     HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
 
-
 def xrd_config_init():
     """Initialize generic XRootD client vars/timeouts"""
     if not HAS_XROOTD: return
@@ -300,8 +299,8 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
 
     if xrd_copy_command is None: xrd_copy_command = []
-    if api_src is None: api_src =[]
-    if api_dst is None: api_dst =[]
+    if api_src is None: api_src = []
+    if api_dst is None: api_dst = []
 
     if bool(api_src) ^ bool(api_dst): return RET(1, '', 'API _src,_dst used but only one is defined')
     if len(api_src) != len(api_dst): return RET(1, '', 'API _src,_dst used but not of equal lenght')
@@ -815,14 +814,17 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     for copy_job in job_list:
         if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
         if copy_job.isUpload:
-            cksum_mode = 'source'; cksum_type = 'md5' ; cksum_preset = ''; # copy_job.token_request['md5']
+            cksum_mode = 'source'
+            cksum_type = 'md5'
+            cksum_preset = ''
         else:  # for downloads we already have the md5 value, lets use that
             cksum_mode = 'target';
             cksum_type, cksum_preset = get_hash_meta(copy_job.src)
             # If the remote file had no hash registered
             if not cksum_type or not cksum_preset:
                 logging.error('COPY:: MD5 missing for %s', copy_job.lfn)
-                cksum_mode = 'none'; cksum_type = cksum_preset = '';
+                cksum_mode = 'none'
+                cksum_type = cksum_preset = ''
 
         delete_invalid_cksum = (not cksum_mode == 'none')  # if no checksumming mode, disable rmBadCksum
         if 'xrateThreshold' in process.add_job.__code__.co_varnames:

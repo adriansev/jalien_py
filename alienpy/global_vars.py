@@ -7,7 +7,7 @@ import sys
 import tempfile
 from collections import deque
 from pathlib import Path
-from .data_structs import * # nosec PYL-W0614
+from .data_structs import *  # nosec PYL-W0614
 from .version import *  # nosec PYL-W0614
 
 

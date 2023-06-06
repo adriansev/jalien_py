@@ -283,7 +283,7 @@ def get_arg_value(target: list, item):
     for idx, x in enumerate(target):
         if x == item:
             # if current index (starts at 0) is greater then len - 1, just return
-            if idx + 1 + 1 > l: return val1
+            if idx + 1 + 1 > l: return val
             val = target[idx + 1]
             idx_to_be_removed.append(idx + 1)
 

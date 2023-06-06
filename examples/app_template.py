@@ -21,10 +21,10 @@ except Exception:
 ##   REQUIRED INITIAILZATION
 
 # Enable and setup logging
-setup_logging()
+setup_logging()  # type: ignore
 
 # Create connection to JAliEn services
-wb = InitConnection(cmdlist_func = constructCmdList)
+wb = InitConnection(cmdlist_func = constructCmdList)  # type: ignore
 
 ##   END OF INITIALIZATION
 ########################################
@@ -55,16 +55,16 @@ wb = InitConnection(cmdlist_func = constructCmdList)
 #                   noerr|noprint will disable the printing of the "err" string
 
 # client style interaction - single command
-ret_int = ProcessCommandChain(wb, 'pwd')
+ret_int = ProcessCommandChain(wb, 'pwd')  # type: ignore
 print(f'exit code of above command: {ret_int}\n')
 
 # client style interaction - multiple commands
-ret_int = ProcessCommandChain(wb, 'll; whoami -v')
+ret_int = ProcessCommandChain(wb, 'll; whoami -v')  # type: ignore
 print(f'exit code of above command: {ret_int}\n')
 
 # programatic interaction
 # all DO_ functions (implementations of commands) (with the exception of ProcessCommandChain) return a RET object
-ret_obj = ProcessInput(wb, 'ls', ['-c', '/alice/cern.ch/user/a/admin/referenceData'])
+ret_obj = ProcessInput(wb, 'ls', ['-c', '/alice/cern.ch/user/a/admin/referenceData'])  # type: ignore
 print(f'This is the response object:\n{ret_obj}\n')
 
 # In principle, the dictionary output of command have more information than stdout/stderr of the command
@@ -79,7 +79,7 @@ print('\n')
 # '-s' : do not sort the answer
 # '-r' : make find to interpret pattern as regex
 # '-f' : fill the answer dictionary with all file properties, so selections can be easly applied
-ret_obj = ProcessInput(wb, 'find', ['-f', '-a', '-s', '/alice/cern.ch/user/a/admin/referenceData', 'std*.log'])
+ret_obj = ProcessInput(wb, 'find', ['-f', '-a', '-s', '/alice/cern.ch/user/a/admin/referenceData', 'std*.log'])  # type: ignore
 print('Example of find usage:')
 PrintDict(ret_obj.ansdict)
 print('\n')
@@ -92,7 +92,7 @@ print('\n')
 # Client-side, functions (that do not require the JAliEn connection) can be used directly
 # in fact _ANYTHING_ can be used directly but it require the study of alien.py code
 print('Usage of direct usage of token-info command implementation:')
-ret_obj = DO_tokeninfo()
+ret_obj = DO_tokeninfo()  # type: ignore
 
 ## def retf_print(ret_obj: RET, opts: str = '') -> int:
 ## Process a RET object; it will return the exitcode

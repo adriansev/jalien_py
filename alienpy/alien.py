@@ -1088,6 +1088,15 @@ def DO_syscmd(wb, cmd: str = '', args: Union[None, list, str] = None) -> RET:
     return runShellCMD(' '.join(new_arg_list), captureout = True, do_shell = True)
 
 
+def DO_gethome(wb, args: Union[None, list, str] = None) -> RET:
+    if args is None: args = []
+    if isinstance(args, str):
+        args = args.split() if args else []
+    if is_help(args):
+        return RET(0, 'Return user home')
+    return RET(0, AlienSessionInfo['alienHome'])
+
+
 def DO_find2(wb, args: Union[None, list, str] = None) -> RET:
     if args is None: args = []
     if isinstance(args, str):
@@ -1450,6 +1459,7 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['less'] = DO_less
     AlienSessionInfo['cmd2func_map_client']['more'] = DO_more
     AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
+    AlienSessionInfo['cmd2func_map_client']['home'] = DO_gethome
 
 
 def constructCmdList():
@@ -1579,7 +1589,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
         # process the input and take care of pipe to shell
         input_alien, __, pipe_to_shell_cmd = cmdline.partition(' | ')
         if not input_alien:
-            logging.err(f'AliEn command before the | token was not found\n{cmdline}')
+            logging.error(f'AliEn command before the | token was not found\n{cmdline}')
             continue
 
         args = shlex.split(input_alien.strip())
@@ -1769,6 +1779,9 @@ ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
 def _cmd(what):
     sys.argv = [sys.argv[0]] + [what] + sys.argv[1:]
     main()
+
+
+def cmd_home(): _cmd('home')
 
 
 def cmd_cert_info(): _cmd('cert-info')

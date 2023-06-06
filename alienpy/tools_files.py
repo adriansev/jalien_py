@@ -144,7 +144,7 @@ def md5(input_file: str) -> str:
     from hashlib import md5 as hash_md5
     BLOCKSIZE = 65536
     
-    if hash_md5.__text_signature__ and 'usedforsecurity' in hash_md5.__text_signature__:
+    if hash_md5.__getattribute__('__text_signature__') and 'usedforsecurity' in hash_md5.__getattribute__('__text_signature__'):
         hasher = hash_md5(usedforsecurity = False)
     else:
         hasher = hash_md5()  # nosec

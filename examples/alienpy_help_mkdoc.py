@@ -43,7 +43,6 @@ def help2markup(cmd: str):
     alien.print_out('---')
 
 
-
 alien.print_out('# alien.py Command reference guide')
 for c in alien.AlienSessionInfo['commandlist']: help2markup(c)
 print()
