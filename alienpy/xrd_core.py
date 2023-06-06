@@ -594,7 +594,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
 
     my_cp_args = XrdCpArgs(overwrite, batch, tpc, hashtype, cksum, timeout, rate)
     # defer the list of url and files to xrootd processing - actual XRootD copy takes place
-    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout) if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list, my_cp_args)
+    copy_failed_list = XrdCopy(wb, xrdcopy_job_list, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list, my_cp_args)
     copy_jobs_nr = len(xrdcopy_job_list)
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
@@ -624,7 +624,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if to_recover_list_try1:
             xrdcopy_job_list_2 = []
             makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
-            copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)
+            copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_2, my_cp_args)
             copy_jobs_nr1 = len(xrdcopy_job_list_2)
             copy_jobs_failed_nr1 = len(copy_failed_list2)
             copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
@@ -654,7 +654,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
         if to_recover_list_try2:
             xrdcopy_job_list_3 = []
             makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
-            copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)
+            copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_3, my_cp_args)
             copy_jobs_nr2 = len(xrdcopy_job_list_3)
             copy_jobs_failed_nr2 = len(copy_failed_list3)
             copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
@@ -852,52 +852,54 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     return handler.copy_failed_list  # lets see what failed and try to recover
 
 
-def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
-    """xrdcp stanalone system command"""
-    if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')  # type: ignore [call-arg]
-    if timeout is not None: timeout = int(timeout)
-    # --nopbar --posc
-    xrdcp_cmdline = f'xrdcp -N -P {cmdline}'
-    return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
+# keep it commented until is needed - dead code for now
+# def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
+#     """xrdcp stanalone system command"""
+#     if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')  # type: ignore [call-arg]
+#     if timeout is not None: timeout = int(timeout)
+#     # --nopbar --posc
+#     xrdcp_cmdline = f'xrdcp -N -P {cmdline}'
+#     return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
 
 
-def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , printout: str = ''
-    """xrdcp based task that process a copyfile and it's arguments"""
-    if not copy_job: return int(2)
-    # overwrite = xrd_cp_args.overwrite
-    # batch = xrd_cp_args.batch
-    # tpc = xrd_cp_args.tpc
-    # hashtype = xrd_cp_args.hashtype
-    # cksum = xrd_cp_args.cksum
-    timeout = xrd_cp_args.timeout
-    # rate = xrd_cp_args.rate
-    cmdline = f'{copy_job.src} {copy_job.dst}'
-    return retf_print(_xrdcp_sysproc(cmdline, timeout))
+# keep it commented until is needed - dead code for now
+# def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , printout: str = ''
+#     """xrdcp based task that process a copyfile and it's arguments"""
+#     if not copy_job: return int(2)
+#     # overwrite = xrd_cp_args.overwrite
+#     # batch = xrd_cp_args.batch
+#     # tpc = xrd_cp_args.tpc
+#     # hashtype = xrd_cp_args.hashtype
+#     # cksum = xrd_cp_args.cksum
+#     timeout = xrd_cp_args.timeout
+#     # rate = xrd_cp_args.rate
+#     cmdline = f'{copy_job.src} {copy_job.dst}'
+#     return retf_print(_xrdcp_sysproc(cmdline, timeout))
 
-
-def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
-    """XRootD copy command :: the actual XRootD copy process"""
-    if not HAS_XROOTD:
-        print_err("XRootD not found or lower version thant 5.3.3")
-        return []
-    if not xrd_cp_args:
-        print_err("cp arguments are not set, XrdCpArgs tuple missing")
-        return []
-    # overwrite = xrd_cp_args.overwrite
-    # batch = xrd_cp_args.batch
-    # makedir = xrd_cp_args.makedir
-
-    # ctx = mp.get_context('forkserver')
-    # q = ctx.JoinableQueue()
-    # p = ctx.Process(target=_xrdcp_copyjob, args=(q,))
-    # p.start()
-    # print(q.get())
-    # p.join()
-    for copy_job in job_list:
-        if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
-        # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
-        if DEBUG: print_out(copy_job)
-    return []
+# keep it commented until is needed - dead code for now
+# def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
+#     """XRootD copy command :: the actual XRootD copy process"""
+#     if not HAS_XROOTD:
+#         print_err("XRootD not found or lower version thant 5.3.3")
+#         return []
+#     if not xrd_cp_args:
+#         print_err("cp arguments are not set, XrdCpArgs tuple missing")
+#         return []
+#     # overwrite = xrd_cp_args.overwrite
+#     # batch = xrd_cp_args.batch
+#     # makedir = xrd_cp_args.makedir
+#
+#     # ctx = mp.get_context('forkserver')
+#     # q = ctx.JoinableQueue()
+#     # p = ctx.Process(target=_xrdcp_copyjob, args=(q,))
+#     # p.start()
+#     # print(q.get())
+#     # p.join()
+#     for copy_job in job_list:
+#         if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
+#         # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
+#         if DEBUG: print_out(copy_job)
+#     return []
 
 
 def xrd_response2dict(response_status) -> dict:
