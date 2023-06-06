@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET  # nosec
 import xml.dom.minidom as MD  # nosec B408:blacklist
 
 from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out
+from .setup_logging import print_out, print_err
 from .tools_shell import runShellCMD, is_cmd
 
 
