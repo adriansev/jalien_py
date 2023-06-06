@@ -132,15 +132,15 @@ def get_valid_tokens() -> tuple:
         cert_suffix = f'_{str(os.getuid())}_{random_str}.pem'
         temp_cert = tempfile.NamedTemporaryFile(prefix = 'tokencert_', suffix = cert_suffix, delete = False)
         temp_cert.write(TOKENCERT_NAME.encode(encoding = "ascii", errors = "replace"))
-        TOKENCERT_NAME = temp_cert.name  # temp file was created, let's give the filename to tokencert
         temp_cert.close()
+        TOKENCERT_NAME = temp_cert.name  # temp file was created, let's give the filename to tokencert
         ENV_TOKENCERT = True
     if not path_readable(TOKENKEY_NAME) and TOKENKEY_NAME.startswith('-----BEGIN RSA PRIVATE KEY-----'):  # and is not a file
         if random_str is None: random_str = str(uuid.uuid4())
         temp_key = tempfile.NamedTemporaryFile(prefix = 'tokenkey_', suffix = cert_suffix, delete = False)
         temp_key.write(TOKENKEY_NAME.encode(encoding = "ascii", errors = "replace"))
-        TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
         temp_key.close()
+        TOKENKEY_NAME = temp_key.name  # temp file was created, let's give the filename to tokenkey
         ENV_TOKENKEY = True
 
     if (IsValidCert(TOKENCERT_NAME) and path_readable(TOKENKEY_NAME)):
