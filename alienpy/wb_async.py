@@ -5,6 +5,7 @@ import sys
 import socket
 import logging
 import time
+from typing import Union
 
 try:
     import websockets.client as wb_client

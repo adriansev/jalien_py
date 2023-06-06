@@ -4,6 +4,7 @@ import re
 import sys
 import subprocess  # nosec B404:blacklist
 import shlex
+from typing import Union
 from shutil import which
 from .data_structs import *  # nosec PYL-W0614
 from .setup_logging import print_err
