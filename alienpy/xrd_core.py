@@ -17,10 +17,10 @@ from .setup_logging import print_out, print_err
 from .tools_shell import runShellCMD
 from .wb_api import retf_print, SendMsg
 from .tools_nowb import (path_local_stat, path_writable_any, common_path,
-                          format_dst_fn, fileIsValid, create_metafile,
-                          make_tmp_fn, get_hash_meta, list_files_local, md5, get_size_meta, get_lfn_name,
-                          is_help, get_arg, get_arg_value, valid_regex, get_lfn_key, is_int, name2regex,
-                          fileline2list, PrintColor, GetHumanReadableSize, deltat_ms_perf, now_str)
+                         format_dst_fn, fileIsValid, create_metafile,
+                         make_tmp_fn, get_hash_meta, list_files_local, md5, get_size_meta, get_lfn_name,
+                         is_help, get_arg, get_arg_value, valid_regex, get_lfn_key, is_int, name2regex,
+                         fileline2list, PrintColor, GetHumanReadableSize, deltat_ms_perf, now_str)
 from .xrd_tools import path_type, pathtype_grid, expand_path_grid, path_grid_stat, lfn2fileTokens, extract_glob_pattern, list_files_grid, xrdcp_help, commitFileList
 
 
@@ -35,6 +35,7 @@ except Exception:
 def _is_valid_xrootd() -> bool:
     if not HAS_XROOTD: return False
     xrd_ver_arr = xrd_client.__version__.split(".")
+    _XRDVER_1 = _XRDVER_2 = None
     if len(xrd_ver_arr) > 1:
         _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_2 = xrd_ver_arr[1]

@@ -455,7 +455,7 @@ def token_regen(wb, args: Union[None, list] = None):
     return wb_token_new
 
 
-def cd(wb, args: Union[str, list] = None, opts: str = '') -> RET:
+def cd(wb, args: Union[str, list, None] = None, opts: str = '') -> RET:
     """Override cd to add to home and to prev functions"""
     if args is None: args = []
     if isinstance(args, str): args = args.split()

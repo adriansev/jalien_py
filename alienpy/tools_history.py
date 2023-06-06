@@ -1,6 +1,5 @@
 '''alienpy:: Setup history for interactive shell'''
 
-from typing import Union
 from .global_vars import *  # nosec PYL-W0614
 from .wb_api import lfn_list  # nosec PYL-W0614
 

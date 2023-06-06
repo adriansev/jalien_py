@@ -18,11 +18,9 @@ import subprocess  # nosec
 import logging
 import shlex
 import statistics
-from typing import Union, NamedTuple
+from typing import Union
 import time
 from urllib.parse import urlparse
-import xml.dom.minidom as MD  # nosec
-import xml.etree.ElementTree as ET  # nosec
 
 # External imports
 try:
@@ -865,7 +863,7 @@ def DO_queryML(args: Union[list, None] = None) -> RET:
 
 def DO_submit(wb, args: Union[list, None] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
-    if not args or args is None: args = ['-h']
+    if not args: args = ['-h']
     if is_help(args): return get_help_srv(wb, 'submit')
     if args[0].startswith("file:"):
         msg = ("Specifications as where to upload the jdl to be submitted and with what parameters are not yet defined"
@@ -966,7 +964,7 @@ def DO_token_init(wb, args: Union[list, None] = None) -> RET:
 
 def DO_edit(wb, args: Union[list, None] = None, editor: str = '') -> RET:
     """Edit a grid lfn; download a temporary, edit with the specified editor and upload the new file"""
-    if not args or args is None: args = ['-h']
+    if not args: args = ['-h']
     if is_help(args):
         msg = """Command format: edit lfn\nAfter editor termination the file will be uploaded if md5 differs
 -datebck : the backup filename will be date based

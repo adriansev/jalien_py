@@ -433,7 +433,6 @@ def name2regex(pattern_regex: str = '') -> str:
     return translated_pattern_regex  # noqa: R504
 
 
-
 def common_path(path_list: list) -> str:
     """Return common path of a list of paths"""
     if not path_list: return ''
@@ -685,7 +684,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     if is_single_file:
         file_list = [directory]
     elif is_regex and regex:
-        file_list = [os.path.join(root, f) for (root, dirs, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
+        file_list = [os.path.join(root, f) for (root, _, files) in os.walk(directory) for f in files if regex.match(os.path.join(root, f))]
     else:
         file_list = [p.expanduser().resolve(strict = True).as_posix() for p in list(Path(directory).glob(f'**/{pattern}')) if p.is_file()]
 
@@ -1021,9 +1020,9 @@ def getCAcerts(custom_dir: str = '') -> RET:
     """Downloaf ALICE CA certificates to a given location (where certificates directory will be placed) or to the default ~/.globus/"""
     CERT_DIR = None
     if custom_dir:
-         if os.path.isdir(custom_dir) and path_writable(custom_dir):
-             CERT_DIR = custom_dir
-         else:
+        if os.path.isdir(custom_dir) and path_writable(custom_dir):
+            CERT_DIR = custom_dir
+        else:
             msg = f'Destination {custom_dir} was requested but not present or not writable!'
             return RET(1, '', msg)
     else:
