@@ -156,7 +156,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
 
     if JSON_OUT_GLOBAL or JSON_OUT:
-        opts = opts.replace('-nokeys', '').opts.replace('nokeys', '')
+        opts = opts.replace('-nokeys', '').replace('nokeys', '')
         if 'nomsg' not in opts: opts = f'{opts} nomsg'
 
     # if DEBUG then make sure we get the full answer
