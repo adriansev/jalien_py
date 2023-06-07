@@ -162,6 +162,8 @@ def xrdcp_help() -> str:
         cp <options> src dst
         or
         cp <options> -input input_file
+        or
+        cp <options> -dst dest_dir file1 file2 ... fileN
 where src|dst are local files if prefixed with file:// or file: or grid files otherwise
 and -input argument is a file with >src dst< pairs
 after each src,dst can be added comma separated specifiers list in the form of: @<QOS>:N,SE1,SE2,!SE3
