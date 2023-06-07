@@ -1201,32 +1201,41 @@ def DO_quota(wb, args: Union[None, list] = None) -> RET:
     fquota_out = SendMsg(wb, f'fquota -nomsg list {user}')
     fquota_dict = fquota_out.ansdict
 
-    username = jquota_dict['results'][0]["username"]
+    if 'results' not in jquota_dict or 'results' not in fquota_dict or not jquota_dict['results'] or not fquota_dict['results']:
+        msg = f'jquota exitcode: {jquota_dict["metadata"]["exitcode"]}\n{jquota_dict["metadata"]["error"]}\nfquota exitcode: {fquota_dict["metadata"]["exitcode"]}\n{fquota_dict["metadata"]["error"]}'
+        return RET(1, '', f'Something went wrong with the command arguments and got empty results\n{msg}')
 
-    running_time = float(jquota_dict['results'][0]["totalRunningTimeLast24h"]) / 3600
-    running_time_max = float(jquota_dict['results'][0]["maxTotalRunningTime"]) / 3600
+    # It is possible to do this for multiple users, but no use-case for this
+    jquota_info = jquota_dict['results'][0]
+    fquota_info = fquota_dict['results'][0]
+    quota_sum = [{**j, **q} for j,q in zip(jquota_dict['results'], fquota_dict['results'])]
+
+    username = jquota_info["username"]
+
+    running_time = float(jquota_info["totalRunningTimeLast24h"]) / 3600
+    running_time_max = float(jquota_info["maxTotalRunningTime"]) / 3600
     running_time_perc = (running_time / running_time_max) * 100
 
-    cpucost = float(jquota_dict['results'][0]["totalCpuCostLast24h"]) / 3600
-    cpucost_max = float(jquota_dict['results'][0]["maxTotalCpuCost"]) / 3600
+    cpucost = float(jquota_info["totalCpuCostLast24h"]) / 3600
+    cpucost_max = float(jquota_info["maxTotalCpuCost"]) / 3600
     cpucost_perc = (cpucost / cpucost_max) * 100
 
-    unfinishedjobs_max = int(jquota_dict['results'][0]["maxUnfinishedJobs"])
-    waiting = int(jquota_dict['results'][0]["waiting"])
-    running = int(jquota_dict['results'][0]["running"])
+    unfinishedjobs_max = int(jquota_info["maxUnfinishedJobs"])
+    waiting = int(jquota_info["waiting"])
+    running = int(jquota_info["running"])
     unfinishedjobs_perc = ((waiting + running) / unfinishedjobs_max) * 100
 
-    pjobs_nominal = int(jquota_dict['results'][0]["nominalparallelJobs"])
-    pjobs_max = int(jquota_dict['results'][0]["maxparallelJobs"])
+    pjobs_nominal = int(jquota_info["nominalparallelJobs"])
+    pjobs_max = int(jquota_info["maxparallelJobs"])
 
-    size = float(fquota_dict['results'][0]["totalSize"])
+    size = float(fquota_info["totalSize"])
     size_MiB = size / (1024 * 1024)
-    size_max = float(fquota_dict['results'][0]["maxTotalSize"])
+    size_max = float(fquota_info["maxTotalSize"])
     size_max_MiB = size_max / (1024 * 1024)
     size_perc = (size / size_max) * 100
 
-    files = float(fquota_dict['results'][0]["nbFiles"])
-    files_max = float(fquota_dict['results'][0]["maxNbFiles"])
+    files = float(fquota_info["nbFiles"])
+    files_max = float(fquota_info["maxNbFiles"])
     files_perc = (files / files_max) * 100
 
     msg = (f"""Quota report for user : {username}
@@ -1236,7 +1245,7 @@ CPU Cost (last 24h) used/max:\t\t{cpucost:.2f}/{cpucost_max:.2f}(h) --> {cpucost
 ParallelJobs (nominal/max) :\t{pjobs_nominal}/{pjobs_max}
 Storage size :\t\t\t{size_MiB:.2f}/{size_max_MiB:.2f} MiB --> {size_perc:.2f}%
 Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%""")
-    return RET(0, msg)
+    return RET(0, msg, '', quota_sum)
 
 
 def DO_checkAddr(args: Union[list, None] = None) -> RET:
