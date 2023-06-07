@@ -150,7 +150,7 @@ def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET
 
         if not arg_list:
             AlienSessionInfo['pathq'].popleft()
-            if not do_not_cd: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
+            if not do_not_cd and AlienSessionInfo['pathq']: cd(wb, AlienSessionInfo['pathq'][0])  # cd to the new top of stack
         msg = " ".join(AlienSessionInfo['pathq'])
         return RET(0, msg)  # type: ignore [call-arg]  # end of popd
 
