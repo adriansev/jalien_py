@@ -679,7 +679,11 @@ task name / detector name / [ / time [ / key = value]* ]
     query_str = args[0]  # after removal of args assume the rest is the query
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
-    q_dict = q.json()
+    try:
+        q_dict = q.json()
+    except Exception:
+        return RET(1, '', f'Invalid answer (no json) from query:\n{ccdb}{listing_type}{query_str}')
+
     # q_path = q_dict.pop('path')
     # q_latest = q_dict.pop('latest')
     # q_patternMatching = q_dict.pop('patternMatching')
