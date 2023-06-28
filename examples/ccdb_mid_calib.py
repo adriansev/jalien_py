@@ -14,8 +14,8 @@ except Exception:
         print("Can't load alienpy, exiting...")
         sys.exit(1)
 
-# enable automatic pretty printing
-from rich import print
+from rich.console import Console
+from rich.table import Table
 
 ########################################
 ##   REQUIRED INITIAILZATION
@@ -26,16 +26,20 @@ setup_logging()  # type: ignore
 common_dir = 'MID/Calib/'
 obj_list = [ 'MID/Calib/BadChannels']
 
-header = f'Check objects in >>> {common_dir} <<<\nObject{" "*2}Run{" "*5}Size{" "*5}LastMod{" "*25}Valid'
 msg_obj_list = []
+
+table = Table(title = f"CCDB Objects in {common_dir}", title_justify = 'center', highlight = True, pad_edge = False, padding = 0, show_edge = True)
+table.add_column("Object")
+table.add_column("Run")
+table.add_column("Size", justify = "right")
+table.add_column("LastMod")
+table.add_column("ValidTo")
 
 for obj in obj_list:
     rez = DO_ccdb_query([obj])
     for q in rez.ansdict['objects']:
         run = q.get("runNumber", '-1')
-        msg_obj_list.append(f'{q["path"].replace(common_dir,"")}  {run}  {q["Content-Length"]}  \"{q["Last-Modified"]}\"  \"{q["Valid-Until"]}\"')
+        table.add_row(q["path"].replace(common_dir,""), run, str(q["Content-Length"]), q["Last-Modified"], q["Valid-Until"])
 
-msg_obj = f'{os.linesep}'.join(msg_obj_list) if msg_obj_list else ''
-if msg_obj: msg_obj = f'{header}\n{msg_obj}'
-print(msg_obj)
-
+console = Console()
+console.print(table)
