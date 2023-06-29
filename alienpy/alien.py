@@ -21,6 +21,7 @@ import statistics
 from typing import Union
 import time
 from urllib.parse import urlparse
+import uuid
 
 # External imports
 try:
@@ -75,6 +76,8 @@ from .xrd_core import (xrd_config_init, HAS_XROOTD, xrd_client, DO_XrootdCp,
                        download_tmp, upload_tmp)
 # Global XRootD preferences
 xrd_config_init()
+
+session_id = None  # variable used to keep a session ID
 
 ##################################
 #   START FUNCTIONS DEFINITIONS
@@ -643,6 +646,7 @@ def DO_jobInfo(wb, args: list = None) -> RET:
 
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
+    global session_id
     if not args: return RET(2, '', 'empty query! Use at least a "/" as argument')
 
     if is_help(args):
@@ -681,8 +685,10 @@ task name / detector name / [ / time [ / key = value]* ]
     query_str = query_str.replace('.*', '').replace('*', '')
 
     if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
+    if not session_id: session_id = str(uuid.uuid1())
 
-    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
+    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{os.uname()[1]} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
+
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     try:
         q_dict = q.json()
