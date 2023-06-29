@@ -687,7 +687,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
     if not session_id: session_id = str(uuid.uuid1())
 
-    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{os.uname()[1]} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
+    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{os.uname()[1]} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     try:
