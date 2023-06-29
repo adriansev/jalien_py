@@ -212,8 +212,8 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
         if src_stat.type == 'f':  # single file
             dst_filename = format_dst_fn(src, src, dst, parent)
             # if overwrite the file validity checking will do md5
-            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
 
+            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.mtime, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
             if not skip_file:
                 tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
                 if tokens and 'answer' in tokens:
@@ -228,7 +228,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
                 lfn = get_lfn_key(lfn_obj)
                 dst_filename = format_dst_fn(src, lfn, dst, parent)
                 # if overwrite the file validity checking will do md5
-                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
+                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['ctime'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
                 if skip_file: continue  # destination exists and is valid, no point to re-download
 
                 tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
@@ -390,7 +390,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = 
     if f_arg:
         print_out('No longer used flag! md5 verification of present destination is default; disable with -fastcheck')
 
-    fastcheck = get_arg(xrd_copy_command, '-fastcheck')
+    fastcheck = get_arg(xrd_copy_command, '-fastcheck') or get_arg(xrd_copy_command, '-skipmd5')
     overwrite = not fastcheck
 
     get_arg(xrd_copy_command, '-cksum')

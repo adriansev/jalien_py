@@ -492,14 +492,19 @@ def pathtype_local(path: str) -> str:
     return ''
 
 
-def fileIsValid(filename: str, size: Union[str, int], reported_md5: str, shallow_check: bool = False) -> RET:
+def fileIsValid(filename: str, size: Union[str, int], mtime: Union[str, int], reported_md5: str, shallow_check: bool = False) -> RET:
     """Check if the file path is consistent with the size and md5 argument. N.B.! the local file will be deleted with size,md5 not match"""
     if os.path.isfile(filename):  # first check
-        if int(os.stat(filename).st_size) != int(size):
+        stat_info = os.stat(filename)
+        local_file_mtime = int(stat_info.st_mtime*1000)
+        if int(stat_info.st_size) != int(size):
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid size)')
+        if local_file_mtime < int(mtime):  # if the age of local file is > age of lfn then lfn is modified and newer
+            os.remove(filename)
+            return RET(9, '', f'{filename} : Removed (lfn is newer than local file)')
         if shallow_check:
-            return RET(0, f'{filename} --> TARGET VALID (size match)')
+            return RET(0, f'{filename} --> TARGET VALID (size match, local age is lower than remote)')
         if md5(filename) != reported_md5:
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid md5)')
@@ -625,8 +630,8 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     perm = oct(statinfo.st_mode)[-3:]
     uid = uid2name(statinfo.st_uid)
     gid = gid2name(statinfo.st_gid)
-    ctime = str(statinfo.st_ctime)
-    mtime = str(statinfo.st_mtime)
+    ctime = str(statinfo.st_ctime)  # metadata modification
+    mtime = str(statinfo.st_mtime)  # content modification
     guid = ''
     size = str(statinfo.st_size)
     md5hash = ''
