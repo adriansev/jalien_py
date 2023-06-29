@@ -659,13 +659,14 @@ task name / detector name / [ / time [ / key = value]* ]
 -dst: set a specific destination for download
 ''' )
 
-    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', }
-
     listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
     ccdb_default_host = 'http://alice-ccdb.cern.ch/'
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
     do_download = get_arg(args, '-get')
+    run_nr = get_arg_value(args, '-run')
+    limit_results = get_arg_value(args, '-limit')
+    if not limit_results: limit_results = 10
 
     dest_arg = get_arg_value(args, '-dst')
     if not dest_arg: dest_arg = '.'
@@ -677,7 +678,11 @@ task name / detector name / [ / time [ / key = value]* ]
 
     if not args: return RET(2, '', 'empty query!')
     query_str = args[0]  # after removal of args assume the rest is the query
+    query_str = query_str.replace('.*', '').replace('*', '')
 
+    if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
+
+    headers = { 'user-agent': f'alien.py/{ALIENPY_VERSION_STR}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     try:
         q_dict = q.json()
