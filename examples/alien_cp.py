@@ -30,5 +30,5 @@ wb = InitConnection(cmdlist_func = constructCmdList)  # type: ignore
 ########################################
 
 silent = ''  # set to quiet or silet to disable output
-sys.exit(alien.retf_print(alien.DO_XrootdCp(wb, sys.argv, silent)))
+sys.exit(retf_print(DO_XrootdCp(wb, sys.argv, silent)))
 
