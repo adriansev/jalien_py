@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
+import ctypes
+try:
+    libgcc_s = ctypes.CDLL('libgcc_s.so.1')
+except Exception:
+    pass
+
 import os
 import sys
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 6):
