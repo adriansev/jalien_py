@@ -49,39 +49,34 @@ def get_ca_path() -> str:
     if use_local_cas_dir:
         if os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
             capath_default = local_ca_certs_dir
-            os.environ['X509_CERT_DIR'] = local_ca_certs_dir
         else:
             msg = 'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found there!!!\nrun: "alien.py getCAcerts" first'
             print_err(msg)
             logging.error(msg)
             sys.exit(2)
-    elif x509file:
-        if os.path.isfile(x509file):
-            capath_default = x509file
-            if DEBUG: logging.debug('X509_CERT_FILE = %s', x509file)
-        else:
-            logging.error('X509_CERT_FILE set to %s but file is not accessible', x509file)
-    elif x509dir:
-        if os.path.isdir(x509dir):
-            capath_default = x509dir
-            if DEBUG: logging.debug('X509_CERT_DIR = %s', x509dir)
-        else:
-            logging.error('X509_CERT_DIR set to %s but directory is not accessible', x509dir)
-    elif os.path.exists(alice_cvmfs_ca_path_lx):
+    elif x509dir and os.path.isfile(f'{x509dir}/CERN-GridCA.pem'):
+        capath_default = x509dir
+    elif x509file and os.path.isfile(x509file):
+        capath_default = x509file
+    elif os.path.isfile(f'{alice_cvmfs_ca_path_lx}/CERN-GridCA.pem'):
         capath_default = alice_cvmfs_ca_path_lx
-    elif os.path.exists(alice_cvmfs_ca_path_macos):
+    elif os.path.isfile(f'{alice_cvmfs_ca_path_macos}/CERN-GridCA.pem'):
         capath_default = alice_cvmfs_ca_path_macos
     elif os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
         capath_default = local_ca_certs_dir
-        os.environ['X509_CERT_DIR'] = local_ca_certs_dir
-    elif os.path.exists(system_ca_path):
+    elif os.path.isfile(f'{system_ca_path}/CERN-GridCA.pem'):
         capath_default = system_ca_path
     else:
         msg = "No CA location or files specified or found!!! Connection will not be possible!! Run:\nalien.py getCAcerts\nto download CAs to local ~/.globus/certificates"
         print_err(msg)
         logging.error(msg)
         sys.exit(2)
-    if DEBUG: logging.debug('CApath/file = %s', capath_default)
+
+    # if x509file is not used (or is missing) then just set X509_CERT_DIR to whatever capath_default was found to be valid
+    if capath_default != x509file: os.environ['X509_CERT_DIR'] = capath_default
+
+    dbg_msg = f'\nX509_CERT_FILE = {x509file}\nCAfile = {x509file}' if x509file else f'\nX509_CERT_DIR = {x509dir}\nCApath = {capath_default}'
+    if DEBUG: logging.debug('%s', dbg_msg)
     return capath_default
 
 
