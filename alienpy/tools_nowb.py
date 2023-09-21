@@ -508,6 +508,7 @@ def fileIsValid(filename: str, size: Union[str, int], mtime: Union[str, int], re
         if md5(filename) != reported_md5:
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid md5)')
+        os.utime(filename)  # validate the check by updateding BOTH access and modified time
         return RET(0, f'{filename} --> TARGET VALID (md5 match)')
     return RET(2, '', f'{filename} : No such file')  # ENOENT
 
