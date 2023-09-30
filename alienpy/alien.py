@@ -722,7 +722,7 @@ task name / detector name / [ / time [ / key = value]* ]
     for q in q_dict['objects']:
         download_list.append(get_alien_endpoint(q))
         dest_list.append(f'file:{dest_arg}{q["path"]}/{q["filename"].replace("<","_").replace(">","_")}')
-        msg_obj_list.append(f'{q["filename"]}    {q["ObjectType"]}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"')
+        msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"')
 
     if do_download:
         return DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
