@@ -453,6 +453,8 @@ def DO_getSE(wb, args: list = None) -> RET:
     def match_name(se: Union[dict, None] = None, name: str = '') -> bool:
         if se is None or not name: return False
         if name.isdecimal(): return name in se['seNumber']
+        if not 'seName' in se or not 'seNumber' in se or not 'endpointUrl' in se: return False
+        if not se['seName'] or not se['seNumber'] or not se['endpointUrl']: return False
         return name.casefold() in se['seName'].casefold() or name.casefold() in se['seNumber'].casefold() or name.casefold() in se['endpointUrl'].casefold()
 
     se_name = args[-1].casefold()
