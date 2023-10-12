@@ -125,6 +125,12 @@ def unquote_str(arg):
     return arg
 
 
+def dequote(s):
+    """Remove only 1 quotes in the string limits"""
+    if (len(s) >= 2 and s[0] == s[-1]) and s.startswith(("'", '"')): return s[1:-1]
+    return s
+
+
 def is_guid(guid: str) -> bool:
     """Recognize a GUID format"""
     return bool(guid_regex.fullmatch(guid))  # identify if argument in an AliEn GUID
@@ -320,6 +326,26 @@ def get_arg_2values(target: list, item):
     for idx in idx_to_be_removed: target.pop(idx)
     list_remove_item(target, item)
     return val1, val2
+
+
+def get_arg_multiple(target: list, item) -> list:
+    """Return list of all values for a given arg"""
+    val = None
+    values_list = []
+    idx_to_be_removed = []
+    arg_list_size = len(target)
+    # cannot get the value and remove from list in the same time
+    for idx, x in enumerate(target):
+        if x == item:
+            # if current index (starts at 0) is greater then len - 1, just return
+            if idx + 1 + 1 > arg_list_size: return val
+            values_list.append(target[idx + 1])
+            idx_to_be_removed.append(idx + 1)
+
+    idx_to_be_removed.reverse()
+    for idx in idx_to_be_removed: target.pop(idx)
+    list_remove_item(target, item)
+    return values_list  # noqa: R504
 
 
 def uid2name(uid: Union[str, int]) -> str:
