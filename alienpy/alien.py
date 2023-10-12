@@ -54,8 +54,8 @@ from .connect_ssl import CertInfo, CertVerify, CertKeyMatch
 ##   General misc functions library
 from .tools_nowb import (exitcode, signal_handler, cleanup_temp, import_aliases, list_remove_item, convert_trace2dict, convert_jdl2dict,
                          ccdb_json_cleanup, unixtime2local, file2list, queryML, convert_time, check_port, exit_message,
-                         get_arg, get_arg_value, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf, getCAcerts,
-                         mk_xml_local, file2file_dict, md5)
+                         get_arg, get_arg_value, get_arg_multiple, PrintColor, is_help, get_lfn_key, name2regex, deltat_ms_perf, getCAcerts,
+                         mk_xml_local, file2file_dict, md5, dequote)
 
 # commands stack tools
 from .tools_stackcmd import push2stack, deque_pop_pos
@@ -658,11 +658,14 @@ task name / detector name / start time [ / UUID]
 or
 task name / detector name / [ / time [ / key = value]* ]
 
--host: specify other ccdb server than alice-ccdb.cern.ch
--history: use browse to list the whole history of the object
--unixtime: print the unixtime
--get: download the specified object/objects - full path will be kept
--dst: set a specific destination for download
+-run RUN_NR      : filter for a specific run (converts to /runNumber=RUN_NR})
+-host            : specify other ccdb server than alice-ccdb.cern.ch
+-history         : use browse to list the whole history of the object
+-limit N         : limit the history to latest N elements; default = 10
+-unixtime        : print the unixtime instead of human time
+-header "STRING" : add header declarations/filters to the requests sent to CCDB server
+-get             : download the specified object/objects - full path will be kept
+-dst DST_DIR     : set a specific destination for download
 ''' )
 
     listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
@@ -673,6 +676,8 @@ task name / detector name / [ / time [ / key = value]* ]
     run_nr = get_arg_value(args, '-run')
     limit_results = get_arg_value(args, '-limit')
     if not limit_results: limit_results = 10
+
+    headers_list = get_arg_multiple(args, '-header')
 
     dest_arg = get_arg_value(args, '-dst')
     if not dest_arg: dest_arg = '.'
@@ -690,6 +695,9 @@ task name / detector name / [ / time [ / key = value]* ]
     if not session_id: session_id = str(uuid.uuid1())
 
     headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{os.uname()[1]} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results), }
+    for h_el in headers_list:
+        k, _, v = h_el.partition(':')
+        headers[k.strip()] = v.strip()
 
     q = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
     try:
@@ -717,14 +725,27 @@ task name / detector name / [ / time [ / key = value]* ]
         for i in obj['replicas']:
             if i.startswith('alien'): return i
 
-    header = f'Filename{" "*39}Type{" "*24}LastMod{" "*27}Valid'
+    header = f'Filename{" "*39}Type{" "*24}LastMod{" "*27}ValidFrom{" "*12}ValidUntil'
     download_list = []
     dest_list = []
     msg_obj_list = []
+
+    # identify if the destination names are unique or must be customized with ETag
+    dest_list_uniq_names = set()
+    for q in q_dict['objects']:
+        dest_list_uniq_names.add(f'file:{dest_arg}{q["path"]}/{q["filename"]}')
+    are_unique_names = (len(dest_list_uniq_names) == len(q_dict['objects']))
+
     for q in q_dict['objects']:
         download_list.append(get_alien_endpoint(q))
-        dest_list.append(f'file:{dest_arg}{q["path"]}/{q["filename"].replace("<","_").replace(">","_")}')
-        msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"')
+        filename = q["filename"]
+        name, _, ext = filename.rpartition('.')
+        if not are_unique_names and len(q_dict['objects']) > 1:
+            etag = q["ETag"].replace('"','')
+            filename = f'{name}_{etag}.{ext}'
+
+        dest_list.append(f'file:{dest_arg}{q["path"]}/{filename}')
+        msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"    \"{q["Valid-Until"]}\"')
 
     if do_download:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
@@ -1590,20 +1611,35 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
     return ret_obj
 
 
-def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
+def ProcessCommandChain(wb = None, cmd_chain: Union[list, str, None] = None) -> int:
     """Process a chain of commands delimited by ; or new line"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
-    if 'AlienSessionInfo' not in globals() or not cmd_chain:
-        print_err('ProcessCommandChain needs presence of global dict AlienSessionInfo and cmd_chain')
+    if cmd_chain is None: cmd_chain = []
+    if not cmd_chain:
+        print_err('ProcessCommandChain:: missing command(s)')
         return 1
+    if 'AlienSessionInfo' not in globals():
+        print_err('ProcessCommandChain:: needs presence of global dict AlienSessionInfo')
+        return 1
+
+    # recompune argument list as string for easy alias processing
+    if isinstance(cmd_chain, list):
+        if len(cmd_chain) == 1:
+            cmd_string = dequote(cmd_chain[0])
+        else:
+            cmd_string = shlex.join(cmd_chain) if isinstance(cmd_chain, list) else cmd_chain
+    else:
+        cmd_string = cmd_chain
 
     # translate aliases in place in the whole string
     if AlienSessionInfo['alias_cache']:
-        for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_chain = cmd_chain.replace(alias, alias_value)
+        for alias, alias_value in AlienSessionInfo['alias_cache'].items(): cmd_string = cmd_string.replace(alias, alias_value)
+
+    # split compounded commands delimited by ';' and '\n' in individual commands
+    cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_string)]
 
     # for each command, save exitcode and RET of the command
     exitcode = -1
-    cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_chain)]  # split commands on ; and \n with regex
     for cmdline in cmdline_list:
         if not cmdline: continue
         if DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
@@ -1623,8 +1659,17 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
             logging.error(f'AliEn command before the | token was not found\n{cmdline}')
             continue
 
-        args = shlex.split(input_alien.strip())
-        cmd = args.pop(0)
+        # initial state of args
+        args_ini = shlex.split(input_alien.strip(), posix = True)
+        cmd = args_ini.pop(0)
+
+        # reprocess arguments in case the main argument list is passed as quoted string
+        # such is the case of alien_<command> 'list of arguments'
+        args = []
+        if len(args_ini) == 1:
+            for i in args_ini: args.extend(shlex.split(i.strip(), posix = False))
+        else:
+            args = args_ini
 
         # if globally enabled then enable per command OR if enabled for this command
         JSON_OUT_CMD = None
@@ -1658,7 +1703,7 @@ def ProcessCommandChain(wb = None, cmd_chain: str = '') -> int:
     return exitcode
 
 
-def JAlien(commands: str = '') -> int:
+def JAlien(commands: Union[list, str, None] = None) -> int:
     """Main entry-point for interaction with AliEn"""
     global AlienSessionInfo, ALIENPY_GLOBAL_WB
     import_aliases()
@@ -1746,6 +1791,8 @@ def main():
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
     if get_arg(sys.argv, '-json'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
+    # print(f'MAIN: {sys.argv}')
+
     DEBUG_ARG = get_arg(sys.argv, '-debug')
     if DEBUG_ARG:
         os.environ['ALIENPY_DEBUG'] = '1'
@@ -1762,12 +1809,6 @@ def main():
         ret_obj = DO_version()
         logging.debug('%s\n', ret_obj.out)
 
-    arg_list_expanded = []
-    for arg in sys.argv:
-        for item in shlex.split(arg):
-            arg_list_expanded.append(item)
-    sys.argv = arg_list_expanded
-
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
         import code
         term = code.InteractiveConsole(locals = globals())
@@ -1781,15 +1822,15 @@ def main():
     verb = exec_name.replace('alien_', '') if exec_name.startswith('alien_') else ''
     if verb: sys.argv.insert(0, verb)
 
-    cmd_string = ''
+    arg_list = None
     if len(sys.argv) > 0 and os.path.isfile(sys.argv[0]):
         with open(sys.argv[0], encoding="ascii", errors="replace") as input_file:
-            cmd_string = input_file.read()
+            arg_list = shlex.split(input_file.read(), posix = True)
     else:
-        cmd_string = ' '.join(sys.argv)
+        arg_list = sys.argv
 
     try:
-        sys.exit(JAlien(cmd_string))
+        sys.exit(JAlien(arg_list))
     except KeyboardInterrupt:
         print_out("Received keyboard intrerupt, exiting..")
         sys.exit(1)
