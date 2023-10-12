@@ -648,7 +648,7 @@ def DO_jobInfo(wb, args: list = None) -> RET:
 
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
-    global session_id
+    global session_id, ALIENPY_GLOBAL_WB
     if not args: return RET(2, '', 'empty query! Use at least a "/" as argument')
 
     if is_help(args):
@@ -727,6 +727,7 @@ task name / detector name / [ / time [ / key = value]* ]
         msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"')
 
     if do_download:
+        if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
         return DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
 
     msg_obj = f'{os.linesep}'.join(msg_obj_list)
