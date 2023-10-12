@@ -1825,7 +1825,7 @@ def main():
     arg_list = None
     if len(sys.argv) > 0 and os.path.isfile(sys.argv[0]):
         with open(sys.argv[0], encoding="ascii", errors="replace") as input_file:
-            arg_list = shlex.split(input_file.read(), posix = True)
+            arg_list = input_file.read().strip().replace('\n',';')
     else:
         arg_list = sys.argv
 
