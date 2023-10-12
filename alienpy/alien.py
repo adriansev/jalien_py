@@ -666,6 +666,7 @@ task name / detector name / [ / time [ / key = value]* ]
 -header "STRING" : add header declarations/filters to the requests sent to CCDB server
 -get             : download the specified object/objects - full path will be kept
 -dst DST_DIR     : set a specific destination for download
+-mirror          : create CCDB snapshot as per specifications of CCDB server
 ''' )
 
     listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
@@ -673,9 +674,14 @@ task name / detector name / [ / time [ / key = value]* ]
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
     do_download = get_arg(args, '-get')
+    do_mirror = get_arg(args, '-mirror')
     run_nr = get_arg_value(args, '-run')
     limit_results = get_arg_value(args, '-limit')
     if not limit_results: limit_results = 10
+
+    if do_download and do_mirror:
+        return RET(1, '', '-get and -mirror are conflicting options')
+    do_unixtime = do_mirror
 
     headers_list = get_arg_multiple(args, '-header')
 
@@ -705,9 +711,7 @@ task name / detector name / [ / time [ / key = value]* ]
     except Exception:
         return RET(1, '', f'Invalid answer (no json) from query:\n{ccdb}{listing_type}{query_str}')
 
-    # q_path = q_dict.pop('path')
-    # q_latest = q_dict.pop('latest')
-    # q_patternMatching = q_dict.pop('patternMatching')
+    # clean up redundant entries from object description
     list(map(ccdb_json_cleanup, q_dict['objects']))
 
     if not do_unixtime:
@@ -738,16 +742,30 @@ task name / detector name / [ / time [ / key = value]* ]
 
     for q in q_dict['objects']:
         download_list.append(get_alien_endpoint(q))
-        filename = q["filename"]
-        name, _, ext = filename.rpartition('.')
-        if not are_unique_names and len(q_dict['objects']) > 1:
-            etag = q["ETag"].replace('"','')
-            filename = f'{name}_{etag}.{ext}'
 
-        dest_list.append(f'file:{dest_arg}{q["path"]}/{filename}')
+        if do_mirror:
+            filename = dequote(q["ETag"])
+        else:
+            filename = q["filename"]
+            name, _, ext = filename.rpartition('.')
+            if not are_unique_names and len(q_dict['objects']) > 1:
+                etag = dequote(q["ETag"])
+                filename = f'{name}_{etag}.{ext}'
+
+        dst_filepath = f'{dest_arg}{q["path"]}/{filename}'
+
+        # create properties file
+        if do_mirror:
+            prop_filepath = f'{dst_filepath}.properties'
+            Path(os.path.dirname(prop_filepath)).mkdir(parents = True, exist_ok = True)
+            with open(prop_filepath, "w") as f:
+                q.pop('replicas', None)
+                for k, v in q.items(): f.write(f'{k}={v}\n')
+
+        dest_list.append(f'file:{dst_filepath}')
         msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"    \"{q["Valid-Until"]}\"')
 
-    if do_download:
+    if do_download or do_mirror:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
         return DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
 

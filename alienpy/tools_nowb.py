@@ -1033,21 +1033,21 @@ def ccdb_json_cleanup(item_dict: dict) -> None:
     item_dict.pop('id', None)  # replaced by ETag
     item_dict.pop('validFrom', None)
     item_dict.pop('validUntil', None)
+    item_dict.pop('partName', None)
+
     item_dict.pop('initialValidity', None)  # replaced by InitialValidityLimit
+    item_dict.pop('InitialValidityLimit', None)  # unclear use for this field
+
     item_dict.pop('MD5', None)  # replaced by Content-MD5
     item_dict.pop('fileName', None)  # replaced by Content-Disposition
-    content_disposition = item_dict.pop('Content-Disposition')
-    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
-    item_dict['filename'] = filename
 
     item_dict.pop('contentType', None)
     item_dict.pop('size', None)  # replaced by Content-Length
-    item_dict.pop('Created', None)  # no need (??) to be shown (mail2dev if needed)
-    item_dict.pop('Content-Type', None)  # useless for this application
-    item_dict.pop('UploadedFrom', None)  # useless for this application
-    item_dict.pop('UploadedBy', None)  # useless for this application
-    item_dict.pop('partName', None)  # useless for this application
-    item_dict.pop('InitialValidityLimit', None)  # unclear use for this field
+
+    # get and create the filename
+    content_disposition = item_dict.pop('Content-Disposition')
+    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
+    item_dict['filename'] = filename
 
 
 def getCAcerts(custom_dir: str = '') -> RET:
