@@ -517,6 +517,7 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not (meta_filename and replica_list): return ''
     try:
+        local_filename = local_filename.replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
         with open(meta_filename, 'w', encoding="ascii", errors="replace") as f:
             published = str(datetime.datetime.now().replace(microsecond=0).isoformat())
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
