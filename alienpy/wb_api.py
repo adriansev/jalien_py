@@ -314,8 +314,8 @@ def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False
     if isinstance(in_arg, (dict, list)):
         indent = None if compact else 2
         separators = (',', ':') if compact else None
-        if 'HAS_PPRINT' in globals() and HAS_PPRINT:
-            print_json(data = in_arg)
+        if ALIENPY_FANCY_PRINT:
+            rich_print_json(data = in_arg)
         else:
             print_out(json.dumps(in_arg, sort_keys = True, indent = indent, separators = separators, skipkeys = False))
 

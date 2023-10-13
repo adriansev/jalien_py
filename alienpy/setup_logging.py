@@ -13,14 +13,20 @@ def print_out(msg: str, toLog: bool = False):
     if toLog:
         logging.log(90, msg)
     else:
-        print(msg, flush = True)
+        if ALIENPY_FANCY_PRINT:
+            rich_print(msg, flush = True)
+        else:
+            print(msg, flush = True)
 
 
 def print_err(msg: str, toLog: bool = False):
     if toLog:
         logging.log(95, msg)
     else:
-        print(msg, file = sys.stderr, flush = True)
+        if ALIENPY_FANCY_PRINT:
+            rich_print(msg, file = sys.stderr, flush = True)
+        else:
+            print(msg, file = sys.stderr, flush = True)
 
 
 def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.log'):
