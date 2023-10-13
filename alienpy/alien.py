@@ -722,7 +722,7 @@ task name / detector name / [ / time [ / key = value]* ]
         for i in obj['replicas']:
             if i.startswith('alien'): return i
 
-    header = f'Filename{" "*39}Type{" "*24}LastMod{" "*27}ValidFrom{" "*12}ValidUntil'
+    header = f'Filename{" "*39}Type{" "*24}ValidFrom{" "*10}ValidUntil{" "*10}Lifetime(ms)'
     download_list = []
     dest_time_list = []
     msg_obj_list = []
@@ -748,20 +748,40 @@ task name / detector name / [ / time [ / key = value]* ]
         dst_filepath = f'{dest_arg}{q["path"]}/{filename}'
         dest_time_list.append( (f'file:{dst_filepath}', float(q['Valid-Until'])/1000) )
 
+        q['Last-Modified-nice'] = unixtime2local(q['Last-Modified'])
+        q['Valid-From-nice'] = unixtime2local(q['Valid-From'])
+        q['Valid-Until-nice'] = unixtime2local(q['Valid-Until'])
+        q['Lifetime'] = int(q['Valid-Until']) - int(q['Valid-From'])  # milliseconds
+
         # create properties file
         if do_mirror:
             prop_filepath = f'{dst_filepath}.properties'
             Path(os.path.dirname(prop_filepath)).mkdir(parents = True, exist_ok = True)
             with open(prop_filepath, "w") as f:
-                q.pop('replicas', None)
-                for k, v in q.items(): f.write(f'{k}={v}\n')
+                for k, v in q.items():
+                    key = k
+                    # do not write my additions
+                    if key == 'Last-Modified-nice': continue
+                    if key == 'Valid-From-nice': continue
+                    if key == 'Valid-Until-nice': continue
+                    if key == 'Lifetime': continue
 
-        if not do_unixtime:
-            q['Last-Modified'] = unixtime2local(q['Last-Modified'])
-            q['Valid-From'] = unixtime2local(q['Valid-From'])
-            q['Valid-Until'] = unixtime2local(q['Valid-Until'])
+                    # properties format, Costin dixit
+                    if key == 'replicas': continue
+                    if key == 'path': continue
+                    if key == 'ETag': continue
+                    if key == 'Valid-From': continue
+                    if key == 'Content-Length': continue
+                    if key == 'Created': key = 'CreateTime'
+                    if key == 'Valid-Until': key = 'ValidUntil'
+                    if key == 'filename': key = 'OriginalFileName'
+                    f.write(f'{key}={v}\n')
 
-        msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"    \"{q["Valid-Until"]}\"')
+        if not do_download or not do_mirror:
+            msg_obj_list.append(f'{q["filename"]}{" "*2}{q.get("ObjectType", "TYPE NOT FOUND")}{" "*2}'
+                                 f'\"{q["Valid-From"] if do_unixtime else q["Valid-From-nice"]}\"{" "*2}'
+                                 f'\"{q["Valid-Until"] if do_unixtime else q["Valid-Until-nice"]}\"{" "*2}'
+                                 f'{q["Lifetime"]}')
 
     if do_download or do_mirror:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
