@@ -681,7 +681,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
     if do_download and do_mirror:
         return RET(1, '', '-get and -mirror are conflicting options')
-    do_unixtime = do_mirror
+    do_unixtime = do_mirror or do_unixtime
 
     headers_list = get_arg_multiple(args, '-header')
 
@@ -714,13 +714,6 @@ task name / detector name / [ / time [ / key = value]* ]
     # clean up redundant entries from object description
     list(map(ccdb_json_cleanup, q_dict['objects']))
 
-    if not do_unixtime:
-        if 'validAt' in q_dict: q_dict['validAt'] = unixtime2local(q_dict['validAt'])
-        for i in q_dict['objects']:
-            i['Last-Modified'] = unixtime2local(i['Last-Modified'])
-            i['Valid-From'] = unixtime2local(i['Valid-From'])
-            i['Valid-Until'] = unixtime2local(i['Valid-Until'])
-
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
 
@@ -731,7 +724,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
     header = f'Filename{" "*39}Type{" "*24}LastMod{" "*27}ValidFrom{" "*12}ValidUntil'
     download_list = []
-    dest_list = []
+    dest_time_list = []
     msg_obj_list = []
 
     # identify if the destination names are unique or must be customized with ETag
@@ -744,7 +737,7 @@ task name / detector name / [ / time [ / key = value]* ]
         download_list.append(get_alien_endpoint(q))
 
         if do_mirror:
-            filename = dequote(q["ETag"])
+            filename = f'{q["Valid-From"]}/{dequote(q["ETag"])}'
         else:
             filename = q["filename"]
             name, _, ext = filename.rpartition('.')
@@ -753,6 +746,7 @@ task name / detector name / [ / time [ / key = value]* ]
                 filename = f'{name}_{etag}.{ext}'
 
         dst_filepath = f'{dest_arg}{q["path"]}/{filename}'
+        dest_time_list.append( (f'file:{dst_filepath}', float(q['Valid-Until'])/1000) )
 
         # create properties file
         if do_mirror:
@@ -762,12 +756,24 @@ task name / detector name / [ / time [ / key = value]* ]
                 q.pop('replicas', None)
                 for k, v in q.items(): f.write(f'{k}={v}\n')
 
-        dest_list.append(f'file:{dst_filepath}')
+        if not do_unixtime:
+            q['Last-Modified'] = unixtime2local(q['Last-Modified'])
+            q['Valid-From'] = unixtime2local(q['Valid-From'])
+            q['Valid-Until'] = unixtime2local(q['Valid-Until'])
+
         msg_obj_list.append(f'{q["filename"]}    {q.get("ObjectType", "TYPE NOT FOUND")}    \"{q["Last-Modified"]}\"    \"{q["Valid-Until"]}\"    \"{q["Valid-Until"]}\"')
 
     if do_download or do_mirror:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
-        return DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
+        dest_list = [i[0] for i in dest_time_list]
+        xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
+
+        # set the time for the ccdb files
+        if do_mirror:
+            for dst_file, valid_until in dest_time_list:
+                ccdb_file = dst_file.replace('file:', '')
+                if os.path.exists(ccdb_file): os.utime(ccdb_file, times = (valid_until, valid_until))
+        return xrdcp_ret
 
     msg_obj = f'{os.linesep}'.join(msg_obj_list)
     if msg_obj: msg_obj = f'{header}\n{msg_obj}'
