@@ -101,23 +101,20 @@ def DO_pushd(wb, args: Union[str, list, None] = None) -> RET:
 
 def DO_path_stack(wb, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
-    if not cmd: return RET(1)  # type: ignore [call-arg]
-    if args is None: return RET(1)  # type: ignore [call-arg]
     global AlienSessionInfo
+    if not cmd: return RET(1)  # type: ignore [call-arg]
+    if args is None: args = []
     arg_list = args.split() if isinstance(args, str) else args
-    do_not_cd = False
-    if '-n' in arg_list:
-        do_not_cd = True
-        arg_list.remove('-n')
-
+    do_not_cd = get_arg(args, '-n')
     msg = ''
-    help_msg = ('The folloswinf syntax is required\n'
-                'dirs [-clpv] [+N | -N]\n'
-                'popd [-n] [+N | -N]\n'
-                'pushd [-n] [+N | -N | dir]')
 
-    if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
-        return RET(1, '', help_msg)  # type: ignore [call-arg]
+#    if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
+    if is_help(arg_list):
+        help_msg = ('Directory stacking implementation (as in Linux shell):\n'
+                    'dirs [-clpv] [+N | -N]\n'
+                    'popd [-n] [+N | -N]\n'
+                    'pushd [-n] [+N | -N | dir]')
+        return RET(0, help_msg)  # type: ignore [call-arg]
 
     sign = None
     position = None
@@ -206,8 +203,8 @@ def DO_version(args: Union[list, None] = None) -> RET:  # pylint: disable=unused
 
 
 def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
-    if args is None: args = []
-    if len(args) > 0 and args[0] == '-h':
+    if not args: args = ['-h']
+    if is_help(args):
         msg = 'Command format: exit [code] [stderr|err] [message]'
         return RET(0, msg)  # type: ignore [call-arg]
     code = AlienSessionInfo['exitcode']
@@ -226,8 +223,8 @@ def DO_exit(args: Union[list, None] = None) -> Union[RET, None]:
 
 def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
-    if args is None: args = []
-    if not args or is_help(args):
+    if not args: args = ['-h']
+    if is_help(args):
         msg = ('Command format: xrd_ping [-c count] fqdn[:port] | SE name | SE id\n'
                'It will use the XRootD connect/ping option to connect and return a RTT')
         return RET(0, msg)
@@ -267,7 +264,7 @@ def DO_xrd_ping(wb, args: Union[list, None] = None) -> RET:
 
 def DO_xrd_config(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
-    if args is None: args = []
+    if not args: args = ['-h']
     if not args or is_help(args):
         msg = ('Command format: xrd_config [-v | -verbose] fqdn[:port] | SE name | SE id\n'
                'It will use the XRootD query config to get the current server properties\n'
@@ -966,9 +963,35 @@ def DO_ps(wb, args: Union[list, None] = None) -> RET:
     return ret_obj
 
 
+def DO_la(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    args[0:0] = ['-F', '-a']
+    return SendMsg(wb, 'ls', args)
+
+
+def DO_ll(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    args[0:0] = ['-F', '-l']
+    return SendMsg(wb, 'ls', args)
+
+
+def DO_lla(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    args[0:0] = ['-F', '-l', '-a']
+    return SendMsg(wb, 'ls', args)
+
+
+def DO_pwd(wb, args: Union[list, None] = None) -> RET:
+    if args is None: args = []
+    if is_help(args):
+        return RET(0, 'pwd : print/return the current work directory')
+    return SendMsg(wb, 'pwd', args)
+
+
 def DO_cat(wb, args: Union[list, None] = None) -> RET:
     """cat lfn :: apply cat on a downloaded lfn as a temporary file"""
-    if not args: return RET(1, '', 'DO_cat:: empty args!!')
+    if not args: args = ['-h']
+    if is_help(args): return RET(0, 'cat <LFN>\nDownload specified LFN as temporary and pass it to system cat command.')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'cat')
     return DO_run(wb, args, external = True)
@@ -976,7 +999,8 @@ def DO_cat(wb, args: Union[list, None] = None) -> RET:
 
 def DO_less(wb, args: Union[list, None] = None) -> RET:
     """less lfn :: apply less on a downloaded lfn as a temporary file"""
-    if not args: return RET(1, '', 'DO_less:: empty args!!')
+    if not args: args = ['-h']
+    if is_help(args): return RET(0, 'less <LFN>\nDownload specified LFN as temporary and pass it to system less command.')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'less')
     return DO_run(wb, args, external = True)
@@ -984,14 +1008,15 @@ def DO_less(wb, args: Union[list, None] = None) -> RET:
 
 def DO_more(wb, args: Union[list, None] = None) -> RET:
     """more lfn :: apply more on a downloaded lfn as a temporary file"""
-    if not args: return RET(1, '', 'DO_more:: empty args!!')
+    if not args: args = ['-h']
+    if is_help(args): return RET(0, 'more <LFN>\nDownload specified LFN as temporary and pass it to system more command.')
     args.insert(0, '-noout')  # keep app open, do not terminate
     args.insert(0, 'more')
     return DO_run(wb, args, external = True)
 
 
 def DO_lfn2uri(wb, args: Union[list, None] = None) -> RET:
-    if args is None: args = []
+    if not args: args = ['-h']
     if is_help(args):
         msg = '''Command format : lfn2uri <lfn> <local_file?> [meta] [write|upload] [strict] [http]
 It will print the URIs for lfn replicas
@@ -1360,8 +1385,8 @@ def get_help(wb, cmd: str = '') -> RET:
 
 def DO_help(wb, args: Union[list, None] = None) -> RET:
     global AlienSessionInfo
-    if args is None: args = []
-    if not args:
+    if not args: args = []
+    if not args or is_help(args):
         msg = ('Project documentation can be found at:\n'
                'https://jalien.docs.cern.ch/\n'
                'https://gitlab.cern.ch/jalien/xjalienfs/blob/master/README.md\n'
@@ -1556,6 +1581,10 @@ def make_func_map_client():
     AlienSessionInfo['cmd2func_map_client']['more'] = DO_more
     AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
     AlienSessionInfo['cmd2func_map_client']['home'] = DO_gethome
+    AlienSessionInfo['cmd2func_map_client']['ll'] = DO_ll
+    AlienSessionInfo['cmd2func_map_client']['la'] = DO_la
+    AlienSessionInfo['cmd2func_map_client']['lla'] = DO_lla
+    AlienSessionInfo['cmd2func_map_client']['pwd'] = DO_pwd
 
 
 def constructCmdList():
@@ -1581,7 +1610,6 @@ def constructCmdList():
     make_func_map_client()
 
     # these are aliases, or directly interpreted
-    AlienSessionInfo['commandlist'].extend(['ll', 'la', 'lla'])
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])    # add nowb cmds to list
     AlienSessionInfo['commandlist'] = sorted(set(AlienSessionInfo['commandlist']))
@@ -1620,14 +1648,7 @@ def ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[s
         time_begin = time.perf_counter()
 
     # early command aliases and default flags
-    if cmd == 'ls':
-        args[0:0] = ['-F']
-    elif cmd == 'll':
-        cmd = 'ls'; args[0:0] = ['-F', '-l']
-    elif cmd == 'la':
-        cmd = 'ls'; args[0:0] = ['-F', '-a']
-    elif cmd == 'lla':
-        cmd = 'ls'; args[0:0] = ['-F', '-l', '-a']
+    if cmd == 'ls': args[0:0] = ['-F']
 
     ret_obj = None
     # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
