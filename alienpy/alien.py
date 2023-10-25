@@ -30,6 +30,12 @@ except Exception:
     print("requests module could not be imported! Make sure you can do:\npython3 -c 'import requests'", file = sys.stderr, flush = True)
     sys.exit(1)
 
+# Adapt and define shlex.join
+if sys.version_info.major == 3 and sys.version_info.minor < 8:
+    def shlex_join(split_command): return ' '.join(shlex.quote(arg) for arg in split_command)
+else:
+    from shlex import join as shlex_join
+
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
 
@@ -1692,7 +1698,7 @@ def ProcessCommandChain(wb = None, cmd_chain: Union[list, str, None] = None) -> 
         if len(cmd_chain) == 1:
             cmd_string = dequote(cmd_chain[0])
         else:
-            cmd_string = shlex.join(cmd_chain) if isinstance(cmd_chain, list) else cmd_chain
+            cmd_string = shlex_join(cmd_chain) if isinstance(cmd_chain, list) else cmd_chain
     else:
         cmd_string = cmd_chain
 
