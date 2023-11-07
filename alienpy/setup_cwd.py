@@ -2,7 +2,9 @@
 
 import os
 import logging
-from .global_vars import *  # nosec PYL-W0614
+import sys
+
+from .global_vars import AlienSessionInfo, DEBUG
 from .tools_nowb import read_conf_file
 from .wb_api import cd
 
@@ -10,7 +12,7 @@ from .wb_api import cd
 def GetSessionFilename() -> str: return os.path.join(os.path.expanduser("~"), ".alienpy_session")
 
 
-def SessionSave():
+def SessionSave() -> None:
     """Save CWD and previous CWD in .alienpy_session file"""
     session_filename = GetSessionFilename()
     if 'AlienSessionInfo' not in globals(): return
@@ -25,7 +27,7 @@ def SessionSave():
         if DEBUG: logging.exception(e)
 
 
-def SessionRestore(wb):
+def SessionRestore(wb) -> None:
     if os.getenv('ALIENPY_NO_CWD_RESTORE'): return
     session = read_conf_file(GetSessionFilename())
     if not session: return
@@ -39,4 +41,3 @@ def SessionRestore(wb):
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-

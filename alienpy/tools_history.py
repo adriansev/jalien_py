@@ -1,8 +1,11 @@
-'''alienpy:: Setup history for interactive shell'''
+"""alienpy:: Setup history for interactive shell"""
 
-from .global_vars import *  # nosec PYL-W0614
+import os
+import sys
+from pathlib import Path
+
+from .global_vars import AlienSessionInfo
 from .wb_api import lfn_list  # nosec PYL-W0614
-
 
 HAS_READLINE = False
 try:
@@ -23,7 +26,7 @@ def setupHistory(wb) -> None:
     rl.parse_and_bind("tab: complete")
     rl.set_completer_delims(" ")
 
-    def complete(text, state):
+    def complete(text: str, state: str) -> list:
         prompt_line = rl.get_line_buffer()
         tokens = prompt_line.split()
         results = []
@@ -49,4 +52,3 @@ def setupHistory(wb) -> None:
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-

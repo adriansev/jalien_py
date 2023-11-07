@@ -1,4 +1,4 @@
-'''alienpy:: GLOBALS'''
+"""alienpy:: GLOBALS"""
 
 import os
 import re
@@ -6,7 +6,8 @@ import sys
 import tempfile
 from collections import deque
 from pathlib import Path
-from .data_structs import *  # nosec PYL-W0614
+
+from .data_structs import COLORS_COLL, CertsInfo
 
 
 try:
@@ -86,5 +87,3 @@ AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'user': ''
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
-
