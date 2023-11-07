@@ -4,11 +4,13 @@ import sys
 
 # import alienpy functions
 try:
-    from alienpy.wb_api import PrintDict, retf_print
+    from alienpy.wb_api import retf_print
+    from alienpy.tools_nowb import PrintDict
     from alienpy.alien import *  # nosec PYL-W0614
 except Exception:
     try:
-        from xjalienfs.wb_api import PrintDict, retf_print
+        from xjalienfs.wb_api import retf_print
+        from xjalienfs.tools_nowb import PrintDict
         from xjalienfs.alien import *  # nosec PYL-W0614
     except Exception:
         print("Can't load alienpy, exiting...")

@@ -20,7 +20,7 @@ from .setup_logging import print_out, print_err
 
 from .async_tools import syncify
 from .wb_async import wb_create, wb_close, wb_sendmsg, wb_sendmsg_multi, IsWbConnected
-from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable, path_readable
+from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable, path_readable, CreateJsonCommand, GetMeta, GetResults, PrintDict
 from .tools_stackcmd import push2stack  # , deque_pop_pos
 from .connect_ssl import get_certs_names
 
@@ -155,12 +155,7 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
 
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
 
-    if JSON_OUT_GLOBAL or JSON_OUT:
-        opts = opts.replace('-nokeys', '').replace('nokeys', '')
-        if 'nomsg' not in opts: opts = f'{opts} nomsg'
-
-    # if DEBUG then make sure we get the full answer
-    if DEBUG:
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
         opts = opts.replace('-nokeys', '').replace('-nomsg', '').replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
@@ -199,60 +194,6 @@ def SendMsg(wb, cmdline: str, args: Union[None, list] = None, opts: str = '') ->
     return ret_obj  # noqa: R504
 
 
-def retf_result2ret(result: Union[str, dict, None]) -> RET:
-    """Convert AliEn answer dictionary to RET object"""
-    if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
-    out_dict = None
-    if isinstance(result, str):
-        try:
-            out_dict = json.loads(result)
-        except Exception as e:
-            msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
-            logging.error(msg)
-            return RET(22, '', msg)  # type: ignore [call-arg]
-    elif isinstance(result, dict):
-        out_dict = result
-    else:
-        msg = 'retf_result2ret:: Wrong type of argument'
-        logging.error(msg)
-        return RET(42, '', msg)  # type: ignore [call-arg]
-
-    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
-        msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
-        logging.error(msg)
-        return RET(42, '', msg)  # type: ignore [call-arg]
-
-    session_state_update(out_dict)  # ALWAYS UPDATE GLOBAL STATE
-    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
-    output = '\n'.join(message_list)
-    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
-
-
-def session_state_update(out_dict: dict) -> None:
-    """Update global AlienSessionInfo with status of the latest command"""
-    if 'AlienSessionInfo' in globals():  # update global state of session
-        AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
-        current_dir = out_dict["metadata"]["currentdir"]
-
-        # if this is first connection, current dir is alien home
-        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
-
-        # update the current current/previous dir status
-        # previous/current have the meaning of before and after command execution
-        prev_dir = AlienSessionInfo['currentdir']  # last known current dir
-        if prev_dir != current_dir:
-            AlienSessionInfo['currentdir'] = current_dir
-            AlienSessionInfo['prevdir'] = prev_dir
-
-        # update directory stack (pushd/popd/dirs)
-        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
-        short_current_dir = short_current_dir[:-1]  # remove the last /
-        if AlienSessionInfo['pathq']:
-            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
-        else:
-            push2stack(short_current_dir)
-
-
 def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     """Send a json message to the specified websocket; it will return the server answer"""
     if not wb:
@@ -264,8 +205,9 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
 
     time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
+
     if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
-        opts = opts.replace('nokeys', '').replace('nomsg', '')
+        opts = opts.replace('-nokeys', '').replace('-nomsg', '').replace('nokeys', '').replace('nomsg', '')
 
     json_signature = ['{"command":', '"options":']
     json_cmd_list = []
@@ -302,22 +244,58 @@ def SendMsgMulti(wb, cmds_list: list, opts: str = '') -> list:
     return ret_obj_list  # noqa: R504
 
 
-def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False):
-    """Print a dictionary in a nice format"""
-    if not in_arg: return
-    if isinstance(in_arg, str):
-        try:
-            in_arg = json.loads(in_arg)
-        except Exception as e:
-            print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
-            return
-    if isinstance(in_arg, (dict, list)):
-        indent = None if compact else 2
-        separators = (',', ':') if compact else None
-        if ALIENPY_FANCY_PRINT:
-            rich_print_json(data = in_arg)
+def session_state_update(out_dict: dict) -> None:
+    """Update global AlienSessionInfo with status of the latest command"""
+    if 'AlienSessionInfo' in globals():  # update global state of session
+        AlienSessionInfo['user'] = out_dict["metadata"]["user"]  # always update the current user
+        current_dir = out_dict["metadata"]["currentdir"]
+
+        # if this is first connection, current dir is alien home
+        if not AlienSessionInfo['alienHome']: AlienSessionInfo['alienHome'] = current_dir
+
+        # update the current current/previous dir status
+        # previous/current have the meaning of before and after command execution
+        prev_dir = AlienSessionInfo['currentdir']  # last known current dir
+        if prev_dir != current_dir:
+            AlienSessionInfo['currentdir'] = current_dir
+            AlienSessionInfo['prevdir'] = prev_dir
+
+        # update directory stack (pushd/popd/dirs)
+        short_current_dir = current_dir.replace(AlienSessionInfo['alienHome'][:-1], '~')
+        short_current_dir = short_current_dir[:-1]  # remove the last /
+        if AlienSessionInfo['pathq']:
+            if AlienSessionInfo['pathq'][0] != short_current_dir: AlienSessionInfo['pathq'][0] = short_current_dir
         else:
-            print_out(json.dumps(in_arg, sort_keys = True, indent = indent, separators = separators, skipkeys = False))
+            push2stack(short_current_dir)
+
+
+def retf_result2ret(result: Union[str, dict, None]) -> RET:
+    """Convert AliEn answer dictionary to RET object"""
+    if not result: return RET(61, '', 'Empty input')  # type: ignore [call-arg]
+    out_dict = None
+    if isinstance(result, str):
+        try:
+            out_dict = json.loads(result)
+        except Exception as e:
+            msg = f'retf_result2ret:: Could not load argument as json!\n{e!r}'
+            logging.error(msg)
+            return RET(22, '', msg)  # type: ignore [call-arg]
+    elif isinstance(result, dict):
+        out_dict = result
+    else:
+        msg = 'retf_result2ret:: Wrong type of argument'
+        logging.error(msg)
+        return RET(42, '', msg)  # type: ignore [call-arg]
+
+    if 'metadata' not in out_dict or 'results' not in out_dict:  # these works only for AliEn responses
+        msg = 'retf_results2ret:: Dictionary does not have AliEn answer format'
+        logging.error(msg)
+        return RET(42, '', msg)  # type: ignore [call-arg]
+
+    session_state_update(out_dict)  # ALWAYS UPDATE GLOBAL STATE
+    message_list = [str(item['message']) for item in out_dict['results'] if 'message' in item]
+    output = '\n'.join(message_list)
+    return RET(int(out_dict["metadata"]["exitcode"]), output.strip(), out_dict["metadata"]["error"], out_dict)  # type: ignore [call-arg]
 
 
 def retf_print(ret_obj: RET, opts: str = '') -> int:
@@ -348,37 +326,6 @@ def retf_print(ret_obj: RET, opts: str = '') -> int:
     else:
         if ret_obj.out and not ('noout' in opts or 'noprint' in opts): print_out(f'{ret_obj.out.strip()}')
     return ret_obj.exitcode
-
-
-def GetMeta(result: dict) -> dict:
-    """Return metadata of an JAliEn response"""
-    if not result: return {}
-    if isinstance(result, dict) and 'metadata' in result: return result['metadata']
-    return {}
-
-
-def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
-    """Return a json with command and argument list"""
-    if not cmdline: return ''
-    if args is None: args = []
-    if isinstance(cmdline, dict):
-        if 'command' not in cmdline or 'options' not in cmdline: return ''
-        out_dict = cmdline.copy()
-        if 'showmsg' in opts: opts = opts.replace('nomsg', '')
-        if 'showkeys' in opts: opts = opts.replace('nokeys', '')
-        if 'nomsg' in opts: out_dict["options"].insert(0, '-nomsg')
-        if 'nokeys' in opts: out_dict["options"].insert(0, '-nokeys')
-        return out_dict if get_dict else json.dumps(out_dict)
-
-    if not args:
-        args = shlex.split(cmdline)
-        cmd = args.pop(0) if args else ''
-    else:
-        cmd = cmdline
-    if 'nomsg' in opts: args.insert(0, '-nomsg')
-    if 'nokeys' in opts: args.insert(0, '-nokeys')
-    jsoncmd = {"command": cmd, "options": args}
-    return jsoncmd if get_dict else json.dumps(jsoncmd)
 
 
 def token(wb, args: Union[None, list] = None) -> int:

@@ -12,12 +12,13 @@ import multiprocessing as mp
 import socket
 import grp
 import pwd
-import shutil
 from pathlib import Path
 import time
 import traceback
 import uuid
 import urllib.request as urlreq
+import shutil
+import shlex
 import xml.etree.ElementTree as ET  # nosec
 import xml.dom.minidom as MD  # nosec B408:blacklist
 
@@ -1099,6 +1100,60 @@ def getCAcerts(custom_dir: str = '') -> RET:
 
     msg = f'Make sure to do "export X509_CERT_DIR={CA_DIR}" before the usage' if custom_dir else ''
     return RET(0, msg)
+
+
+def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
+    """Return a json with command and argument list"""
+    if not cmdline: return ''
+    if args is None: args = []
+    if isinstance(cmdline, dict):
+        if 'command' not in cmdline or 'options' not in cmdline: return ''
+        out_dict = cmdline.copy()
+        if 'showmsg' in opts: opts = opts.replace('nomsg', '')
+        if 'showkeys' in opts: opts = opts.replace('nokeys', '')
+        if 'nomsg' in opts: out_dict["options"].insert(0, '-nomsg')
+        if 'nokeys' in opts: out_dict["options"].insert(0, '-nokeys')
+        return out_dict if get_dict else json.dumps(out_dict)
+
+    if not args:
+        args = shlex.split(cmdline)
+        cmd = args.pop(0) if args else ''
+    else:
+        cmd = cmdline
+    if 'nomsg' in opts: args.insert(0, '-nomsg')
+    if 'nokeys' in opts: args.insert(0, '-nokeys')
+    jsoncmd = {"command": cmd, "options": args}
+    return jsoncmd if get_dict else json.dumps(jsoncmd)
+
+
+def GetMeta(jalien_answer: dict) -> dict:
+    """Return metadata of an JAliEn response"""
+    if isinstance(jalien_answer, dict) and 'metadata' in jalien_answer: return jalien_answer['metadata']
+    return {}
+
+
+def GetResults(jalien_answer: dict) -> dict:
+    """Return results of an JAliEn response"""
+    if isinstance(jalien_answer, dict) and 'results' in jalien_answer: return jalien_answer['results']
+    return {}
+
+
+def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False):
+    """Print a dictionary in a nice format"""
+    if not in_arg: return
+    if isinstance(in_arg, str):
+        try:
+            in_arg = json.loads(in_arg)
+        except Exception as e:
+            print_err(f'PrintDict:: Could not load argument as json!\n{e!r}')
+            return
+    if isinstance(in_arg, (dict, list)):
+        indent = None if compact else 2
+        separators = (',', ':') if compact else None
+        if ALIENPY_FANCY_PRINT:
+            rich_print_json(data = in_arg)
+        else:
+            print_out(json.dumps(in_arg, sort_keys = True, indent = indent, separators = separators, skipkeys = False))
 
 
 if __name__ == '__main__':

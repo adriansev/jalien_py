@@ -7,8 +7,8 @@ from typing import Union
 
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_err
-from .wb_api import SendMsg, SendMsgMulti, CreateJsonCommand, retf_print
-from .tools_nowb import get_arg, PrintColor, create_metafile, make_tmp_fn, valid_regex, get_arg_value, get_lfn_key, filter_file_prop
+from .wb_api import SendMsg, SendMsgMulti, retf_print
+from .tools_nowb import get_arg, PrintColor, create_metafile, make_tmp_fn, valid_regex, get_arg_value, get_lfn_key, filter_file_prop, CreateJsonCommand
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:

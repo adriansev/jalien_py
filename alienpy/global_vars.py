@@ -2,7 +2,6 @@
 
 import os
 import re
-import logging
 import sys
 import tempfile
 from collections import deque
