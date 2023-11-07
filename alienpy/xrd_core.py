@@ -1,11 +1,14 @@
-'''alienpy:: XRootD mechanics'''
+"""alienpy:: XRootD mechanics"""
 
+import os
 import datetime
 import sys
 import zipfile
 import traceback
 from urllib.parse import urlparse
 import logging
+import re
+from pathlib import Path
 import shlex
 import subprocess
 import uuid
@@ -14,15 +17,14 @@ import xml.dom.minidom as MD  # nosec B408:blacklist
 from typing import Union
 
 from .version import ALIENPY_VERSION_STR
-from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
-from .wb_api import retf_print, SendMsg
-from .tools_nowb import (path_local_stat, path_writable_any, common_path,
-                         format_dst_fn, fileIsValid, create_metafile,
-                         make_tmp_fn, get_hash_meta, list_files_local, md5, get_size_meta, get_lfn_name,
-                         is_help, get_arg, get_arg_value, valid_regex, get_lfn_key, is_int, name2regex,
-                         fileline2list, PrintColor, GetHumanReadableSize, deltat_ms_perf, now_str)
-from .xrd_tools import path_type, pathtype_grid, expand_path_grid, path_grid_stat, lfn2fileTokens, extract_glob_pattern, list_files_grid, xrdcp_help, commitFileList
+from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
+from .global_vars import AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, REGEX_PATTERN_TYPE, specs_split
+from .setup_logging import print_err, print_out
+from .wb_api import SendMsg, retf_print
+from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
+                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
+                         is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
+from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help
 
 
 HAS_XROOTD = False
@@ -53,14 +55,17 @@ def _is_valid_xrootd() -> bool:
 HAS_XROOTD = _is_valid_xrootd()
 HAS_XROOTD_GETDEFAULT = False
 if HAS_XROOTD:
-    def XRD_EnvPut(key, value):  # noqa: ANN001,ANN201
+    def XRD_EnvPut(key: str, value: str) -> bool:  # noqa: ANN001,ANN201
         """Sets the given key in the xrootd client environment to the given value.
         Returns false if there is already a shell-imported setting for this key, true otherwise
         """
-        return xrd_client.EnvPutInt(key, value) if str(value).isdigit() else xrd_client.EnvPutString(key, value)
+        if not key or not value: return False
+        return xrd_client.EnvPutInt(key, int(value)) if ( str(value).isdigit() or isinstance(value, int) ) else xrd_client.EnvPutString(key, str(value))
 
-    def XRD_EnvGet(key):  # noqa: ANN001,ANN201
+    def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
         """Get the value of the key from xrootd"""
+        if not key: return None
+        val = None
         val = xrd_client.EnvGetString(key)
         if not val:
             val = xrd_client.EnvGetInt(key)
@@ -71,7 +76,7 @@ if HAS_XROOTD:
     HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
 
-def xrd_config_init():
+def xrd_config_init() -> None:
     """Initialize generic XRootD client vars/timeouts"""
     if not HAS_XROOTD: return
     # xrdcp parameters (used by ALICE tests)
@@ -110,7 +115,9 @@ def xrd_config_init():
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
 
-def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None, copy_list: Union[None, list] = None, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 999, overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
+def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Union[None, list] = None, copy_list: Union[None, list] = None,
+                 pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 999,
+                 overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
     if find_args is None: find_args = []
@@ -152,7 +159,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
     src, src_type = path_type(arg_src)
     dst, dst_type = path_type(arg_dst)
 
-    isSrcLocal = (src_type == 'local')
+    isSrcLocal = src_type == 'local'
     isDownload = not isSrcLocal
     if isSrcLocal:  # UPLOAD
         src_stat = path_local_stat(src)
@@ -160,7 +167,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
     else:           # DOWNLOAD
         src_stat = path_grid_stat(wb, src)
         dst_stat = path_local_stat(dst)
-        if not path_writable_any(dst_stat.path) and not parent > 1:
+        if not path_writable_any(dst_stat.path) and parent <= 1:
             return RET(2, '', f'no write permission/or missing in any component of {dst_stat.path}')
 
     if src_type == dst_type == 'grid':
@@ -179,7 +186,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
         if not src.endswith('/'): src = f"{src}/"  # recover the slash if lost
         if not dst.endswith('/'): dst = f"{dst}/"  # if src is dir, dst must be dir
 
-    isSrcDir = (src_stat.type == 'd')
+    isSrcDir = src_stat.type == 'd'
     if isSrcDir and not src_glob and not slashend_src: parent = parent + 1  # cp/rsync convention: with / copy the contents, without it copy the actual dir
 
     # prepare destination locations
@@ -213,7 +220,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
             dst_filename = format_dst_fn(src, src, dst, parent)
             # if overwrite the file validity checking will do md5
 
-            skip_file = (retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.mtime, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0)
+            skip_file = retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.mtime, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0
             if not skip_file:
                 tokens = lfn2fileTokens(wb, lfn2file(src, dst_filename), specs_list, isWrite, strictspec, httpurl)
                 if tokens and 'answer' in tokens:
@@ -228,7 +235,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
                 lfn = get_lfn_key(lfn_obj)
                 dst_filename = format_dst_fn(src, lfn, dst, parent)
                 # if overwrite the file validity checking will do md5
-                skip_file = (retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['ctime'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0)
+                skip_file = retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['ctime'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0
                 if skip_file: continue  # destination exists and is valid, no point to re-download
 
                 tokens = lfn2fileTokens(wb, lfn2file(lfn, dst_filename), specs_list, isWrite, strictspec, httpurl)
@@ -262,7 +269,7 @@ def makelist_lfn(wb, arg_source, arg_target, find_args: Union[None, list] = None
     return RET(1, '', error_msg) if error_msg else RET(0)
 
 
-def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list):
+def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list) -> None:
     """Process a list of lfns to add to XRootD copy jobs list"""
     for cpfile in copylist_lfns:
         if 'results' not in cpfile.token_request:
@@ -679,7 +686,7 @@ if HAS_XROOTD:
         """Custom ProgressHandler for XRootD copy process"""
         __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'succesful_writes', 'printout', 'debug')
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.wb = None
             self.copy_failed_list = []  # record the failed jobs
             self.jobs = int(0)
@@ -689,7 +696,7 @@ if HAS_XROOTD:
             self.printout = ''
             self.debug = False
 
-        def begin(self, jobId, total, source, target):
+        def begin(self, jobId, total, source, target) -> None:
             timestamp_begin = datetime.datetime.now().timestamp()
             if not ('quiet' in self.printout or 'silent' in self.printout):
                 print_out(f'jobID: {jobId}/{total} >>> Start')
@@ -701,7 +708,7 @@ if HAS_XROOTD:
             self.job_list.insert(jobId - 1, jobInfo)
             if self.debug: logging.debug('CopyProgressHandler.src: %s\nCopyProgressHandler.dst: %s\n', source, target)
 
-        def end(self, jobId, results):
+        def end(self, jobId, results) -> None:
             if results['status'].ok:
                 status = f'{PrintColor(COLORS.Green)}OK{PrintColor(COLORS.ColorReset)}'
             elif results['status'].error:
@@ -771,13 +778,12 @@ if HAS_XROOTD:
                 else:
                     os.remove(meta_path)  # remove the created metalink
 
-        def update(self, jobId, processed, total):
+        def update(self, jobId, processed, total) -> None:
             # self.job_list[jobId - 1]['bytes_total'] = total
             # self.job_list[jobId - 1]['bytes_processed'] = processed
             pass
 
-        @staticmethod
-        def should_cancel():  # self, jobId
+        def should_cancel(self, jobId) -> bool:
             return False
 
 
@@ -829,7 +835,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 cksum_mode = 'none'
                 cksum_type = cksum_preset = ''
 
-        delete_invalid_cksum = (not cksum_mode == 'none')  # if no checksumming mode, disable rmBadCksum
+        delete_invalid_cksum = cksum_mode != 'none'  # if no checksumming mode, disable rmBadCksum
         if 'xrateThreshold' in process.add_job.__code__.co_varnames:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
                             checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
@@ -902,7 +908,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 #     return []
 
 
-def xrd_response2dict(response_status) -> dict:
+def xrd_response2dict(response_status: xrd_client.responses.XRootDStatus) -> dict:
     """Convert a XRootD response status answer to a dict"""
     if not response_status: return {}
     if not HAS_XROOTD:
@@ -1006,7 +1012,7 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     return q_stats_dict
 
 
-def xrd_statinfo2dict(response_statinfo) -> dict:
+def xrd_statinfo2dict(response_statinfo: xrd_client.responses.StatInfo) -> dict:
     """Convert a XRootD StatInfo answer to a dict"""
     if not response_statinfo: return {}
     if not HAS_XROOTD:
@@ -1110,4 +1116,3 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
