@@ -3,9 +3,11 @@
 import sys
 import os
 import json
+import re
 import shlex
 import logging
 import traceback
+from pathlib import Path
 from typing import Union
 import time
 
@@ -15,12 +17,13 @@ except Exception:
     print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.exceptions as wb_exceptions'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
-
+#from .global_vars import *  # nosec PYL-W0614
+from .data_structs import RET, XrdCpArgs
+from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG, DEBUG_FILE, DEBUG_TIMING, TIME_CONNECT, TMPDIR, specs_split
+from .setup_logging import print_err, print_out
 from .async_tools import syncify
-from .wb_async import wb_create, wb_close, wb_sendmsg, wb_sendmsg_multi, IsWbConnected
-from .tools_nowb import deltat_ms_perf, deltat_us_perf, is_help, writePidFile, read_conf_file, is_my_pid, isReachable, path_readable, CreateJsonCommand, PrintDict
+from .wb_async import IsWbConnected, wb_close, wb_create, wb_sendmsg, wb_sendmsg_multi
+from .tools_nowb import CreateJsonCommand, PrintDict, deltat_ms_perf, deltat_us_perf, isReachable, is_help, is_my_pid, path_readable, read_conf_file, writePidFile
 from .tools_stackcmd import push2stack  # , deque_pop_pos
 from .connect_ssl import get_certs_names
 
@@ -503,4 +506,3 @@ async def msg_proxy(websocket, use_usercert = False):
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
