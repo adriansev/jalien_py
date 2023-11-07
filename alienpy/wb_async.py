@@ -16,7 +16,6 @@ except Exception:
     print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.client as wb_client'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
         import async_stagger  # type: ignore
@@ -25,16 +24,17 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         sys.exit(1)
 
 from .version import ALIENPY_VERSION_STR
-from .global_vars import *  # nosec PYL-W0614
+from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
+from .global_vars import AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, DEBUG_TIMING, REGEX_PATTERN_TYPE, TMPDIR, specs_split
 from .tools_nowb import deltat_ms_perf
-
 from .setup_logging import print_err
 from .connect_ssl import create_ssl_context, renewCredFilesInfo
+from .async_tools import start_asyncio, syncify
+
 
 #########################
 #   ASYNCIO MECHANICS
 #########################
-from .async_tools import start_asyncio, syncify
 # Let's start the asyncio main thread
 start_asyncio()
 
@@ -42,7 +42,6 @@ start_asyncio()
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False):
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
-
     if not host:
         msg = 'wb_create:: provided host argument is empty'
         print_err(msg)
@@ -152,7 +151,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
                 print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
                 if int(e.status_code) == 401:
                     print_err('The status code indicate that your certificate is not authorized.\nCheck the correct certificate registration into ALICE VO')
-                    os._exit(129)
+                    sys.exit(129)
                 return None
             except Exception as e:
                 msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
