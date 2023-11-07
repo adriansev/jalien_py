@@ -2,6 +2,8 @@ version = 1
 
 test_patterns = ["alienpy/*.py"]
 
+exclude_patterns = [ "/examples/*" ]
+
 [[analyzers]]
 name = "shell"
 enabled = true
