@@ -1,4 +1,4 @@
-'''alienpy:: Misc tooling functions'''
+"""alienpy:: Misc tooling functions"""
 
 import re
 import sys
@@ -6,7 +6,8 @@ import subprocess  # nosec B404:blacklist
 import shlex
 from typing import Union
 from shutil import which
-from .data_structs import *  # nosec PYL-W0614
+
+from .data_structs import RET
 from .setup_logging import print_err
 
 
@@ -39,7 +40,7 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     return RET(exitcode, msg_out, msg_err)
 
 
-def is_cmd(cmd:str = ''):
+def is_cmd(cmd:str = '') -> bool:
     """Check if cmd is available in shell"""
     return which(cmd) is not None
 
@@ -47,4 +48,3 @@ def is_cmd(cmd:str = ''):
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-

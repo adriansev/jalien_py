@@ -1,10 +1,12 @@
 """alienpy:: command stack manipulation"""
 
+import sys
 from collections import deque
-from .global_vars import *  # nosec PYL-W0614
+
+from .global_vars import AlienSessionInfo
 
 
-def push2stack(path: str):
+def push2stack(path: str) -> None:
     if not str or 'AlienSessionInfo' not in globals(): return
     home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
