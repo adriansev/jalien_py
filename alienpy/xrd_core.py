@@ -13,9 +13,9 @@ import time
 import xml.dom.minidom as MD  # nosec B408:blacklist
 from typing import Union
 
+from .version import ALIENPY_VERSION_STR
 from .global_vars import *  # nosec PYL-W0614
 from .setup_logging import print_out, print_err
-# from .tools_shell import runShellCMD
 from .wb_api import retf_print, SendMsg
 from .tools_nowb import (path_local_stat, path_writable_any, common_path,
                          format_dst_fn, fileIsValid, create_metafile,

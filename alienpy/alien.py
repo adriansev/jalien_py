@@ -39,6 +39,9 @@ else:
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
 
+##   IMPORT VERSION STRINGS
+from .version import ALIENPY_VERSION_HASH, ALIENPY_VERSION_DATE, ALIENPY_VERSION_STR
+
 ##   IMPORT GLOBAL VARIABLES
 from .global_vars import *  # nosec PYL-W0614
 
