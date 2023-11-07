@@ -1,15 +1,18 @@
-'''alienpy:: Setup logging'''
+"""alienpy:: Setup logging"""
 
 import os
 import sys
 import logging
-from .global_vars import *  # nosec PYL-W0614
 
+from .global_vars import ALIENPY_FANCY_PRINT, TMPDIR, USER_HOME, rich_print
 
 #############################################
 ###   ENABLE LOGGING BEFORE ANYTHIN ELSE
 #############################################
-def print_out(msg: str, toLog: bool = False):
+
+
+def print_out(msg: str, toLog: bool = False) -> None:
+    """wrapper for print/log to stdout"""
     if toLog:
         logging.log(90, msg)
     else:
@@ -19,7 +22,8 @@ def print_out(msg: str, toLog: bool = False):
             print(msg, flush = True)
 
 
-def print_err(msg: str, toLog: bool = False):
+def print_err(msg: str, toLog: bool = False) -> None:
+    """wrapper for print/log to stderr"""
     if toLog:
         logging.log(95, msg)
     else:
@@ -29,9 +33,8 @@ def print_err(msg: str, toLog: bool = False):
             print(msg, file = sys.stderr, flush = True)
 
 
-def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.log'):
+def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.log') -> None:
     """Setup logging machinery"""
-
     logging.addLevelName(90, 'STDOUT')
     logging.addLevelName(95, 'STDERR')
 
@@ -62,4 +65,3 @@ def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.l
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
