@@ -1,15 +1,18 @@
-'''alienpy:: XRootD related tooling/helpers'''
+"""alienpy:: XRootD related tooling/helpers"""
 
 import os
+import re
 import subprocess
 import shlex
+import sys
 from typing import Union
 import logging
 
-from .global_vars import *  # nosec PYL-W0614
+from .data_structs import CommitInfo, RET, STAT_FILEPATH, lfn2file
+from .global_vars import AlienSessionInfo, COLORS, DEBUG, REGEX_PATTERN_TYPE, lfn_prefix_re, specs_split
 from .setup_logging import print_err
 from .wb_api import SendMsg, SendMsgMulti, retf_print
-from .tools_nowb import get_arg, PrintColor, create_metafile, make_tmp_fn, valid_regex, get_arg_value, get_lfn_key, filter_file_prop, CreateJsonCommand
+from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_lfn_key, make_tmp_fn, valid_regex
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
@@ -131,7 +134,7 @@ def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
 
 
 def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
-    """"""
+    """Return writable status for a GRID path, for the current user"""
     p_user = int(file_stat['perm'][0])
     p_group = int(file_stat['perm'][1])
     p_others = int(file_stat['perm'][2])
@@ -448,4 +451,3 @@ def path_type(path_arg: str) -> tuple:
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
