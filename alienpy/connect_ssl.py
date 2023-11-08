@@ -1,4 +1,4 @@
-'''alienpy:: SSL and certificate tooling'''
+"""alienpy:: SSL and certificate tooling"""
 
 import sys
 import os
@@ -6,13 +6,7 @@ import logging
 import uuid
 import traceback
 import datetime
-
-try:
-    import ssl
-except Exception:
-    print("Python ssl module could not be imported! Make sure you can do:\npython3 -c 'import ssl'", file = sys.stderr, flush = True)
-    sys.exit(1)
-
+import tempfile
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -21,7 +15,11 @@ with warnings.catch_warnings():
     except Exception:
         print("cryptography module could not be imported! Make sure you can do:\npython3 -c 'import cryptography'", file = sys.stderr, flush = True)
         sys.exit(1)
-
+try:
+    import ssl
+except Exception:
+    print("Python ssl module could not be imported! Make sure you can do:\npython3 -c 'import ssl'", file = sys.stderr, flush = True)
+    sys.exit(1)
 try:
     import OpenSSL
 except Exception:
@@ -29,7 +27,8 @@ except Exception:
     sys.exit(1)
 
 ##   GLOBALS
-from .global_vars import *  # nosec PYL-W0614
+from .data_structs import CertsInfo, RET
+from .global_vars import AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME
 from .tools_nowb import PrintColor, path_readable
 from .setup_logging import print_err
 
@@ -174,7 +173,6 @@ _ = renewCredFilesInfo()
 
 def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key: str = '', token_cert: str = '', token_key: str = '') -> ssl.SSLContext:
     """Create SSL context using either the default names for user certificate and token certificate or X509_USER_{CERT,KEY} JALIEN_TOKEN_{CERT,KEY} environment variables"""
-
     if use_usercert or not token_cert:
         if AlienSessionInfo: AlienSessionInfo['use_usercert'] = True
         cert, key = user_cert, user_key
