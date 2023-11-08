@@ -1,30 +1,31 @@
-'''alienpy:: Misc tooling functions (local, not-networked usage)'''
+"""alienpy:: Misc tooling functions (local, not-networked usage)"""
 
 import ast
 import datetime
-
-import sys
 import json
 import re
-from typing import Union
+from typing import Any, Optional, Union
 import logging
 import multiprocessing as mp
 import socket
 import grp
 import pwd
 from pathlib import Path
+import os
 import time
 import traceback
 import uuid
 import urllib.request as urlreq
 import shutil
 import shlex
+import sys
 import xml.etree.ElementTree as ET  # nosec
 import xml.dom.minidom as MD  # nosec B408:blacklist
 
-from .global_vars import *  # nosec PYL-W0614
-from .setup_logging import print_out, print_err
-from .tools_shell import runShellCMD, is_cmd
+from .data_structs import ALIEN_COLLECTION_EL, KV, RET, STAT_FILEPATH
+from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, COLORS, DEBUG, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
+from .setup_logging import print_err, print_out
+from .tools_shell import is_cmd, runShellCMD
 
 
 NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
@@ -35,13 +36,13 @@ def PrintColor(color: str) -> str:
     return color if HAS_COLOR else ''
 
 
-def exit_message(code: int = 0, msg = ''):
+def exit_message(code: int = 0, msg: str = '') -> None:
     """Exit with msg and with specied code"""
     print_out(msg if msg else 'Exit')
     sys.exit(code)
 
 
-def signal_handler(sig, frame):  # pylint: disable=unused-argument
+def signal_handler(sig, frame) -> None:  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
     print_out(f"\nCought signal {sig}, let\'s exit")
     exit_message(int(AlienSessionInfo['exitcode']))
@@ -121,12 +122,10 @@ def convert_time(str_line: str) -> str:
     return ''
 
 
-def unquote_str(arg):
-    if type(arg) is str: return ast.literal_eval(arg)
-    return arg
+def unquote_str(arg: str) -> str: return ast.literal_eval(arg) if isinstance(arg, str) else ''
 
 
-def dequote(s):
+def dequote(s: str) -> str:
     """Remove only 1 quotes in the string limits"""
     if (len(s) >= 2 and s[0] == s[-1]) and s.startswith(("'", '"')): return s[1:-1]
     return s
@@ -142,7 +141,7 @@ def run_function(function_name: str, *args, **kwargs):
     return globals()[function_name](*args, *kwargs)  # run arbitrary function
 
 
-def cursor_vertical(lines: int = 0):
+def cursor_vertical(lines: int = 0) -> None:
     """Move the cursor up/down N lines"""
     if lines == 0: return
     out_char = '\x1b[1A'  # UP
@@ -153,7 +152,7 @@ def cursor_vertical(lines: int = 0):
     sys.stdout.flush()
 
 
-def cursor_horizontal(lines: int = 0):
+def cursor_horizontal(lines: int = 0) -> None:
     """Move the cursor left/right N lines"""
     if lines == 0: return
     out_char = '\x1b[1C'  # RIGHT
@@ -265,10 +264,10 @@ def pid_uid(pid: int) -> int:
     return uid  # noqa: R504
 
 
-def is_my_pid(pid: int) -> bool: return bool(pid_uid(int(pid)) == os.getuid())
+def is_my_pid(pid: int) -> bool: return pid_uid(int(pid)) == os.getuid()
 
 
-def writePidFile(filename: str):
+def writePidFile(filename: str) -> None:
     if not filename: return
     try:
         with open(filename, 'w', encoding="ascii", errors="replace") as f: f.write(str(os.getpid()))
@@ -276,13 +275,13 @@ def writePidFile(filename: str):
         logging.exception('Error writing the pid file: %s', filename)
 
 
-def list_remove_item(target: list, item):
+def list_remove_item(target: list, item: str) -> None:
     """Remove all instances of item from list"""
     if not target: return
     target[:] = [el for el in target if el != item]
 
 
-def get_arg(target: list, item) -> bool:
+def get_arg(target: list, item: str) -> bool:
     """Remove inplace all instances of item from list and return True if found"""
     len_begin = len(target)
     list_remove_item(target, item)
@@ -290,7 +289,7 @@ def get_arg(target: list, item) -> bool:
     return len_begin != len_end
 
 
-def get_arg_value(target: list, item):
+def get_arg_value(target: list, item: str) -> str:
     """Remove inplace all instances of item and item+1 from list and return item+1"""
     val = None
     idx_to_be_removed = []
@@ -309,7 +308,7 @@ def get_arg_value(target: list, item):
     return val  # noqa: R504
 
 
-def get_arg_2values(target: list, item):
+def get_arg_2values(target: list, item: str) -> tuple:
     """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
     val1 = val2 = None
     idx_to_be_removed = []
@@ -329,7 +328,7 @@ def get_arg_2values(target: list, item):
     return val1, val2
 
 
-def get_arg_multiple(target: list, item) -> list:
+def get_arg_multiple(target: list, item: str) -> list:
     """Return list of all values for a given arg"""
     val = None
     values_list = []
@@ -363,7 +362,7 @@ def gid2name(gid: Union[str, int]) -> str:
         return str(gid)
 
 
-def GetHumanReadableSize(size, precision = 2):
+def GetHumanReadableSize(size: float, precision: int = 2) -> str:
     """Convert bytes to higher units"""
     suffixes = ['B', 'KiB', 'MiB', 'GiB']
     suffixIndex = 0
@@ -404,13 +403,13 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
     return any(ip[-1] for ip in result_list)
 
 
-def exitcode(args: Union[list, None] = None):  # pylint: disable=unused-argument
+def exitcode(args: Optional[list] = None) -> None:  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     if 'AlienSessionInfo' not in globals(): return RET()
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
 
 
-def valid_regex(regex_str: str) -> Union[None, REGEX_PATTERN_TYPE]:
+def valid_regex(regex_str: str) -> Optional[REGEX_PATTERN_TYPE]:
     """Validate a regex string and return a re.Pattern if valid"""
     regex = None
     try:
@@ -472,7 +471,7 @@ def common_path(path_list: list) -> str:
     return common
 
 
-def format_dst_fn(src_dir, src_file, dst, parent):
+def format_dst_fn(src_dir: str, src_file: str, dst: str, parent: int) -> str:
     """Return the destination filename given the source dir/name, destination directory and number of parents to keep"""
     # let's get destination file name (relative path with parent value)
     if src_dir != src_file:  # recursive operation
@@ -523,7 +522,7 @@ def fileIsValid(filename: str, size: Union[str, int], mtime: Union[str, int], re
     """Check if the file path is consistent with the size and md5 argument. N.B.! the local file will be deleted with size,md5 not match"""
     if os.path.isfile(filename):  # first check
         stat_info = os.stat(filename)
-        local_file_mtime = int(stat_info.st_mtime*1000)
+        local_file_mtime = int(stat_info.st_mtime * 1000)
         if int(stat_info.st_size) != int(size):
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid size)')
@@ -540,7 +539,7 @@ def fileIsValid(filename: str, size: Union[str, int], mtime: Union[str, int], re
     return RET(2, '', f'{filename} : No such file')  # ENOENT
 
 
-def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Union[None, list] = None) -> str:
+def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Optional[list] = None) -> str:
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not (meta_filename and replica_list): return ''
     try:
@@ -593,17 +592,15 @@ def md5(input_file: str) -> str:
     from hashlib import md5 as hash_md5
     BLOCKSIZE = 65536
 
-    if hash_md5.__getattribute__('__text_signature__') and 'usedforsecurity' in hash_md5.__getattribute__('__text_signature__'):
-        hasher = hash_md5(usedforsecurity = False)
-    else:
-        hasher = hash_md5()  # nosec
+    hash_kwargs = {'usedforsecurity': False} if sys.version_info >= (3, 9) else {}
+    hasher = hash_md5(**hash_kwargs)
 
     with open(input_file, 'rb', buffering = 0) as f:
         for chunk in iter(lambda: f.read(BLOCKSIZE), b''): hasher.update(chunk)
     return hasher.hexdigest()
 
 
-def md5_mp(list_of_files: Union[None, list] = None) -> list:
+def md5_mp(list_of_files: Optional[list] = None) -> list:
     """Compute md5 hashes in parallel; the results are guaranteed (by documentation) to be in the order of input list"""
     if not list_of_files: return []
     hash_list = []
@@ -624,7 +621,7 @@ def expand_path_local(path_arg: str, strict: bool = False) -> str:
     return exp_path  # noqa: R504
 
 
-def check_path_perm(filepath: str, mode) -> bool:
+def check_path_perm(filepath: str, mode: int) -> bool:
     """Resolve a file/path and check if mode is valid"""
     filepath = expand_path_local(filepath, True)
     if not filepath: return False
@@ -745,7 +742,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
     return RET(0, stdout, '', ansdict)
 
 
-def file_set_atime(path: str):
+def file_set_atime(path: str) -> None:
     """Set atime of file to now"""
     if not os.path.isfile(path): return
     file_stat = os.stat(path)
@@ -764,17 +761,12 @@ def file2file_dict(fn: str) -> dict:
         return {}
     if file_name.is_dir(): return {}
 
-    file_dict = {"file": file_name.as_posix()}
-    file_dict["lfn"] = file_name.as_posix()
-    file_dict["size"] = str(file_name.stat().st_size)
-    file_dict["mtime"] = str(int(file_name.stat().st_mtime * 1000))
-    file_dict["md5"] = md5(file_name.as_posix())
-    file_dict["owner"] = pwd.getpwuid(file_name.stat().st_uid).pw_name
-    file_dict["gowner"] = gid2name(file_name.stat().st_gid)
-    return file_dict
+    return {'file': file_name.as_posix(), 'lfn': file_name.as_posix(), 'size': str(file_name.stat().st_size),
+            'mtime': str(int(file_name.stat().st_mtime * 1000)), 'md5': md5(file_name.as_posix()),
+            'owner': pwd.getpwuid(file_name.stat().st_uid).pw_name, 'gowner': gid2name(file_name.stat().st_gid)}
 
 
-def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex = None) -> bool:
+def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex: REGEX_PATTERN_TYPE = None) -> bool:
     """Return True if an file dict object pass the conditions in find_opts"""
     if not f_obj or not base_dir: return False
     if f_obj['lfn'].endswith('.'): return False
@@ -908,7 +900,7 @@ def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
         size = str(p_stat.st_size), turl = turl, type = 'f')
 
 
-def mk_xml_local(filepath_list: list):
+def mk_xml_local(filepath_list: list) -> str:
     """Create AliEn collection XML output for local files"""
     xml_root = ET.Element('alien')
     collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
@@ -920,12 +912,12 @@ def mk_xml_local(filepath_list: list):
     return dom.toprettyxml()
 
 
-def cleanup_temp(item: str = ''):
+def cleanup_temp(item: str = '') -> None:
     """Remove from disk all recorded temporary files"""
     if 'AlienSessionInfo' not in globals(): return
     if not AlienSessionInfo['templist']: return
 
-    def rm_item(i: str = ''):
+    def rm_item(i: str = '') -> None:
         if not i: return
         if os.path.isfile(i):
             AlienSessionInfo['templist'].remove(i)
@@ -936,7 +928,7 @@ def cleanup_temp(item: str = ''):
         for f in AlienSessionInfo['templist']: rm_item(f)
 
 
-def import_aliases():
+def import_aliases() -> None:
     """Import defined aliases in the global session variable"""
     if 'AlienSessionInfo' not in globals(): return
     alias_file = os.path.join(os.path.expanduser("~"), ".alienpy_aliases")
@@ -1102,7 +1094,7 @@ def getCAcerts(custom_dir: str = '') -> RET:
     return RET(0, msg)
 
 
-def CreateJsonCommand(cmdline: Union[str, dict], args: Union[None, list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
+def CreateJsonCommand(cmdline: Union[str, dict], args: Optional[list] = None, opts: str = '', get_dict: bool = False) -> Union[str, dict]:
     """Return a json with command and argument list"""
     if not cmdline: return ''
     if args is None: args = []
@@ -1138,7 +1130,7 @@ def GetResults(jalien_answer: dict) -> dict:
     return {}
 
 
-def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False):
+def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False) -> None:
     """Print a dictionary in a nice format"""
     if not in_arg: return
     if isinstance(in_arg, str):
@@ -1159,4 +1151,3 @@ def PrintDict(in_arg: Union[str, dict, list, None] = None, compact: bool = False
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)
-
