@@ -19,13 +19,12 @@ except Exception:
 from websockets import WebSocketClientProtocol
 
 from .data_structs import RET
-from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG, DEBUG_FILE, DEBUG_TIMING, TIME_CONNECT, TMPDIR
+from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG, DEBUG_FILE, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names
 from .setup_logging import print_err, print_out
 from .async_tools import syncify
 from .wb_async import IsWbConnected, wb_close, wb_create, wb_sendmsg, wb_sendmsg_multi
 from .tools_nowb import CreateJsonCommand, PrintDict, deltat_ms_perf, deltat_us_perf, isReachable, is_help, is_my_pid, path_readable, read_conf_file, writePidFile
 from .tools_stackcmd import push2stack  # , deque_pop_pos
-from .connect_ssl import get_certs_names
 
 
 def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> WebSocketClientProtocol:

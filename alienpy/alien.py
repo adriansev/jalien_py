@@ -42,6 +42,9 @@ else:
 ##   IMPORT VERSION STRINGS
 from .version import ALIENPY_VERSION_HASH, ALIENPY_VERSION_DATE, ALIENPY_VERSION_STR
 
+##   IMPORT DATA STRUCTURES
+from .data_structs import RET
+
 ##   IMPORT GLOBAL VARIABLES
 from .global_vars import *  # nosec PYL-W0614
 
