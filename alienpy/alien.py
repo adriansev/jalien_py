@@ -54,7 +54,7 @@ from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
 from .connect_ssl import CertInfo, CertKeyMatch, CertVerify
 ##   General misc functions library
-from .tools_nowb import (PrintColor, ccdb_json_cleanup, check_port, cleanup_temp, convert_jdl2dict, convert_time, convert_trace2dict,
+from .tools_nowb import (GetHumanReadableSize, PrintColor, ccdb_json_cleanup, check_port, cleanup_temp, convert_jdl2dict, convert_time, convert_trace2dict,
                          deltat_ms_perf, dequote, exit_message, exitcode, file2file_dict, file2list, getCAcerts,
                          get_arg, get_arg_multiple, get_arg_value, get_lfn_key, import_aliases, is_help, list_remove_item,
                          md5, mk_xml_local, name2regex, queryML, signal_handler, unixtime2local)
@@ -667,6 +667,7 @@ task name / detector name / [ / time [ / key = value]* ]
 -get             : download the specified object/objects - full path will be kept
 -dst DST_DIR     : set a specific destination for download
 -mirror          : create CCDB snapshot as per specifications of CCDB server
+-report          : Give a report of object sizes for a given path
 ''' )
 
     listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
@@ -675,9 +676,15 @@ task name / detector name / [ / time [ / key = value]* ]
     do_unixtime = get_arg(args, '-unixtime')
     do_download = get_arg(args, '-get')
     do_mirror = get_arg(args, '-mirror')
+    do_report = get_arg(args, '-report')
     run_nr = get_arg_value(args, '-run')
+
     limit_results = get_arg_value(args, '-limit')
-    if not limit_results: limit_results = 10
+    if not limit_results:
+        limit_results = 10
+
+    if do_report:
+        listing_type = 'browse/'
 
     if do_download and do_mirror:
         return RET(1, '', '-get and -mirror are conflicting options')
@@ -696,6 +703,8 @@ task name / detector name / [ / time [ / key = value]* ]
     if not args: return RET(2, '', 'empty query!')
     query_str = args[0]  # after removal of args assume the rest is the query
     query_str = query_str.replace('.*', '').replace('*', '')
+    if not query_str.endswith('/'): query_str = f'{query_str}/'
+    if do_report: query_str = f'{query_str}{"?" if "?" not in query_str else ""}report=true'
 
     if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
     if not session_id: session_id = str(uuid.uuid1())
@@ -710,6 +719,27 @@ task name / detector name / [ / time [ / key = value]* ]
         q_dict = ccdb_query.json()
     except Exception:
         return RET(1, '', f'Invalid answer (no json) from query:\n{ccdb}{listing_type}{query_str}')
+
+    if do_report:
+        if not q_dict['objects'] and not q_dict['subfolders']:
+            return RET(1, '', 'Query failed, empty results! Check the validity of the query.', q_dict)
+
+        total_size = int(0)
+        total_obj = int(0)
+
+        msg = f'{"Name":<40}{"ownFiles":>12}{"ownSize":>12}{"filesSub":>12}{"sizeSub":>14}'
+        for folder in q_dict["subfolders"]:
+            total_size += int(folder["ownSize"]) + int(folder["sizeOfSubfolders"])
+            total_obj += int(folder["ownFiles"]) + int(folder["filesInSubfolders"])
+            msg = f'{msg}\n{folder["name"]:<40}{folder["ownFiles"]:>12}{GetHumanReadableSize(folder["ownSize"]):>12}{folder["filesInSubfolders"]:>12}{GetHumanReadableSize(folder["sizeOfSubfolders"]):>14}'
+
+        if q_dict["objects"]:
+            total_obj = len(q_dict["objects"])
+            for obj in q_dict["objects"]:
+                total_size += int(obj["size"])
+
+        msg = f'{msg}\n{"TOTAL":^40}{"-":>12}{"-":>12}{total_obj:>12}{GetHumanReadableSize(total_size, 3):>14}'
+        return RET(0, msg, '', q_dict)
 
     # clean up redundant entries from object description
     list(map(ccdb_json_cleanup, q_dict['objects']))

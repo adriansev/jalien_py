@@ -362,11 +362,14 @@ def gid2name(gid: Union[str, int]) -> str:
         return str(gid)
 
 
-def GetHumanReadableSize(size: float, precision: int = 2) -> str:
+def GetHumanReadableSize(size_arg: Union[int, str], precision: int = 2) -> str:
     """Convert bytes to higher units"""
-    suffixes = ['B', 'KiB', 'MiB', 'GiB']
+    if isinstance(size_arg, str): size_arg = int(size_arg)
+    if size_arg == 0: return '0 B'
+    size = float(size_arg)
+    suffixes = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
     suffixIndex = 0
-    while size > 1024 and suffixIndex < 5:
+    while size > 1024 and suffixIndex < 6:
         suffixIndex += 1  # increment the index of the suffix
         size = size / 1024.0  # apply the division
     return f'{size:.{precision}f} {suffixes[suffixIndex]}'
