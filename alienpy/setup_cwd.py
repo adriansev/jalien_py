@@ -4,7 +4,8 @@ import os
 import logging
 import sys
 
-from .global_vars import AlienSessionInfo, DEBUG
+from .setup_logging import DEBUG
+from .global_vars import AlienSessionInfo
 from .tools_nowb import read_conf_file
 from .wb_api import cd
 

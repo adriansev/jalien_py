@@ -41,14 +41,15 @@ from websockets import WebSocketClientProtocol
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
 
+##   START LOGGING BEFORE ANYTHING ELSE
+from .setup_logging import print_err, print_out, setup_logging, DEBUG, DEBUG_FILE
+setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
 ##   IMPORT VERSION STRINGS
 from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION_STR
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split
-##   START LOGGING BEFORE ANYTHING ELSE
-from .setup_logging import print_err, print_out, setup_logging
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -73,9 +74,6 @@ from .xrd_core import (DO_XrootdCp, HAS_XROOTD, download_tmp, upload_tmp, xrd_cl
 
 
 session_id = None  # variable used to keep a session ID
-
-# Initialize logging
-setup_logging(bool(DEBUG), DEBUG_FILE)
 
 # Global XRootD preferences
 xrd_config_init()
@@ -1898,6 +1896,7 @@ def main() -> None:
     if DEBUG_ARG:
         os.environ['ALIENPY_DEBUG'] = '1'
         DEBUG = '1'
+        logging.getLogger().setLevel(logging.DEBUG)
 
     DEBUGFILE_ARG = get_arg_value(sys.argv, '-debugfile')
     if DEBUGFILE_ARG:

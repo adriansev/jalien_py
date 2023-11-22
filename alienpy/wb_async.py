@@ -25,9 +25,9 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         sys.exit(1)
 
 from .version import ALIENPY_VERSION_STR
-from .global_vars import DEBUG, DEBUG_FILE, DEBUG_TIMING, TMPDIR
+from .setup_logging import print_err, DEBUG, DEBUG_FILE
+from .global_vars import DEBUG_TIMING, TMPDIR
 from .tools_nowb import deltat_ms_perf
-from .setup_logging import print_err
 from .connect_ssl import create_ssl_context, renewCredFilesInfo
 from .async_tools import start_asyncio, syncify
 

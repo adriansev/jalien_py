@@ -27,10 +27,10 @@ except Exception:
     sys.exit(1)
 
 ##   GLOBALS
+from .setup_logging import print_err, DEBUG, DEBUG_FILE
 from .data_structs import CertsInfo, RET
-from .global_vars import AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME
+from .global_vars import AlienSessionInfo, COLORS, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME
 from .tools_nowb import PrintColor, path_readable
-from .setup_logging import print_err
 
 
 def get_ca_path() -> str:

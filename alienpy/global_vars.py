@@ -65,9 +65,6 @@ if os.getenv('ALIENPY_JSON'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 
-DEBUG = os.getenv('ALIENPY_DEBUG', '')
-DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{USER_HOME}/alien_py.log')
-
 REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
 cmds_split = re.compile(';|\n')  # regex for spliting chained commands

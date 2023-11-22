@@ -23,8 +23,8 @@ import xml.etree.ElementTree as ET  # nosec
 import xml.dom.minidom as MD  # nosec B408:blacklist
 
 from .data_structs import ALIEN_COLLECTION_EL, KV, RET, STAT_FILEPATH
-from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, COLORS, DEBUG, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
-from .setup_logging import print_err, print_out
+from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, COLORS, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
+from .setup_logging import print_err, print_out, DEBUG
 from .tools_shell import is_cmd, runShellCMD
 
 

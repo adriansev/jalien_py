@@ -19,8 +19,8 @@ except Exception:
 from websockets import WebSocketClientProtocol
 
 from .data_structs import RET
-from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG, DEBUG_FILE, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names
-from .setup_logging import print_err, print_out
+from .setup_logging import print_err, print_out, DEBUG, DEBUG_FILE
+from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names
 from .async_tools import syncify
 from .wb_async import IsWbConnected, wb_close, wb_create, wb_sendmsg, wb_sendmsg_multi
 from .tools_nowb import CreateJsonCommand, PrintDict, deltat_ms_perf, deltat_us_perf, isReachable, is_help, is_my_pid, path_readable, read_conf_file, writePidFile

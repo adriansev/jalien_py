@@ -17,9 +17,9 @@ import xml.dom.minidom as MD  # nosec B408:blacklist
 from typing import Union
 
 from .version import ALIENPY_VERSION_STR
+from .setup_logging import print_err, print_out, DEBUG, DEBUG_FILE
 from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
-from .global_vars import AlienSessionInfo, COLORS, DEBUG, DEBUG_FILE, REGEX_PATTERN_TYPE, specs_split
-from .setup_logging import print_err, print_out
+from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_split
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
                          fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
