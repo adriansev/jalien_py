@@ -13,11 +13,11 @@ import shlex
 import subprocess
 import uuid
 import time
-import xml.dom.minidom as MD  # nosec B408:blacklist
+import xml.dom.minidom as MD  # noqa: N812
 from typing import Optional, Union
 
 from .version import ALIENPY_VERSION_STR
-from .setup_logging import print_err, print_out, DEBUG, DEBUG_FILE
+from .setup_logging import DEBUG, DEBUG_FILE, print_err, print_out
 from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_split
 from .wb_api import SendMsg, retf_print

@@ -1,4 +1,4 @@
-"""WEBSOCKET:: main async functions"""
+"""alienpy::WEBSOCKET:: main async functions"""
 
 import os
 import sys
@@ -25,7 +25,7 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         sys.exit(1)
 
 from .version import ALIENPY_VERSION_STR
-from .setup_logging import print_err, DEBUG, DEBUG_FILE
+from .setup_logging import DEBUG, DEBUG_FILE, print_err
 from .global_vars import DEBUG_TIMING, TMPDIR
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import create_ssl_context, renewCredFilesInfo

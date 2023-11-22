@@ -36,20 +36,20 @@ else:
     from shlex import join as shlex_join
 
 # For type hinting
-from websockets import WebSocketClientProtocol
+from websockets import WebSocketClientProtocol  # noqa: TC002
 
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
 
 ##   START LOGGING BEFORE ANYTHING ELSE
-from .setup_logging import print_err, print_out, setup_logging, DEBUG, DEBUG_FILE
+from .setup_logging import DEBUG, DEBUG_FILE, print_err, print_out, setup_logging
 setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
 ##   IMPORT VERSION STRINGS
 from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION_STR
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -603,10 +603,11 @@ def DO_siteJobs(wb: WebSocketClientProtocol, args: list = None) -> RET:
 def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if not wb: return RET()
     if not args or is_help(args):
-        msg = '''Command format: jobInfo id1,id2,.. [ -trace ] [ -proc ]
+        msg = '''Command format: jobInfo id1,id2,.. [ -trace ] [ -proc ] [ -jdl ]
         Print job information for specified ID(s)
-        -trace will show the trace messages
-        -proc will show the proc messages
+        -trace : will show the trace messages
+        -proc  : will show the proc messages
+        -jdl   : print jdl as a json object
         '''
         return RET(0, msg)
 
@@ -707,7 +708,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
     if not session_id: session_id = str(uuid.uuid1())
 
-    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{os.uname()[1]} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
+    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
     for h_el in headers_list:
         k, _, v = h_el.partition(':')
         headers[k.strip()] = v.strip()
@@ -740,7 +741,8 @@ task name / detector name / [ / time [ / key = value]* ]
         return RET(0, msg, '', q_dict)
 
     # clean up redundant entries from object description
-    list(map(ccdb_json_cleanup, q_dict['objects']))
+    # list(map(ccdb_json_cleanup, q_dict['objects']))
+    [ccdb_json_cleanup(q) for q in q_dict['objects']]
 
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
@@ -825,7 +827,7 @@ task name / detector name / [ / time [ / key = value]* ]
             for dst_file, valid_until in dest_time_list:
                 ccdb_file = dst_file.replace('file:', '')
                 if os.path.exists(ccdb_file): os.utime(ccdb_file, times = (valid_until, valid_until))
-        return xrdcp_ret
+        return xrdcp_ret  # noqa: R504
 
     msg_obj = f'{os.linesep}'.join(msg_obj_list)
     if msg_obj: msg_obj = f'{header}\n{msg_obj}'
@@ -1132,7 +1134,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     if tmp and os.path.isfile(tmp):
         md5_begin = md5(tmp)
         ret_obj = runShellCMD(f'{editor} {tmp}', captureout = False)
-        if ret_obj.exitcode != 0: return ret_obj
+        if ret_obj.exitcode != 0: return ret_obj  # noqa: R504
         md5_end = md5(tmp)
         if md5_begin != md5_end:
             uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
@@ -1863,7 +1865,7 @@ class AliEn:
         return self.internal_wb
 
     @staticmethod
-    def help() -> None:
+    def help() -> None:  # noqa: A003
         """Print help message"""
         print_out('Methods of AliEn session:\n'
                   '.run(cmd, opts) : alias to SendMsg(cmd, opts); It will return a RET object: named tuple (exitcode, out, err, ansdict)\n'

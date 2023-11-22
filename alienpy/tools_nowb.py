@@ -19,12 +19,12 @@ import urllib.request as urlreq
 import shutil
 import shlex
 import sys
-import xml.etree.ElementTree as ET  # nosec
-import xml.dom.minidom as MD  # nosec B408:blacklist
+import xml.etree.ElementTree as ET  # noqa: N817
+import xml.dom.minidom as MD  # noqa: N812
 
 from .data_structs import ALIEN_COLLECTION_EL, KV, RET, STAT_FILEPATH
 from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, COLORS, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
-from .setup_logging import print_err, print_out, DEBUG
+from .setup_logging import DEBUG, print_err, print_out
 from .tools_shell import is_cmd, runShellCMD
 
 
@@ -615,7 +615,7 @@ def md5_mp(list_of_files: Optional[list] = None) -> list:
     if not list_of_files: return []
     hash_list = []
     with mp.Pool(processes = NCPU) as pool: hash_list = pool.map(md5, list_of_files)
-    return hash_list
+    return hash_list  # noqa: R504
 
 
 def expand_path_local(path_arg: str, strict: bool = False) -> str:
@@ -664,7 +664,7 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     if not os.path.exists(norm_path): return STAT_FILEPATH(norm_path)
     filetype = 'd' if os.path.isdir(norm_path) else 'f'
     statinfo = os.stat(norm_path)
-    perm = oct(statinfo.st_mode)[-3:]
+    perm = oct(statinfo.st_mode)[-3:]  # noqa: BB001
     uid = uid2name(statinfo.st_uid)
     gid = gid2name(statinfo.st_gid)
     ctime = str(statinfo.st_ctime)  # metadata modification
@@ -906,7 +906,7 @@ def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
     return ALIEN_COLLECTION_EL(
         name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
         dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
-        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",
+        md5 = md5(p.as_posix()), owner = p.owner(), perm = str(oct(p_stat.st_mode))[5:], replicated = "0",  # noqa: BB001
         size = str(p_stat.st_size), turl = turl, type = 'f')
 
 
@@ -960,9 +960,9 @@ def convert_trace2dict(trace:str = '') -> dict:
         if len(rez) > 1:
             trace_dict['trace'].append(' '.join(rez))
             if 'Created workdir' in rez[1]:
-                trace_dict['workdir'] = rez[1].split(': ')[1]
+                trace_dict['workdir'] = rez[1].split(': ')[1]  # noqa: BB001
             if re.match('Running.*on.*', rez[1], re.IGNORECASE):
-                trace_dict['wn'] = rez[1].split()[-1]
+                trace_dict['wn'] = rez[1].split()[-1]  # noqa: BB001
             if 'BatchId' in rez[1]:
                 q_info = rez[1].replace('BatchId', '').strip()
                 trace_dict['queue'].append(q_info)
@@ -989,7 +989,8 @@ def convert_jdl2dict(jdl:str = '') -> dict:
         if v.startswith('{') and v.endswith('}'):
             v = v.replace('{', '').replace('}', '').strip()
             v = v.split(', ')
-            list(map(str.strip, v))
+            # list(map(str.strip, v))
+            v[:] = [i.strip() for i in v]
         jdl_dict[k.strip()] = v
     return jdl_dict
 

@@ -1,4 +1,4 @@
-'''alienpy:: Definitions of version strings'''
+"""alienpy:: Definitions of version strings"""
 
 import sys
 

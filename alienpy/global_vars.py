@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+from socket import gethostname
 import tempfile
 from collections import deque
 from pathlib import Path
@@ -38,6 +39,8 @@ COLORS = COLORS_COLL()  # definition of colors
 
 TMPDIR = tempfile.gettempdir()
 USER_HOME = Path.home().as_posix()
+
+HOSTNAME = gethostname()
 
 
 def get_certs_names() -> CertsInfo:

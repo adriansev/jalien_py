@@ -1,4 +1,4 @@
-'''alienpy:: Definitions of data structures'''
+"""alienpy:: Definitions of data structures"""
 
 import sys
 from typing import NamedTuple
@@ -139,7 +139,7 @@ class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     aclId: str = ''
     broken: str = ''
     ctime: str = ''
-    dir: str = ''
+    dir: str = ''  # noqa: A003
     entryId: str = ''
     expiretime: str = ''
     gowner: str = ''
@@ -153,13 +153,13 @@ class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     replicated: str = ''
     size: str = ''
     turl: str = ''
-    type: str = ''
+    type: str = ''  # noqa: A003
 
 
 class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
     """Stat attributes of a lfn"""
     path: str = ''
-    type: str = ''
+    type: str = ''  # noqa: A003
     perm: str = ''
     uid: str = ''
     gid: str = ''

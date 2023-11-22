@@ -9,7 +9,7 @@ from typing import Union
 import logging
 
 from .data_structs import CommitInfo, RET, STAT_FILEPATH, lfn2file
-from .setup_logging import print_err, DEBUG
+from .setup_logging import DEBUG, print_err
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, lfn_prefix_re, specs_split
 from .wb_api import SendMsg, SendMsgMulti, retf_print
 from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_lfn_key, make_tmp_fn, valid_regex

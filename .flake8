@@ -99,3 +99,12 @@ ignore =
     PBP116,
     # Single quote docstring found but double quotes preferred
     Q002,
+    # Unused argument
+    U100,
+    # function missing type hints for arguments
+    TH100,
+    TH101,
+
+
+
+
