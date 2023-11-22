@@ -138,7 +138,8 @@ def is_guid(guid: str) -> bool:
 
 def run_function(function_name: str, *args, **kwargs):
     """Python code:: run some arbitrary function name (found in globals) with arbitrary arguments"""
-    return globals()[function_name](*args, *kwargs)  # run arbitrary function
+    func = globals().get(function_name)
+    return func(*args, *kwargs) if func else None  # run arbitrary function
 
 
 def cursor_vertical(lines: int = 0) -> None:
@@ -207,8 +208,9 @@ def read_conf_file(conf_file: str) -> dict:
     try:
         with open(conf_file, encoding="ascii", errors="replace") as rel_file:
             for line in rel_file:
-                line = line.partition('#')[0].rstrip()
-                name, var = line.partition("=")[::2]
+                line, _, _ = line.partition('#')
+                # name, var = line.rstrip().partition("=")[::2]
+                name, _, var = line.rstrip().partition("=")
                 var = re.sub(r"^\"", '', str(var.strip()))
                 var = re.sub(r"\"$", '', var)
                 DICT_INFO[name.strip()] = var
@@ -258,7 +260,9 @@ def pid_uid(pid: int) -> int:
         with open(f'/proc/{pid}/status', encoding="ascii", errors="replace") as proc_status:
             for line in proc_status:
                 # Uid, Gid: Real, effective, saved set, and filesystem UIDs(GIDs)
-                if line.startswith('Uid:'): uid = int((line.split()[1]))
+                if line.startswith('Uid:'):
+                    line_elements = line.split()
+                    uid = int(line_elements[1]) if len(line_elements) > 1 else -1
     except Exception:
         logging.error('Error getting uid of pid: %d', pid)
     return uid  # noqa: R504
@@ -569,23 +573,26 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
 
 def get_lfn_meta(meta_fn: str) -> str:
     """Extract lfn value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
+    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
     if not os.path.isfile(meta_fn): return ''
-    return MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')[0].firstChild.nodeValue  # nosec B318:blacklist
+    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')
+    return element_list[0].firstChild.nodeValue if element_list else ''  # nosec B318:blacklist
 
 
 def get_size_meta(meta_fn: str) -> int:
     """Extract size value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
-    if not os.path.isfile(meta_fn): return int(0)
-    return int(MD.parse(meta_fn).documentElement.getElementsByTagName('size')[0].firstChild.nodeValue)  # nosec B318:blacklist
+    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
+    if not os.path.isfile(meta_fn): return int(-1)
+    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('size')
+    return int(element_list[0].firstChild.nodeValue) if element_list else -1  # nosec B318:blacklist
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
     """Extract hash value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn = meta_fn.partition('?')[0]
+    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
     if not os.path.isfile(meta_fn): return ('', '')
-    content = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')[0]  # nosec B318:blacklist
+    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')
+    content = element_list[0] if element_list else None  # nosec B318:blacklist
     return (content.getAttribute('type'), content.firstChild.nodeValue)
 
 
@@ -694,7 +701,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        elif isinstance(pattern, REGEX_PATTERN_TYPE):  # unlikely but supported to match signatures
             regex = pattern
             is_regex = True
         elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex

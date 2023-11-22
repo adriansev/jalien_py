@@ -1428,7 +1428,8 @@ def DO_help(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
         nr = len(AlienSessionInfo['commandlist'])
         column_width = 24
         try:
-            columns = os.get_terminal_size()[0] // column_width
+            column_size, _ = os.get_terminal_size()
+            columns = column_size // column_width
         except Exception:
             columns = 5
 

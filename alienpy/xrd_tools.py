@@ -221,7 +221,9 @@ def pathtype_grid(wb, path: str) -> str:
     if not wb or not path: return ''
     ret_obj = SendMsg(wb, 'type', [path], opts = 'nomsg log')
     if ret_obj.exitcode != 0: return ''
-    return str(ret_obj.ansdict['results'][0]["type"])[0]
+    file_stat_dict = ret_obj.ansdict['results'][0] if ret_obj.ansdict['results'] else {}
+    file_type = file_stat_dict.get('type', '')
+    return file_type[0] if file_type else ''  # return only first letter of 'type' attribute
 
 
 def commit(wb, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
@@ -290,7 +292,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
                 is_single_file = True
             else:
                 pattern = '*'  # prefer globbing as default
-        elif type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures # noqa: PIE789
+        elif isinstance(pattern, REGEX_PATTERN_TYPE):  # unlikely but supported to match signatures # noqa: PIE789
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 

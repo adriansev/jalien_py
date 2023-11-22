@@ -32,9 +32,18 @@ def _cancel_all_tasks(loop_to_cancel):
 
 def _run(mainasync, *, debug = False):
     global _alienpy_global_asyncio_loop
-    if asyncio.events._get_running_loop() is not None: raise RuntimeError('asyncio.run() cannot be called from a running event loop')  # pylint: disable=protected-access
-    if not asyncio.coroutines.iscoroutine(mainasync): raise ValueError(f'a coroutine was expected, got {mainasync!r}')
-    if _alienpy_global_asyncio_loop is not None: raise RuntimeError('asyncio event loop already started')
+
+    if asyncio.events._get_running_loop() is not None:
+        asyncio_err_msg = 'asyncio.run() cannot be called from a running event loop'
+        raise RuntimeError(asyncio_err_msg)  # pylint: disable=protected-access
+
+    if not asyncio.coroutines.iscoroutine(mainasync):
+        no_corutine_err_msg = f'a coroutine was expected, got {mainasync!r}'
+        raise ValueError(no_corutine_err_msg)
+
+    if _alienpy_global_asyncio_loop is not None:
+        loop_already_started = 'asyncio event loop already started'
+        raise RuntimeError(loop_already_started)
 
     _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
     try:

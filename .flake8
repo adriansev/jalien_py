@@ -95,12 +95,7 @@ ignore =
     # prefer-isinstance-type-compare: Use isinstance for comparing types.
     PIE789,
     W391,
-    
-
-
-
-
-
-
-
-
+    # Class names should be in PascalCase
+    PBP116,
+    # Single quote docstring found but double quotes preferred
+    Q002,

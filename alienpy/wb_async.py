@@ -131,8 +131,17 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             return None
 
         if socket_endpoint:
-            socket_endpoint_addr = socket_endpoint.getpeername()[0]
-            socket_endpoint_port = socket_endpoint.getpeername()[1]
+            peer_info = socket_endpoint.getpeername()
+            socket_endpoint_addr = None
+            socket_endpoint_port = None
+            if peer_info:
+                socket_endpoint_addr = peer_info[0]
+                socket_endpoint_port = peer_info[1]
+            else:
+                msg = f'Could NOT get peer information for {host}:{port}! This should be not reached, contact support!'
+                logging.error(msg)
+                print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+                return None
             logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
             try:
                 init_begin_wb = None
@@ -201,13 +210,16 @@ async def wb_sendmsg(wb: WebSocketClientProtocol, jsonmsg: str) -> str:
 async def wb_sendmsg_multi(wb: WebSocketClientProtocol, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
-    time_begin = time.perf_counter() if DEBUG_TIMING else None
-    for msg in jsonmsg_list: await wb.send(msg)
-
     result_list = []
-    for _i in range(len(jsonmsg_list)):
-        result = await wb.recv()
-        result_list.append(result)
+    time_begin = time.perf_counter() if DEBUG_TIMING else None
+    for msg in jsonmsg_list:
+        await wb.send(msg)
+
+    # for _i in range(len(jsonmsg_list)):
+    #    result = await wb.recv()
+    #    result_list.append(result)
+    async for answer in wb:
+        result_list.append(answer)
 
     if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
     return result_list

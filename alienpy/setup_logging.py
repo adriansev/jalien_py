@@ -13,6 +13,7 @@ from .global_vars import ALIENPY_FANCY_PRINT, TMPDIR, USER_HOME, rich_print
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
 DEBUG_FILE = os.getenv('ALIENPY_DEBUG_FILE', f'{USER_HOME}/alien_py.log')
 
+
 def print_out(msg: str, toLog: bool = False) -> None:
     """wrapper for print/log to stdout"""
     if toLog:

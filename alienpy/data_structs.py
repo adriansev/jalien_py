@@ -130,7 +130,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     ansdict: dict = {}
 
     def __bool__(self) -> bool:
-        return bool(self.exitcode == 0)
+        return self.exitcode == 0
 
 
 class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class

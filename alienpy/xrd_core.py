@@ -14,7 +14,7 @@ import subprocess
 import uuid
 import time
 import xml.dom.minidom as MD  # nosec B408:blacklist
-from typing import Union
+from typing import Optional, Union
 
 from .version import ALIENPY_VERSION_STR
 from .setup_logging import print_err, print_out, DEBUG, DEBUG_FILE
@@ -115,7 +115,7 @@ def xrd_config_init() -> None:
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
 
 
-def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Union[None, list] = None, copy_list: Union[None, list] = None,
+def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
                  pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 999,
                  overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
@@ -143,12 +143,12 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Union[None, li
         src_glob = True
         arg_src, pattern = extract_glob_pattern(arg_src)
     else:  # pattern is specified by argument
-        if type(pattern) is REGEX_PATTERN_TYPE:  # unlikely but supported to match signatures
+        if isinstance(pattern, REGEX_PATTERN_TYPE):  # unlikely but supported to match signatures
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
         # it was explictly requested that pattern is regex
-        if is_regex and type(pattern) is str and valid_regex(pattern) is None:
+        if is_regex and isinstance(pattern, str) and valid_regex(pattern) is None:
             msg = f"makelist_lfn:: {pattern} failed to re.compile"
             logging.error(msg)
             return RET(64, '', msg)  # EX_USAGE /* command line usage error */
@@ -304,7 +304,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list) -> None:
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
 
 
-def DO_XrootdCp(wb, xrd_copy_command: Union[None, list] = None, printout: str = '', api_src: Union[None, list] = None, api_dst: Union[None, list] = None) -> RET:
+def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '', api_src: Optional[list] = None, api_dst: Optional[list] = None) -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
     if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
 
@@ -772,7 +772,7 @@ if HAS_XROOTD:
                     print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Contact developer for support.')
 
             if not xrdjob.isUpload:
-                meta_path = str(xrdjob.src).partition("?")[0]
+                meta_path, _, _ = str(xrdjob.src).partition("?")
                 if os.getenv('ALIENPY_KEEP_META'):
                     subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)  # nosec
                 else:
@@ -963,13 +963,13 @@ def xrdfs_ping(fqdn_port: str):
 def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, compact: bool = False):
     if not HAS_XROOTD:
         print_err('python XRootD module not found')
-        return None
+        return {}
     endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
     q_status, response = endpoint.query(1, 'a')  # get the stats (ALL)
     status = xrd_response2dict(q_status)
     if not status['ok']:
         print_err(f'xrdfs_q_stats:: query error to {fqdn_port} : {status["message"]}')
-        return ''
+        return {}
 
     response = response.decode('ascii').strip().strip('\x00')
     # if xml is requested or xmltodict missing
@@ -985,9 +985,12 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
         import xmltodict
     except Exception:
         print_err('Could not import xmltodict, cannot convert the xml output to a dict view. try -xml argument')
-        return None
+        return {}
 
-    q_stats_dict = xmltodict.parse(response, attr_prefix = '')['statistics']
+    q_stats_dict_full = xmltodict.parse(response, attr_prefix = '')
+    q_stats_dict = q_stats_dict_full.get('statistics')
+    if not q_stats_dict: return {}
+
     old_stats = q_stats_dict.pop('stats')
 
     # it will mutate the input
