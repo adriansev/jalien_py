@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-clean_logs () { rm -rf xrdlog.txt xrdlog_*.txt log.txt cmdout.txt &> /dev/null ; }
+clean_logs () { rm -rf xrdlog.txt xrdlog_*.txt log.txt cmdout.txt ci_test_dir &> /dev/null ; }
 clean_logs
 
 export XRD_LOGLEVEL='Dump' XRD_LOGFILE=xrdlog.txt ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt ALIENPY_DEBUG_APPEND=1

@@ -18,7 +18,10 @@ def _cancel_all_tasks(loop_to_cancel):
     to_cancel = asyncio.Task.all_tasks(loop_to_cancel) if sys.version_info[1] < 7 else asyncio.all_tasks(loop_to_cancel)
     if not to_cancel: return
     for task in to_cancel: task.cancel()
-    loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
+    if sys.version_info[1] < 10:
+        loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, loop = loop_to_cancel, return_exceptions = True))
+    else:
+        loop_to_cancel.run_until_complete(asyncio.tasks.gather(*to_cancel, return_exceptions = True))
 
     for task in to_cancel:
         if task.cancelled(): continue

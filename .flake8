@@ -1,6 +1,8 @@
 [flake8]
 exclude = .git,__pycache__,attic,build,dist
 ignore =
+    # Import statements are in the wrong order
+    I100,
     # line too long (164 > 79 characters)
     E501,
     # String literal formatting using f-string
@@ -13,19 +15,25 @@ ignore =
     N806,
     # variable 'aclId' in class scope should not be mixedCase
     N815,
-    # camelcase 'xml.etree.ElementTree' imported as acronym 'ET'
-    # N817,
-    # closing bracket does not match indentation of opening bracket's line
-    E123,
     # unexpected spaces around keyword / parameter equals
-    E251,
+    # E251,
+    # Missing docstring in public function
+    D103,
+    # Missing docstring in public method
+    D102,
+    # Missing docstring in magic method
+    D105,
+    # Missing docstring in __init__
+    D107,
+    # unexpected spaces around keyword / parameter equals
     E201,
     E202,
     E231,
+    E251,
     E265,
     E266,
-    # unexpected spaces around keyword / parameter equals
-    # E251,
+    # 'requests' imported but unused
+    F401,
     # module level import not at top of file
     E402,
     # multiple statements on one line (colon)
@@ -38,18 +46,8 @@ ignore =
     Q000,
     # Single quote multiline found but double quotes preferred
     Q001,
-    # Missing docstring in public function
-    D103,
-    # Missing docstring in public method
-    D102,
-    # Missing docstring in magic method
-    D105,
-    # Missing docstring in __init__
-    D107,
     # First line should end with a period
     D400,
-    # Import statements are in the wrong order
-    I100,
     #First line should be in imperative mood; try rephrasing
     D401,
     # 1 blank line required after class docstring
@@ -82,19 +80,12 @@ ignore =
     CFQ004,
     # Function "lfnAccessUrl" has 7 arguments that exceeds max allowed 6
     CFQ002,
-    # unecessary variable assignement before return statement.
-    # R504,
     # Function list_files_grid has length 154 that exceeds max allowed length 100
     CFQ001,
-    # 'requests' imported but unused
-    F401,
     # local variable 'cksum' is assigned to but never used
     F841,
     # Use 'contextlib.suppress(Exception)'
     SIM105,
-    # prefer-isinstance-type-compare: Use isinstance for comparing types.
-    PIE789,
-    W391,
     # Class names should be in PascalCase
     PBP116,
     # Single quote docstring found but double quotes preferred
@@ -104,7 +95,3 @@ ignore =
     # function missing type hints for arguments
     TH100,
     TH101,
-
-
-
-

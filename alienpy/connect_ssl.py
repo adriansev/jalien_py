@@ -11,7 +11,7 @@ import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     try:
-        import cryptography
+        import cryptography  # noqa: F401
     except Exception:
         print("cryptography module could not be imported! Make sure you can do:\npython3 -c 'import cryptography'", file = sys.stderr, flush = True)
         sys.exit(1)
@@ -33,6 +33,13 @@ from .global_vars import AlienSessionInfo, COLORS, TOKENCERT_NAME, TOKENKEY_NAME
 from .tools_nowb import PrintColor, path_readable
 
 
+def is_x509dir_valid(x509dir: str = '') -> bool:
+    """Determine validity of X509_CERT_DIR"""
+    if not os.path.isdir(x509dir): return False
+    pem_files_in_dir = [f for f in os.listdir(x509dir) if os.path.isfile(f'{x509dir}/{f}') and f.endswith('.pem')]
+    return len(pem_files_in_dir) > 0
+
+
 def get_ca_path() -> str:
     """Return either the CA path or file, priority given to X509_CERT_FILE and X509_CERT_DIR"""
     system_ca_path = '/etc/grid-security/certificates'
@@ -45,37 +52,58 @@ def get_ca_path() -> str:
 
     use_local_cas_dir = os.getenv('ALIENPY_USE_LOCAL_CAS', default = '')
     capath_default = None
-    if use_local_cas_dir:
-        if os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
+
+    if use_local_cas_dir:  # explicit requested by env var, so top priority
+        # This is location of ALIEN-CAS repository download
+        if is_x509dir_valid(local_ca_certs_dir) and os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
             capath_default = local_ca_certs_dir
+            os.environ['X509_CERT_DIR'] = capath_default
+            logging.debug('CApath::LOCAL_CAS:: enabled and set to ~/.globus/certificates')
         else:
-            msg = 'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found there!!!\nrun: "alien.py getCAcerts" first'
+            msg = f'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found in {local_ca_certs_dir}!!!\nrun: "alien.py getCAcerts" first'
             print_err(msg)
             logging.error(msg)
             sys.exit(2)
-    elif x509dir and os.path.isfile(f'{x509dir}/CERN-GridCA.pem'):
-        capath_default = x509dir
-    elif x509file and os.path.isfile(x509file):
-        capath_default = x509file
-    elif os.path.isfile(f'{alice_cvmfs_ca_path_lx}/CERN-GridCA.pem'):
-        capath_default = alice_cvmfs_ca_path_lx
-    elif os.path.isfile(f'{alice_cvmfs_ca_path_macos}/CERN-GridCA.pem'):
-        capath_default = alice_cvmfs_ca_path_macos
-    elif os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
-        capath_default = local_ca_certs_dir
-    elif os.path.isfile(f'{system_ca_path}/CERN-GridCA.pem'):
-        capath_default = system_ca_path
-    else:
-        msg = "No CA location or files specified or found!!! Connection will not be possible!! Run:\nalien.py getCAcerts\nto download CAs to local ~/.globus/certificates"
-        print_err(msg)
-        logging.error(msg)
-        sys.exit(2)
 
-    # if x509file is not used (or is missing) then just set X509_CERT_DIR to whatever capath_default was found to be valid
-    if capath_default != x509file: os.environ['X509_CERT_DIR'] = capath_default
+    if not capath_default and x509dir:
+        if is_x509dir_valid(x509dir):
+            capath_default = x509dir
+            logging.debug(f'CApath::X509_CERT_DIR:: requested and set to {x509dir}')
+        else:
+            msg = f'X509_CERT_DIR set by environment is invalid! Check content of {x509dir}'
+            print_err(msg)
+            logging.error(msg)
+            sys.exit(2)
 
-    dbg_msg = f'\nX509_CERT_FILE = {x509file}\nCAfile = {x509file}' if x509file else f'\nX509_CERT_DIR = {x509dir}\nCApath = {capath_default}'
-    if DEBUG: logging.debug('%s', dbg_msg)
+    if not capath_default and x509file:
+        if os.path.isfile(x509file):
+            capath_default = x509file
+            logging.debug(f'CApath::X509_CERT_FILE:: requested and set to {x509file}')
+        else:
+            msg = f'X509_CERT_FILE set by environment but is missing! Check existence of {x509file}'
+            print_err(msg)
+            logging.error(msg)
+            sys.exit(2)
+
+    # no env var setup so far, so let's try some known places
+    if not capath_default:
+        if is_x509dir_valid(alice_cvmfs_ca_path_lx):
+            capath_default = alice_cvmfs_ca_path_lx
+        elif is_x509dir_valid(alice_cvmfs_ca_path_macos):
+            capath_default = alice_cvmfs_ca_path_macos
+        elif is_x509dir_valid(local_ca_certs_dir) and os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
+            capath_default = local_ca_certs_dir  # This is location of ALIEN-CAS repository download
+        elif is_x509dir_valid(system_ca_path):
+            capath_default = system_ca_path
+        else:
+            msg = "No CA locations found!!! Connection will not be possible!! Either set X509_CERT_DIR to a known good CApath or run:\nalien.py getCAcerts\nto download CAs to ~/.globus/certificates"
+            print_err(msg)
+            logging.error(msg)
+            sys.exit(2)
+
+    if DEBUG:
+        dbg_msg = f'\nX509_CERT_FILE = {x509file}\nCAfile = {capath_default}' if x509file else f'\nX509_CERT_DIR = {x509dir}\nCApath = {capath_default}'
+        logging.debug('%s', dbg_msg)
     return capath_default
 
 
