@@ -6,7 +6,6 @@ import sys
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 6):
     print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True)
     sys.exit(1)
-import atexit
 import collections
 import datetime
 import difflib
@@ -1887,8 +1886,6 @@ def main() -> None:
     global ALIENPY_EXECUTABLE, DEBUG, DEBUG_FILE
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
-    # at exit delete all temporary files
-    atexit.register(cleanup_temp)
 
     ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
     if get_arg(sys.argv, '-json'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'

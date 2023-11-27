@@ -1,6 +1,7 @@
 """alienpy:: Misc tooling functions (local, not-networked usage)"""
 
 import ast
+import atexit
 import datetime
 import json
 import re
@@ -922,20 +923,17 @@ def mk_xml_local(filepath_list: list) -> str:
     return dom.toprettyxml()
 
 
-def cleanup_temp(item: str = '') -> None:
+@atexit.register
+def cleanup_temp() -> None:
     """Remove from disk all recorded temporary files"""
     if 'AlienSessionInfo' not in globals(): return
     if not AlienSessionInfo['templist']: return
 
     def rm_item(i: str = '') -> None:
         if not i: return
-        if os.path.isfile(i):
-            AlienSessionInfo['templist'].remove(i)
-            os.remove(i)
-    if item:
-        rm_item(item)
-    else:
-        for f in AlienSessionInfo['templist']: rm_item(f)
+        if os.path.isfile(i): os.remove(i)
+    for f in AlienSessionInfo['templist']: rm_item(f)
+    AlienSessionInfo['templist'].clear()
 
 
 def import_aliases() -> None:
