@@ -593,7 +593,7 @@ def get_hash_meta(meta_fn: str) -> tuple:
     if not os.path.isfile(meta_fn): return ('', '')
     element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')
     content = element_list[0] if element_list else None  # nosec B318:blacklist
-    return (content.getAttribute('type'), content.firstChild.nodeValue) if content else None, None
+    return (content.getAttribute('type'), content.firstChild.nodeValue) if content else (None, None)
 
 
 def md5(input_file: str) -> str:
