@@ -203,7 +203,7 @@ def DO_version(args: Optional[list] = None) -> RET:  # pylint: disable=unused-ar
 
 
 def DO_exit(args: Optional[list] = None) -> Optional[RET]:
-    if not args: args = ['-h']
+    if not args: args = []
     if is_help(args):
         msg = 'Command format: exit [code] [stderr|err] [message]'
         return RET(0, msg)  # type: ignore [call-arg]
