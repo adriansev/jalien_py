@@ -30,6 +30,7 @@ from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, l
 HAS_XROOTD = False
 try:
     from XRootD import client as xrd_client  # type: ignore
+    from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
     HAS_XROOTD = True
 except Exception:
     print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
@@ -120,6 +121,22 @@ def xrd_config_init() -> None:
 
     # Preserve xattrs by default
     # XRD_EnvPut('PreserveXAttr', int(1))
+
+
+def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
+    """For a given URI (token included) set the xattrs"""
+    if not HAS_XROOTD or not uri or not xattr_list: return None
+    mode = OpenFlags.READ | OpenFlags.UPDATE | OpenFlags.WRITE
+    with xrd_client.File() as f:
+        status, response = f.open(uri, mode)
+        print(status)
+        print(respons)
+
+        status, list_of_statuses = f.set_xattr(attrs = xattr_list)
+        print(status)
+        for s in list_of_statuses:
+            print(s[0])
+            print(s[1])
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
@@ -751,8 +768,9 @@ if HAS_XROOTD:
                                                             lfn = xrdjob.lfn, perm = '644', expire = '0',
                                                             pfn = replica_dict['url'], se = replica_dict['se'], guid = replica_dict['guid'], md5 = md5))
                     # Add xattrs to remote file
-                    # from rich.pretty import pprint
-                    # pprint(replica_dict)
+                    if 'ALIENPY_EXPERIMENTAL_XATTRS' in os.environ:
+                        pfn_dir = urlparse(replica_dict['url']).path
+                        xrdfile_set_attr(xrdjob.dst, [ ('xroot.alice.lfn', xrdjob.lfn), ('xroot.alice.md5', md5), ('xroot.alice.pfn', pfn_dir) ])
                 else:  # isDownload
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
