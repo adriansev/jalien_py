@@ -212,14 +212,13 @@ async def wb_sendmsg_multi(wb: WebSocketClientProtocol, jsonmsg_list: list) -> l
     if not jsonmsg_list: return []
     result_list = []
     time_begin = time.perf_counter() if DEBUG_TIMING else None
-    for msg in jsonmsg_list:
-        await wb.send(msg)
+    nr_messages = len(jsonmsg_list)
 
-    # for _i in range(len(jsonmsg_list)):
-    #    result = await wb.recv()
-    #    result_list.append(result)
-    async for answer in wb:
-        result_list.append(answer)
+    # send pipelined messages
+    for msg in jsonmsg_list: await wb.send(msg)
+
+    # receive and add to result_list the incomming messages
+    for _i in range(nr_messages): result_list.append(await wb.recv())
 
     if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))
     return result_list

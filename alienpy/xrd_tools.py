@@ -241,7 +241,7 @@ def commitFile(wb, lfnInfo: CommitInfo) -> RET:
 def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
     """Upon succesful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
     if not wb or not lfnInfo_list: return []
-    batch_size = 30
+    batch_size = 64
     batches_list = [lfnInfo_list[x: x + batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
     commit_results = []
     for batch in batches_list:

@@ -23,7 +23,7 @@ from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_spl
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
                          fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
-                         is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
+                         is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex, unixtime2local)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help
 
 
@@ -113,6 +113,13 @@ def xrd_config_init() -> None:
 
     # If set the client tries first IPv4 address (turned off by default).
     if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
+
+    # https://github.com/xrootd/xrootd/blob/v5.6.3/docs/man/xrdcp.1#L592
+    # If set to 1, use the checksum available in a metalink file even if a file is being extracted from a ZIP archive.
+    XRD_EnvPut('ZipMtlnCksum', int(1))
+
+    # Preserve xattrs by default
+    # XRD_EnvPut('PreserveXAttr', int(1))
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
@@ -299,6 +306,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list) -> None:
             if not metafile:
                 print_err(f"Could not create the download metafile for {cpfile.src}")
                 continue
+            AlienSessionInfo['templist'].append(metafile)
             if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
             if DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
             copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
@@ -728,15 +736,23 @@ if HAS_XROOTD:
                 logging.debug('XRD copy job time:: %s -> %s', xrdjob.lfn, deltaT)
                 logging.debug(results)
 
+            if not xrdjob.isUpload and os.getenv('ALIENPY_KEEP_META'):
+                meta_path, _, _ = str(xrdjob.src).partition("?")
+                subprocess.run(shlex.split(f'cp -f {meta_path} {os.getcwd()}/'), check = False)  # nosec
+
             if results['status'].ok:
                 speed = float(job_info['bytes_total']) / deltaT
                 speed_str = f'{GetHumanReadableSize(speed)}/s'
+                job_msg = f'{job_status_info} >>> SPEED {speed_str}'
 
                 if xrdjob.isUpload:  # isUpload
                     md5 = results['sourceCheckSum'].replace('md5:','',1)
-                    perm = '644'
-                    expire = '0'
-                    self.succesful_writes.append(CommitInfo(replica_dict['envelope'], replica_dict['size'], xrdjob.lfn, perm, expire, replica_dict['url'], replica_dict['se'], replica_dict['guid'], md5))
+                    self.succesful_writes.append(CommitInfo(envelope = replica_dict['envelope'], size = replica_dict['size'], 
+                                                            lfn = xrdjob.lfn, perm = '644', expire = '0',
+                                                            pfn = replica_dict['url'], se = replica_dict['se'], guid = replica_dict['guid'], md5 = md5))
+                    # Add xattrs to remote file
+                    # from rich.pretty import pprint
+                    # pprint(replica_dict)
                 else:  # isDownload
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -753,8 +769,7 @@ if HAS_XROOTD:
                                 os.replace(zip_name, xrdjob.dst)
                         if os.path.isfile(zip_name): os.remove(zip_name)
 
-                if not ('quiet' in self.printout or 'silent' in self.printout):
-                    print_out(f"{job_status_info} >>> SPEED {speed_str}")
+                if not ('quiet' in self.printout or 'silent' in self.printout): print_out(job_msg)
             else:
                 self.copy_failed_list.append(xrdjob)
                 codes_info = f">>> ERRNO/CODE/XRDSTAT {results['status'].errno}/{results['status'].code}/{results['status'].status}"
@@ -770,21 +785,6 @@ if HAS_XROOTD:
                 defined_reqtimeout = float(XRD_EnvGet('RequestTimeout'))
                 if deltaT >= defined_reqtimeout:
                     print_err(f'Copy job duration >= RequestTimeout default setting ({defined_reqtimeout}); Contact developer for support.')
-
-            if not xrdjob.isUpload:
-                meta_path, _, _ = str(xrdjob.src).partition("?")
-                if os.getenv('ALIENPY_KEEP_META'):
-                    subprocess.run(shlex.split(f'mv {meta_path} {os.getcwd()}/'), check = False)  # nosec
-                else:
-                    os.remove(meta_path)  # remove the created metalink
-
-        def update(self, jobId, processed, total) -> None:
-            # self.job_list[jobId - 1]['bytes_total'] = total
-            # self.job_list[jobId - 1]['bytes_processed'] = processed
-            pass
-
-        def should_cancel(self, jobId) -> bool:
-            return False
 
 
 def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
@@ -805,11 +805,6 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
     tpc = xrd_cp_args.tpc
-    # hashtype = xrd_cp_args.hashtype
-    # timeout = xrd_cp_args.timeout
-    # rate = xrd_cp_args.rate
-
-    xrd_client.EnvPutInt('ZipMtlnCksum', 1)
 
     handler = MyCopyProgressHandler()
     handler.wb = wb
@@ -846,11 +841,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                             retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
-
-    #faulthandler.disable()
-    #faulthandler.enable(file = sys.__stderr__, all_threads = True)
     process.run(handler)
-    #faulthandler.disable()
 
     if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
         ret_list = commitFileList(wb, handler.succesful_writes)

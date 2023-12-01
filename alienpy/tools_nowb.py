@@ -98,10 +98,10 @@ def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
     if len(timestr) > 10:
         time_decimals = timestr[10:]
         if len(time_decimals) <= 3:
-            time_decimals = time_decimals.ljust(3, '0')
+            time_decimals = float(time_decimals.ljust(3, '0')) * 1000
             millis = datetime.timedelta(milliseconds=int(time_decimals))
         else:
-            time_decimals = time_decimals.ljust(6, '0')
+            time_decimals = float(time_decimals.ljust(6, '0')) *1000000
             micros = datetime.timedelta(microseconds=int(time_decimals))
 
     unixtime = timestr[:10]
