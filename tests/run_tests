@@ -7,7 +7,7 @@ test_dirlist=$(find "${SCRIPT_DIR}" -type d -name "*.test" | sort)
 for t in ${test_dirlist}; do
     echo "Running test : $(basename ${t})"
     pushd "${t}" &> /dev/null
-    ./test.sh
+    ./test.sh || { echo "Failed test, stopping testing"; break; }
     popd &> /dev/null
     echo -e "END test : $(basename ${t})\n\n"
 done
