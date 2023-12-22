@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-clean_logs () { rm -f log.txt &> /dev/null; }
+clean_logs () { rm -f log.txt output.txt &> /dev/null; }
 
 command -v alien.py &> /dev/null || { echo "alien.py command not found; skip test"; exit; }
 
@@ -35,14 +35,14 @@ FILEKEY="${TMPDIR}/tokenkey_$(id -u).pem"
 tokens_backup "${FILECERT}" "${FILEKEY}"
 
 # check that error is thrown if tokens are missing
-alien-token-info &> /dev/null && { echo "The missing tokens case should fail"; exit 1; }
+alien-token-info &>> output.txt && { echo "The missing tokens case should fail"; exit 1; }
 
 export JALIEN_TOKEN_CERT="$(< ${FILECERT}_backup)"
 export JALIEN_TOKEN_KEY="$(< ${FILEKEY}_backup)"
-alien-token-info &> /dev/null || { echo "FAIL! No alien token found"; STATUS="1"; } && { echo "OK! valid tokens found in environment"; STATUS="0"; }
+alien-token-info &>> output.txt || { echo "FAIL! No alien token found"; STATUS="1"; } && { echo "OK! valid tokens found in environment"; STATUS="0"; }
 [[ "${STATUS}" == "1" ]] && { tokens_restore "${FILECERT}" "${FILEKEY}"; exit ${STATUS}; }
 
-alien.py pwd &> /dev/null && { echo "OK! valid connection to JAliEn services"; STATUS="0"; clean_logs; } || { echo "FAIL! error connecting to JAliEn Services"; STATUS="1"; }
+alien.py pwd &>> output.txt && { echo "OK! valid connection to JAliEn services"; STATUS="0"; clean_logs; } || { echo "FAIL! error connecting to JAliEn Services"; STATUS="1"; }
 tokens_restore "${FILECERT}" "${FILEKEY}";
 exit ${STATUS};
 
