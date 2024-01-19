@@ -668,29 +668,35 @@ task name / detector name / [ / time [ / key = value]* ]
 -report          : Give a report of object sizes for a given path
 ''' )
 
-    listing_type = 'browse/' if get_arg(args, '-history') else 'latest/'
-    ccdb_default_host = 'http://alice-ccdb.cern.ch/'
+    listing_type = 'latest/'
+    ccdb_default_host = 'http://alice-ccdb.cern.ch'
+
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
     do_download = get_arg(args, '-get')
     do_mirror = get_arg(args, '-mirror')
     do_report = get_arg(args, '-report')
+    do_history = get_arg(args, '-history')
     run_nr = get_arg_value(args, '-run')
-
+    obj_time = get_arg_value(args, '-objtime')
     limit_results = get_arg_value(args, '-limit')
-    if not limit_results:
-        limit_results = 10
+    dest_arg = get_arg_value(args, '-dst')
+    headers_list = get_arg_multiple(args, '-header')
 
-    if do_report:
-        listing_type = 'browse/'
+    if not args: return RET(2, '', 'empty query!')
 
     if do_download and do_mirror:
         return RET(1, '', '-get and -mirror are conflicting options')
+
+    if run_nr and obj_time:
+        return RET(1, '', '-run and -objtime are conflicting options')
+
+    if do_report or do_history: listing_type = 'browse/'
+
     do_unixtime = do_mirror or do_unixtime
 
-    headers_list = get_arg_multiple(args, '-header')
+    if not limit_results: limit_results = 10
 
-    dest_arg = get_arg_value(args, '-dst')
     if not dest_arg: dest_arg = '.'
     if not dest_arg.endswith('/'): dest_arg = f'{dest_arg}/'
 
@@ -698,15 +704,17 @@ task name / detector name / [ / time [ / key = value]* ]
     if not ccdb.endswith('/'): ccdb = f'{ccdb}/'
     if not ccdb.startswith('http://') and not ccdb.startswith('https://'): ccdb = f'http://{ccdb}'
 
-    if not args: return RET(2, '', 'empty query!')
     query_str = args[0]  # after removal of args assume the rest is the query
     query_str = query_str.replace('.*', '').replace('*', '')
     if not query_str.endswith('/'): query_str = f'{query_str}/'
     if do_report: query_str = f'{query_str}{"?" if "?" not in query_str else ""}report=true'
 
-    if run_nr: query_str = f'{query_str}/runNumber={run_nr}'
+    if run_nr: query_str = f'{query_str}runNumber={run_nr}'
+    if obj_time: query_str = f'{query_str}{obj_time}'
+
     if not session_id: session_id = str(uuid.uuid1())
 
+    # if do_mirror: limit_results = '999999'
     headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
     for h_el in headers_list:
         k, _, v = h_el.partition(':')
