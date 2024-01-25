@@ -12,6 +12,7 @@ import difflib
 import json
 import signal
 from pathlib import Path
+import re
 import subprocess  # nosec
 import logging
 import shlex
@@ -48,7 +49,7 @@ from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -644,6 +645,15 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
     return RET(0, f'{os.linesep}'.join(job_list_messages), '', job_processed_list)
 
 
+def ccdb_runinfo(run: str = '') -> dict:
+    """Get the CCDB registered information for run number"""
+    if not run: return {}
+    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': '99'}
+    ccdb_query = requests.get(f'http://alice-ccdb.cern.ch/latest/RCT/Info/RunInformation/{run}', headers = headers, timeout = 5)
+    if ccdb_query.status_code != 200: return {}
+    return ccdb_query.json()
+
+
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
     global session_id, ALIENPY_GLOBAL_WB
@@ -706,12 +716,42 @@ task name / detector name / [ / time [ / key = value]* ]
 
     query_str = args[0]  # after removal of args assume the rest is the query
     query_str = query_str.replace('.*', '').replace('*', '')
-    if not query_str.endswith('/'): query_str = f'{query_str}/'
+
+    query_elements = query_str.split('/')
+    # scan components for time specification
+    ccdb_time = ''
+    ccdb_obj_path_elements = []
+    key_selection_list = []
+    for el in query_elements:
+        is_time_spec = time_pattern_match_13.fullmatch(el)
+        if is_time_spec:
+            ccdb_time = el
+        elif '=' in el:
+            key_selection_list.append(el)
+        else:
+            ccdb_obj_path_elements.append(el)
+
+    if run_nr and ccdb_time and obj_time:
+        return RET(1, '', '-run and -objtime and time specification in query are conflicting options')
+
+    if not ccdb_time:
+        if run_nr:
+            run_info = ccdb_runinfo(run_nr)
+            if not 'objects' in run_info or not run_info['objects']:
+                return RET(1, '', f'Could not obtain SOR time for specified run number {run_nr}')
+            ccdb_time = run_info['objects'][0]['SOR']
+        elif obj_time:
+            is_time_spec = time_pattern_match_13.fullmatch(obj_time)
+            if not is_time_spec:
+                return RET(1, '', f'{obj_time} does not have the time expected format of r"\\d{13}"')
+            ccdb_time = obj_time
+
+    # reconstruct the query
+    ccdb_obj_path = '/'.join(ccdb_obj_path_elements)
+    key_selection = '/'.join(key_selection_list)
+    query_str = f'{ccdb_obj_path}{"/" if ccdb_time else ""}{ccdb_time}{"/" if key_selection else ""}{key_selection}'
+
     if do_report: query_str = f'{query_str}{"?" if "?" not in query_str else ""}report=true'
-
-    if run_nr: query_str = f'{query_str}runNumber={run_nr}'
-    if obj_time: query_str = f'{query_str}{obj_time}'
-
     if not session_id: session_id = str(uuid.uuid1())
 
     # if do_mirror: limit_results = '999999'
@@ -721,10 +761,9 @@ task name / detector name / [ / time [ / key = value]* ]
         headers[k.strip()] = v.strip()
 
     ccdb_query = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
-    try:
-        q_dict = ccdb_query.json()
-    except Exception:
-        return RET(1, '', f'Invalid answer (no json) from query:\n{ccdb}{listing_type}{query_str}')
+    if ccdb_query.status_code != 200:
+        return RET(1, '', f'Invalid answer (code {ccdb_query.status_code}) from query:\n{ccdb}{listing_type}{query_str}')
+    q_dict = ccdb_query.json()
 
     if do_report:
         if not q_dict['objects'] and not q_dict['subfolders']:

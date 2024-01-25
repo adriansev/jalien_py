@@ -75,6 +75,8 @@ specs_split = re.compile('@|,')  # regex for spliting the specification of cp co
 lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
 ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
 emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
+time_pattern_match_13 = re.compile(r'\d{13}', re.ASCII)
+time_pattern_match_10 = re.compile(r'\d{10}', re.ASCII)
 
 # global session state;
 AlienSessionInfo = {'alienHome': '', 'currentdir': '', 'prevdir': '', 'user': '', 'exitcode': int(-1), 'session_started': False,
