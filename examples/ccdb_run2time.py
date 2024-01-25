@@ -39,16 +39,16 @@ args = parser.parse_known_args()
 
 rez_list = []
 for r in args[0].runnr:
-    rez = DO_ccdb_query([f'/RCT/Info/RunInformation/{r}'])
-    if not 'objects' in rez.ansdict or not rez.ansdict['objects']:
+    run_info = ccdb_runinfo(r)
+    if not 'objects' in run_info or not run_info['objects']:
         print(f'No information found for {r}', file = sys.stderr, flush = True)
         continue
 
-    sor_nice = unixtime2local(rez.ansdict['objects'][0]['SOR'])
-    eor_nice = unixtime2local(rez.ansdict['objects'][0]['EOR'])
+    sor_nice = unixtime2local(run_info['objects'][0]['SOR'])
+    eor_nice = unixtime2local(run_info['objects'][0]['EOR'])
 
     r_info = { 'run': r,
-               'sor': rez.ansdict['objects'][0]['SOR'], 'eor': rez.ansdict['objects'][0]['EOR'],
+               'sor': run_info['objects'][0]['SOR'], 'eor': run_info['objects'][0]['EOR'],
                'sor_nice': sor_nice, 'eor_nice': eor_nice}
     rez_list.append(r_info)
 
@@ -59,29 +59,4 @@ if args[0].json:
 
 for i in rez_list:
     print(f'run="{i["run"]}"  sor="{i["sor"]}"  eor="{i["eor"]}"  sor_nice="{i["sor_nice"]}"  eor_nice="{i["eor_nice"]}"')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
