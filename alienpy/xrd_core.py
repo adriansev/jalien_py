@@ -917,7 +917,8 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 #     return []
 
 
-def xrd_response2dict(response_status: xrd_client.responses.XRootDStatus) -> dict:
+# no typing for argument as to not break if xrootd not present
+def xrd_response2dict(response_status) -> dict:
     """Convert a XRootD response status answer to a dict"""
     if not response_status: return {}
     if not HAS_XROOTD:
@@ -1024,7 +1025,8 @@ def xrdfs_q_stats(fqdn_port: str, xml: bool = False, xml_raw: bool = False, comp
     return q_stats_dict
 
 
-def xrd_statinfo2dict(response_statinfo: xrd_client.responses.StatInfo) -> dict:
+# no typing for argument as to not break if xrootd not present
+def xrd_statinfo2dict(response_statinfo) -> dict:
     """Convert a XRootD StatInfo answer to a dict"""
     if not response_statinfo: return {}
     if not HAS_XROOTD:
