@@ -20,7 +20,7 @@ from websockets import WebSocketClientProtocol
 
 from .data_structs import RET
 from .setup_logging import DEBUG, DEBUG_FILE, print_err, print_out
-from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names
+from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names, SET_SITE
 from .async_tools import syncify
 from .wb_async import IsWbConnected, wb_close, wb_create, wb_sendmsg, wb_sendmsg_multi
 from .tools_nowb import CreateJsonCommand, PrintDict, deltat_ms_perf, deltat_us_perf, isReachable, is_help, is_my_pid, path_readable, read_conf_file, writePidFile
@@ -114,6 +114,12 @@ def InitConnection(wb: Optional[WebSocketClientProtocol] = None, token_args: Opt
 
     wb = AlienConnect(wb, token_args, use_usercert, localConnect)  # Always valid, as the program will exit if connection could not be established
     ALIENPY_GLOBAL_WB = wb
+    ## wb is guaranteed to be present as AlienConnect will bail out if not
+
+    # is ALIEN_SITE env var is defined then pass this to central services
+    if SET_SITE:
+        rez = SendMsg(wb, 'setSite', [SET_SITE])
+        logging.info(f'ALIEN_SITE :: {rez.out}')
 
     # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
     if 'AlienSessionInfo' in globals():
@@ -141,7 +147,9 @@ def InitConnection(wb: Optional[WebSocketClientProtocol] = None, token_args: Opt
         if AlienSessionInfo['currentdir']: cd(wb, AlienSessionInfo['currentdir'], 'log')
 
         # if usercert connection always regenerate token if connected with usercert
-        if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0: print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
+        if AlienSessionInfo['use_usercert'] and token(wb, token_args) != 0:
+            print_err(f'The token could not be created! check the logfile {DEBUG_FILE}')
+
     return wb
 
 
