@@ -526,19 +526,19 @@ def pathtype_local(path: str) -> str:
     return ''
 
 
-def fileIsValid(filename: str, size: Union[str, int], mtime: Union[str, int], reported_md5: str, shallow_check: bool = False) -> RET:
-    """Check if the file path is consistent with the size and md5 argument. N.B.! the local file will be deleted with size,md5 not match"""
+def fileIsValid(filename: str, size: Union[str, int], lfn_mtime: Union[str, int], reported_md5: str, shallow_check: bool = False) -> RET:
+    """Check if the file path is consistent with the size and md5 argument (source is remote lfn, target is local file); target will be removed if present and not match the source"""
     if os.path.isfile(filename):  # first check
         stat_info = os.stat(filename)
         local_file_mtime = int(stat_info.st_mtime * 1000)
         if int(stat_info.st_size) != int(size):
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid size)')
-        if local_file_mtime < int(mtime):  # if the age of local file is > age of lfn then lfn is modified and newer
+        if int(lfn_mtime) > local_file_mtime:  # higher mtime --> newer file; if lfn(source) newer then local_file(destination) then remove destination
             os.remove(filename)
-            return RET(9, '', f'{filename} : Removed (lfn is newer than local file)')
+            return RET(9, '', f'{filename} : Removed (source/lfn newer than destination/local_file)')
         if shallow_check:
-            return RET(0, f'{filename} --> TARGET VALID (size match, local age is lower than remote)')
+            return RET(0, f'{filename} --> TARGET VALID (size match, source/lfn older than destination/local_file)')
         if md5(filename) != reported_md5:
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (invalid md5)')

@@ -12,7 +12,7 @@ from .data_structs import CommitInfo, RET, STAT_FILEPATH, lfn2file
 from .setup_logging import DEBUG, print_err
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, lfn_prefix_re, specs_split
 from .wb_api import SendMsg, SendMsgMulti, retf_print
-from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_lfn_key, make_tmp_fn, valid_regex
+from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_lfn_key, make_tmp_fn, valid_regex, md5
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
@@ -27,7 +27,7 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
             return {}
         access_type = 'write'
         size = int(os.stat(local_file).st_size)
-        md5sum = ''  # md5(local_file)
+        md5sum = md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576 and not specs:  # we have a special lfn
             specs.append('disk:4')  # and no specs defined then default to disk:4
@@ -119,20 +119,6 @@ def lfn2fileTokens_list(wb, input_lfn_list: list, specs: Union[None, list, str] 
     return access_list
 
 
-def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
-    """Get full information on a GRID path/lfn"""
-    norm_path = expand_path_grid(path)
-    ret_obj = SendMsg(wb, 'stat', [norm_path], opts = 'nomsg log')
-    if ret_obj.exitcode != 0: return STAT_FILEPATH(norm_path)
-    file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
-    mtime = file_stat.get('mtime', '')
-    guid = file_stat.get('guid', '')
-    size = file_stat.get('size', '')
-    md5hash = file_stat.get('md5', '')
-    return STAT_FILEPATH(file_stat['lfn'], file_stat['type'], file_stat['perm'], file_stat['owner'], file_stat['gowner'], file_stat['ctime'],
-                         mtime, guid, size, md5hash)
-
-
 def path_grid_writable(file_stat: STAT_FILEPATH) -> bool:
     """Return writable status for a GRID path, for the current user"""
     p_user = int(file_stat['perm'][0])
@@ -159,6 +145,59 @@ def expand_path_grid(path_arg: str) -> str:
     exp_path = os.path.normpath(exp_path)
     if is_dir: exp_path = f'{exp_path}/'
     return exp_path  # noqa: R504
+
+
+def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
+    """Get full information on a GRID path/lfn"""
+    norm_path = expand_path_grid(path)
+    ret_obj = SendMsg(wb, 'stat', [norm_path], opts = 'nomsg log')
+    if ret_obj.exitcode != 0: return STAT_FILEPATH(norm_path)
+    file_stat = ret_obj.ansdict["results"][0]  # stat can query and return multiple results, but we are using only one
+    mtime = file_stat.get('mtime', '')
+    guid = file_stat.get('guid', '')
+    size = file_stat.get('size', '')
+    md5hash = file_stat.get('md5', '')
+    return STAT_FILEPATH(file_stat['lfn'], file_stat['type'], file_stat['perm'], file_stat['owner'], file_stat['gowner'], file_stat['ctime'],
+                         mtime, guid, size, md5hash)
+
+
+def lfnIsValid(wb, lfn: str, local_file: str, shallow_check: bool = False, removeTarget: bool = True) -> RET:
+    """Check if remote lfn coresponds with local file (source is local, target is remote lfn); target will be removed if present and not match the source"""
+    local_file_stat = None
+    if os.path.isfile(local_file): local_file_stat = os.stat(local_file)
+    if not local_file_stat: return RET(2, '', 'Missing local file')
+
+    lfn_stat = path_grid_stat(wb, lfn)  # check each destination lfn
+    if not lfn_stat.size: return RET(2, '', '')
+
+    if int(local_file_stat.st_size) != int(lfn_stat.size):
+        if removeTarget:
+            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            msg = f'{lfn} : Removed (invalid size)'
+        else:
+            msg = f'{lfn} : Mismatched size'
+        return RET(9, '', msg)
+
+    if int(local_file_stat.st_mtime * 1000) > int(lfn_stat.mtime):  # higher mtime --> newer file; if local_file(source) is newer than lfn(destination) then remove destination
+        if removeTarget:
+            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            msg = f'{lfn} : Removed (source/local_file newer than destination/lfn)'
+        else:
+            msg = f'{lfn} : source/local_file newer than destination/lfn'
+        return RET(9, '', msg)
+
+    if shallow_check:
+        return RET(0, f'{lfn} --> TARGET VALID (size match, source/local_file older than destination/lfn)')
+
+    if md5(local_file) != lfn_stat.md5:
+        if removeTarget:
+            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            msg = f'{lfn} : Removed (invalid md5)'
+        else:
+            msg = f'{lfn} : Older than local file'
+        return RET(9, '', msg)
+
+    return RET(0, f'{lfn} --> TARGET VALID (md5 match)')
 
 
 def xrdcp_help() -> str:
