@@ -217,8 +217,7 @@ or exclusion of storages (prefixing with exclamation mark).
 options are the following :
 -h : print help
 -dryrun                  : just print the src,dst pairs that would have been transfered without actually doing so
--f                       : No longer used flag! md5 verification of already present destination is default; disable with -fastcheck
--fastcheck               : When already present destination is check for validity, check only size not also md5
+-f | -force              : Do md5 verification of already present destination
 -S <aditional streams>   : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks>      : number of chunks that should be requested in parallel
 -chunksz <bytes>         : chunk size (bytes)

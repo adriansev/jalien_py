@@ -412,12 +412,13 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
         XRD_EnvPut('CpRetry', retry)
 
     _use_system_xrdcp = get_arg(xrd_copy_command, '-xrdcp')
-    f_arg = get_arg(xrd_copy_command, '-f')
-    if f_arg:
-        print_out('No longer used flag! md5 verification of present destination is default; disable with -fastcheck')
 
-    fastcheck = get_arg(xrd_copy_command, '-fastcheck') or get_arg(xrd_copy_command, '-skipmd5')
-    overwrite = not fastcheck
+    # These are now defaults (after the last discussion in S&C meeting)
+    get_arg(xrd_copy_command, '-fastcheck')
+    get_arg(xrd_copy_command, '-skipmd5')
+
+    # check md5 and if failes remove destination and proceed to copy
+    overwrite = get_arg(xrd_copy_command, '-f') or get_arg(xrd_copy_command, '-force')
 
     get_arg(xrd_copy_command, '-cksum')
     cksum = True
