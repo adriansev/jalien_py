@@ -833,7 +833,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
         if copy_job.isUpload:
             cksum_mode = 'source'
             cksum_type = 'md5'
-            cksum_preset = ''
+            cksum_preset = copy_job.token_request['md5']
         else:  # for downloads we already have the md5 value, lets use that
             cksum_mode = 'target'
             cksum_type, cksum_preset = get_hash_meta(copy_job.src)

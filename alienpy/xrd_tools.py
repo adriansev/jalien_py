@@ -27,6 +27,7 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
             return {}
         access_type = 'write'
         size = int(os.stat(local_file).st_size)
+        # compute here as we will tell xrootd to compare with what was sent
         md5sum = md5(local_file)
         files_with_default_replicas = ['.sh', '.C', '.jdl', '.xml']
         if any(lfn.endswith(ext) for ext in files_with_default_replicas) and size < 1048576 and not specs:  # we have a special lfn
