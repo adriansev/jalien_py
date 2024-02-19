@@ -41,7 +41,9 @@ echo "OK"
 # get the number of uploaded files
 FOUND_REMOTE_FILES=$(alien.py find "${TESTDIR_REMOTE} .log" | grep ${TESTDIR_REMOTE} | wc -l)
 GOOD_RESULT="4"
-[[ "${FOUND_REMOTE_FILES}" -eq "${GOOD_RESULT}" ]] && { echo "OK"; }  || { echo "Wrong count of files in ${THIS_TEST} but operations succesful so far!! Send the logs to developer!"; exit 1; }
+echo -ne "Checking correct number of uploaded files .. "
+[[ "${FOUND_REMOTE_FILES}" -eq "${GOOD_RESULT}" ]] || { echo "Wrong count of files in ${THIS_TEST} but operations succesful so far!! Send the logs to developer!"; exit 1; }
+echo "OK"
 
 # clean ci dir
 alienpy_clean_testdir "${TESTDIR_REMOTE}" "${TESTDIR_LOCAL}"

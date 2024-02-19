@@ -10,5 +10,5 @@ THIS_TEST="$(basename $(dirname ${TEST_SCRIPT}))/$(basename ${TEST_SCRIPT})"
 
 dst="referenceData.xml"
 [[ -f "${dst}" ]] && rm -f ${dst}
-alien.py cp -retry 2 /alice/cern.ch/user/a/admin/referenceData/referenceData.xml "file:${dst}" &> out.log && { echo "OK"; clean_logs; } || { EXITCODE="${?}"; echo "Failed download in ${THIS_TEST} with code ${EXITCODE}"; cat out.log; exit ${EXITCODE}; }
+alien.py cp -retry 2 /alice/cern.ch/user/a/admin/referenceData/referenceData.xml "file:${dst}" &> out.log && { clean_logs; } || { EXITCODE="${?}"; echo "Failed download in ${THIS_TEST} with code ${EXITCODE}"; cat out.log; exit ${EXITCODE}; }
 

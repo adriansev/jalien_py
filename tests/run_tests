@@ -5,17 +5,28 @@ shift
 
 [[ "${ARG}" == "ci-tests" ]] && IS_CI="1"
 
-SCRIPT_DIR=$(realpath --canonicalize-existing $( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )) #"
+SCRIPT_DIR="$(realpath --canonicalize-existing $( cd -- $( dirname -- ${BASH_SOURCE[0]} ) &> /dev/null && pwd ))"
 
 test_dirlist=$(find "${SCRIPT_DIR}" -type d -name "*.test" | sort)
 
-for t in ${test_dirlist}; do
-    [[ -n "${IS_CI}" && "$(basename ${t})" == "002_env_tokens.test" ]] && continue;
+FAILED_TESTS="0"
 
-    echo "Running test : $(basename ${t})"
+for t in ${test_dirlist}; do
+    TEST_NAME="$(basename ${t})"
+    [[ -n "${IS_CI}" && "${TEST_NAME}" == "002_env_tokens.test" ]] && continue;
+
+    echo "Running test : ${TEST_NAME} ... "
     pushd "${t}" &> /dev/null
-    ./test.sh || { echo "Failed test, stopping testing"; break; }
+    ./test.sh
+    EXITCODE="${?}"
+    if [[ ${EXITCODE} == "0" ]]; then
+        echo -e "OK\n"
+    else
+        (( FAILED_TESTS++ ))
+        echo -e "Failed test!!! Exitcode == ${EXITCODE}\n"
+        [[ -z "${IS_CI}" ]] && break;
+    fi
     popd &> /dev/null
-    echo -e "END test : $(basename ${t})\n\n"
 done
 
+exit "${FAILED_TESTS}"
