@@ -18,7 +18,6 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 base_requirements = [ 'async-stagger', 'pyOpenSSL', 'rich', 'requests', ]
-alibuild_requirements = [ 'gnureadline' ]
 local_requirements = [ 'xrootd' ]
 
 if sys.version_info[1] < 7:
@@ -26,10 +25,9 @@ if sys.version_info[1] < 7:
 else:
     base_requirements.append('websockets')
 
-# ALICE needs gnureadline as the python built does not have built-in readline for macos reasons
-# also the xrootd is built in a separate recipe
+# ALICE builds xrootd in a separate recipe, so let's not request it
 if "ALIBUILD" in os.environ:
-    selected_requirements = base_requirements + alibuild_requirements
+    selected_requirements = base_requirements
 else:
     selected_requirements = base_requirements + local_requirements
 

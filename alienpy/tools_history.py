@@ -7,21 +7,15 @@ from pathlib import Path
 from .global_vars import AlienSessionInfo
 from .wb_api import lfn_list  # nosec PYL-W0614
 
-HAS_READLINE = False
 try:
     import readline as rl  # type: ignore
-    HAS_READLINE = True
 except ImportError:
-    try:
-        import gnureadline as rl  # type: ignore  # mypy: no-redef
-        HAS_READLINE = True
-    except ImportError:
-        pass
-
+    print('readline module is strictly required!! Contact developer if you see this error!', file = sys.stderr, flush = True)
+    sys.exit(65)  # ENOPKG
 
 def setupHistory(wb) -> None:
     """Setup up history mechanics for readline module"""
-    if not HAS_READLINE or 'AlienSessionInfo' not in globals() or not wb: return
+    if 'AlienSessionInfo' not in globals() or not wb: return
 
     rl.parse_and_bind("tab: complete")
     rl.set_completer_delims(" ")
