@@ -66,7 +66,8 @@ from .tools_shell import runShellCMD
 # Session save
 from .setup_cwd import SessionRestore, SessionSave
 # Setup history
-from .tools_history import setupHistory
+if not os.getenv('ALIENPY_NO_HISTORY'):
+    from .tools_history import setupHistory
 # XRootD functions
 from .xrd_tools import expand_path_grid, extract_glob_pattern, lfn2meta, lfn2uri, list_files_grid
 from .xrd_core import (DO_XrootdCp, HAS_XROOTD, download_tmp, upload_tmp, xrd_client, xrd_config_init,
@@ -1863,7 +1864,8 @@ def JAlien(commands: Union[list, str, None] = None) -> int:
     ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)  # we are doing the connection recovery and exception treatment in AlienConnect()
     # Begin Shell-like interaction
 
-    setupHistory(ALIENPY_GLOBAL_WB)  # Setup command history
+    if not os.getenv('ALIENPY_NO_HISTORY'):
+        setupHistory(ALIENPY_GLOBAL_WB)  # Setup command history
 
     print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
     if DEBUG:
