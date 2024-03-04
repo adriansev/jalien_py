@@ -867,7 +867,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if do_download or do_mirror:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
         dest_list = [i[0] for i in dest_time_list]
-        xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99'], api_src = download_list, api_dst = dest_list)
+        xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = download_list, api_dst = dest_list)
 
         # set the time for the ccdb files
         if do_mirror:

@@ -57,7 +57,6 @@ ccdb_paths.extend(input_list)
 
 for path in ccdb_paths:
     mirror_args = ['-history', '-limit', '9999', '-run', runnr, '-mirror', '-dst', dst_dir, path]
-    print(mirror_args)
     rez = DO_ccdb_query(mirror_args)
     exitcode = retf_print(rez)
 
