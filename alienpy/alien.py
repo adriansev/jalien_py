@@ -755,6 +755,8 @@ task name / detector name / [ / time [ / key = value]* ]
     if do_report: query_str = f'{query_str}{"?" if "?" not in query_str else ""}report=true'
     if not session_id: session_id = str(uuid.uuid1())
 
+    if DEBUG: logging.info('CCDB path: %s', query_str)
+
     # if do_mirror: limit_results = '999999'
     headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
     for h_el in headers_list:
@@ -765,6 +767,8 @@ task name / detector name / [ / time [ / key = value]* ]
     if ccdb_query.status_code != 200:
         return RET(1, '', f'Invalid answer (code {ccdb_query.status_code}) from query:\n{ccdb}{listing_type}{query_str}')
     q_dict = ccdb_query.json()
+
+    if DEBUG: logging.info('CCDB query: %s\n', q_dict)
 
     if do_report:
         if not q_dict['objects'] and not q_dict['subfolders']:
@@ -867,6 +871,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if do_download or do_mirror:
         if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
         dest_list = [i[0] for i in dest_time_list]
+        if DEBUG: logging.info('CCDB download:\n%s\n%s\n', download_list, dest_list)
         xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = download_list, api_dst = dest_list)
 
         # set the time for the ccdb files
