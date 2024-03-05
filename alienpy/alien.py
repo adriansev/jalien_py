@@ -875,10 +875,10 @@ task name / detector name / [ / time [ / key = value]* ]
         xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = download_list, api_dst = dest_list)
 
         # set the time for the ccdb files
-        if do_mirror:
-            for dst_file, valid_until in dest_time_list:
-                ccdb_file = dst_file.replace('file:', '')
-                if os.path.exists(ccdb_file): os.utime(ccdb_file, times = (valid_until, valid_until))
+        # if do_mirror:
+            # for dst_file, valid_until in dest_time_list:
+                # ccdb_file = dst_file.replace('file:', '')
+                # if os.path.exists(ccdb_file): os.utime(ccdb_file, times = (valid_until, valid_until))
         return xrdcp_ret  # noqa: R504
 
     msg_obj = f'{os.linesep}'.join(msg_obj_list)
