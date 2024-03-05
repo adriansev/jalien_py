@@ -578,7 +578,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
             if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
     else:
         if len(xrd_copy_command) < 2:
-            return RET(1, '', 'Argument list invalid (less then 2 arguments)')
+            return RET(1, '', f'Argument list invalid (<2 args) --> {xrd_copy_command}')
         src = xrd_copy_command[-2]
         dst = xrd_copy_command[-1]
         retobj = makelist_lfn(wb, arg_source = src, arg_target = dst,
