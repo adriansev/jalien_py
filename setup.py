@@ -3,7 +3,6 @@ import sys
 import setuptools
 import traceback
 
-
 try:
     from alienpy.version import ALIENPY_VERSION_HASH, ALIENPY_VERSION_DATE, ALIENPY_VERSION_STR
 except Exception:
@@ -18,7 +17,6 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 base_requirements = [ 'async-stagger', 'pyOpenSSL', 'rich', 'requests', ]
-alibuild_requirements = [ 'gnureadline' ]
 local_requirements = [ 'xrootd' ]
 
 if sys.version_info[1] < 7:
@@ -26,12 +24,15 @@ if sys.version_info[1] < 7:
 else:
     base_requirements.append('websockets')
 
-# ALICE needs gnureadline as the python built does not have built-in readline for macos reasons
-# also the xrootd is built in a separate recipe
-if "ALIBUILD" in os.environ:
-    selected_requirements = base_requirements + alibuild_requirements
-else:
+# ALICE have XRootD built in a separate recipe
+selected_requirements = base_requirements
+
+if not "ALIBUILD" in os.environ:
     selected_requirements = base_requirements + local_requirements
+
+defined_extras = {}
+if sys.platform.lower() == 'darwin':
+    defined_extras['GNUREADLINE'] = ['gnureadline']
 
 setuptools.setup(
     name = "alienpy",
@@ -44,6 +45,7 @@ setuptools.setup(
     long_description_content_type = "text/markdown",
     url = "https://gitlab.cern.ch/jalien/xjalienfs",
     install_requires = selected_requirements,
+    extras_require = defined_extras,
     python_requires = '>=3.6',
     classifiers = [
         "Programming Language :: Python :: 3",
