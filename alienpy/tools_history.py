@@ -7,13 +7,19 @@ from pathlib import Path
 from .global_vars import AlienSessionInfo
 from .wb_api import lfn_list  # nosec PYL-W0614
 
+
 HAS_READLINE = False
-try:
-    import readline as rl  # type: ignore
-    HAS_READLINE = True
-except ImportError:
+
+__platform = sys.platform.lower()
+if __platform == 'darwin':
     try:
         import gnureadline as rl  # type: ignore  # mypy: no-redef
+        HAS_READLINE = True
+    except ImportError:
+        pass
+else:
+    try:
+        import readline as rl  # type: ignore
         HAS_READLINE = True
     except ImportError:
         pass
@@ -22,6 +28,11 @@ except ImportError:
 def setupHistory(wb) -> None:
     """Setup up history mechanics for readline module"""
     if not HAS_READLINE or 'AlienSessionInfo' not in globals() or not wb: return
+
+    histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
+    if not os.path.exists(histfile): Path(histfile).touch(exist_ok = True)
+    rl.set_history_length(-1)  # unlimited history
+    rl.read_history_file(histfile)
 
     rl.parse_and_bind("tab: complete")
     rl.set_completer_delims(" ")
@@ -37,12 +48,8 @@ def setupHistory(wb) -> None:
         else:
             results = lfn_list(wb, text) + [None]
         return results[state]
-    rl.set_completer(complete)
 
-    histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
-    if not os.path.exists(histfile): Path(histfile).touch(exist_ok = True)
-    rl.set_history_length(-1)  # unlimited history
-    rl.read_history_file(histfile)
+    rl.set_completer(complete)
 
     def startup_hook() -> None:
         rl.append_history_file(1, histfile)  # before next prompt save last line
