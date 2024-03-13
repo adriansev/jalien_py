@@ -114,11 +114,11 @@ def unixtime2local(timestamp: Union[str, int], decimals: bool = True) -> str:
     return local_time.strftime("%Y-%m-%d %H:%M:%S%z")  # (%Z)"))
 
 
-def convert_time(str_line: str) -> str:
+def convert_time(str_line: str, color: bool = True) -> str:
     """Convert the first 10 digit unix time like string from str argument to a nice time"""
     timestamp = re.findall(r"^(\d{10}) \[.*", str_line)
     if timestamp:
-        nice_timestamp = f"{PrintColor(COLORS.BIGreen)}{unixtime2local(timestamp[0])}{PrintColor(COLORS.ColorReset)}"
+        nice_timestamp = f'{PrintColor(COLORS.BIGreen)}{unixtime2local(timestamp[0])}{PrintColor(COLORS.ColorReset)}' if color else unixtime2local(timestamp[0])
         return str_line.replace(str(timestamp[0]), nice_timestamp)
     return ''
 
@@ -948,7 +948,7 @@ def convert_trace2dict(trace:str = '') -> dict:
     trace_dict = { 'state': [], 'trace': [], 'proc': [], 'workdir': '', 'wn': '', 'queue': []}
     procfmt = []
     for line in trace.split('\n'):
-        nice_line = convert_time(str(line))
+        nice_line = convert_time(str(line), False)  # do not use color
 
         rez = nice_line.split('[state     ]: ')
         if len(rez) > 1:
@@ -959,8 +959,9 @@ def convert_trace2dict(trace:str = '') -> dict:
             trace_dict['trace'].append(' '.join(rez))
             if 'Created workdir' in rez[1]:
                 trace_dict['workdir'] = rez[1].split(': ')[1]  # noqa: BB001
-            if re.match('Running.*on.*', rez[1], re.IGNORECASE):
-                trace_dict['wn'] = rez[1].split()[-1]  # noqa: BB001
+            if 'Running JAliEn JobAgent' in rez[1]:
+                rez_match = re.match(r'Running JAliEn JobAgent .* on ([\w.-]+)\.?', rez[1], re.IGNORECASE)
+                trace_dict['wn'] = rez_match.group(1).strip(".")  # noqa: BB001
             if 'BatchId' in rez[1]:
                 q_info = rez[1].replace('BatchId', '').strip()
                 trace_dict['queue'].append(q_info)
