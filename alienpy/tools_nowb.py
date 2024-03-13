@@ -943,12 +943,13 @@ def import_aliases() -> None:
     if os.path.exists(alias_file): AlienSessionInfo['alias_cache'] = read_conf_file(alias_file)
 
 
-def convert_trace2dict(trace:str = '') -> dict:
+def convert_trace2dict(trace:str = '', nice_time: bool = True) -> dict:
     """Convert an JAliEn trace output to a somewhat usable dictionary"""
     trace_dict = { 'state': [], 'trace': [], 'proc': [], 'workdir': '', 'wn': '', 'queue': []}
     procfmt = []
     for line in trace.split('\n'):
-        nice_line = convert_time(str(line), False)  # do not use color
+        # do not use color
+        nice_line = convert_time(str(line), False) if nice_time else line
 
         rez = nice_line.split('[state     ]: ')
         if len(rez) > 1:

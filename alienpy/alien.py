@@ -609,12 +609,14 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
         -trace : will show the trace messages
         -proc  : will show the proc messages
         -jdl   : print jdl as a json object
+        -unixtime : do not convert to nice time
         '''
         return RET(0, msg)
 
     show_trace = get_arg(args, '-trace')
     show_proc = get_arg(args, '-proc')
     show_jdl = get_arg(args, '-jdl')
+    unixtime = get_arg(args, '-unixtime')
 
     jobid = args.pop(0)
     job_info_query = SendMsg(wb, 'ps', ['-j', jobid, '-trace', '-jdl'], 'nomsg')
@@ -628,7 +630,7 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
 
     for j in job_info_list_dict:
         new_j = dict(j)
-        new_j['trace'] = convert_trace2dict(j['trace'])
+        new_j['trace'] = convert_trace2dict(j['trace'], nice_time = not unixtime)
         new_j['jdl'] = convert_jdl2dict(j['jdl'])
         job_processed_list.append(new_j)
 
