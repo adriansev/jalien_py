@@ -1872,7 +1872,11 @@ def JAlien(commands: Union[list, str, None] = None) -> int:
     if not os.getenv('ALIENPY_NO_HISTORY') and HAS_READLINE:
         setupHistory(ALIENPY_GLOBAL_WB)  # Setup command history
 
-    print_out('Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch\n')
+    banner = 'Welcome to the ALICE GRID\nsupport mail: adrian.sevcenco@cern.ch'
+    readline_stat = '' if HAS_READLINE else '>>> Proper readline implementation for platform was not found! History and tab completion will not work! <<<\n'
+    banner = f'{banner}\n{readline_stat}'
+    print_out(banner)
+
     if DEBUG:
         print_out(f'Debug enabled, logfile is: {DEBUG_FILE}')
     if os.getenv('ALIENPY_PROMPT_DATE'): AlienSessionInfo['show_date'] = True
