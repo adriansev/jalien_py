@@ -30,10 +30,6 @@ selected_requirements = base_requirements
 if not "ALIBUILD" in os.environ:
     selected_requirements = base_requirements + local_requirements
 
-defined_extras = {}
-if sys.platform.lower() == 'darwin':
-    defined_extras['GNUREADLINE'] = ['gnureadline']
-
 setuptools.setup(
     name = "alienpy",
     version = ALIENPY_VERSION_STR,
@@ -45,7 +41,6 @@ setuptools.setup(
     long_description_content_type = "text/markdown",
     url = "https://gitlab.cern.ch/jalien/xjalienfs",
     install_requires = selected_requirements,
-    extras_require = defined_extras,
     python_requires = '>=3.6',
     classifiers = [
         "Programming Language :: Python :: 3",
