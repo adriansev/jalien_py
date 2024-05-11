@@ -1851,7 +1851,7 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
         else:
             if wb is None:
                 # If not prezent init connection and if command is token-init (without help being invoked) then use usercert
-                wb = InitConnection(wb, args, use_usercert = (cmd == 'token-init' and not is_help(args)), cmdlist_func = constructCmdList)
+                wb = InitConnection(wb, args if cmd == 'token-init' else [], use_usercert = (cmd == 'token-init' and not is_help(args)), cmdlist_func = constructCmdList)
                 ALIENPY_GLOBAL_WB = wb
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
