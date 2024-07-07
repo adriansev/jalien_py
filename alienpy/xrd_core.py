@@ -140,7 +140,7 @@ def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
-                 pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 999,
+                 pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 0, truncate_basepath: int = 0,
                  overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
@@ -241,7 +241,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
     if isDownload:  # pylint: disable=too-many-nested-blocks  # src is GRID, we are DOWNLOADING from GRID location
         # to reduce the remote calls we treat files and directory on separate code-paths
         if src_stat.type == 'f':  # single file
-            dst_filename = format_dst_fn(src, src, dst, parent)
+            dst_filename = format_dst_fn(src, src, dst, parent, truncate_basepath)
             # if overwrite the file validity checking will do md5
 
             skip_file = retf_print(fileIsValid(dst_filename, src_stat.size, src_stat.mtime, src_stat.md5, shallow_check = not overwrite), opts = 'noerr') == 0
@@ -257,7 +257,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
 
             for lfn_obj in results_list.ansdict["results"]:  # make CopyFile objs for each lfn
                 lfn = get_lfn_key(lfn_obj)
-                dst_filename = format_dst_fn(src, lfn, dst, parent)
+                dst_filename = format_dst_fn(src, lfn, dst, parent, truncate_basepath)
                 # if overwrite the file validity checking will do md5
                 skip_file = retf_print(fileIsValid(dst_filename, lfn_obj['size'], lfn_obj['ctime'], lfn_obj['md5'], shallow_check = not overwrite), opts = 'noerr') == 0
                 if skip_file: continue  # destination exists and is valid, no point to re-download
@@ -274,7 +274,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
 
         for local_file in results_list.ansdict["results"]:
             file_path = get_lfn_key(local_file)
-            lfn = format_dst_fn(src, file_path, dst, parent)
+            lfn = format_dst_fn(src, file_path, dst, parent, truncate_basepath)
 
             skip_file = retf_print(lfnIsValid(wb, lfn, file_path, shallow_check = not overwrite, removeTarget = True), opts = 'noerr') == 0
             if skip_file: continue  # destination exists and is valid, no point to re-upload
@@ -446,6 +446,11 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     parent_arg = get_arg_value(xrd_copy_command, '-parent')
     if parent_arg: parent = int(parent_arg)
 
+    # remove first N path components from full source path and keep the rest as basepath for destination
+    truncate_basepath = int(0)
+    rmprefix_arg = get_arg_value(xrd_copy_command, '-rmprefix')
+    if rmprefix_arg: truncate_basepath = int(rmprefix_arg)
+
     # explicit specify a destination, the rest of arguments are source files
     dst_arg_specified = get_arg_value(xrd_copy_command, '-dst')
 
@@ -572,7 +577,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
         common_root_path = common_path(xrd_copy_command)
         for src in xrd_copy_command:
             retobj = makelist_lfn(wb, arg_source = src, arg_target = f'{dst_arg_specified}/{src.replace(common_root_path, "")}',
-                                  find_args = find_args, parent = parent,
+                                  find_args = find_args, parent = parent, truncate_basepath = truncate_basepath,
                                   overwrite = overwrite, pattern = pattern,
                                   is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
             if retobj.exitcode != 0: print_err(retobj.err)  # if any error let's just return what we got  # noqa: R504
@@ -582,7 +587,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
         src = xrd_copy_command[-2]
         dst = xrd_copy_command[-1]
         retobj = makelist_lfn(wb, arg_source = src, arg_target = dst,
-                              find_args = find_args, parent = parent,
+                              find_args = find_args, parent = parent, truncate_basepath = truncate_basepath,
                               overwrite = overwrite, pattern = pattern,
                               is_regex = use_regex, strictspec = strictspec, httpurl = httpurl, copy_list = copy_lfnlist)
         if retobj.exitcode != 0: return retobj  # if any error let's just return what we got  # noqa: R504

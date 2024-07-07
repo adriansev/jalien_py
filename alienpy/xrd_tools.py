@@ -222,6 +222,8 @@ options are the following :
 -S <aditional streams>   : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks>      : number of chunks that should be requested in parallel
 -chunksz <bytes>         : chunk size (bytes)
+-parent N                : keep last N path components into destination filepath
+-rmprefix N              : remove first N path components from full source path and keep the rest as basepath for destination
 -T <nr_copy_jobs>        : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
 -timeout <seconds>       : the job will fail if did not finish in this nr of seconds
 -retry <times>           : retry N times the copy process if failed

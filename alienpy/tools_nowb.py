@@ -479,31 +479,42 @@ def common_path(path_list: list) -> str:
     return common
 
 
-def format_dst_fn(src_dir: str, src_file: str, dst: str, parent: int) -> str:
+def format_dst_fn(src_dir: str, src_file: str, dst: str, parent: int = 0, truncate_basepath: int = 0) -> str:
     """Return the destination filename given the source dir/name, destination directory and number of parents to keep"""
     # let's get destination file name (relative path with parent value)
     if src_dir != src_file:  # recursive operation
         total_relative_path = src_file.replace(src_dir, '', 1)
         src_dir_path = Path(src_dir)
-        src_dir_parts = src_dir_path.parts
+        src_dir_parts = list(src_dir_path.parts)
+        file_components = len(src_dir_parts)  # it's directory'
+
         if not src_dir.endswith('/'): src_dir_parts = src_dir_parts[:-1]
-        src_dir = '/'.join(map(lambda x: str(x or ''), src_dir_parts))
-        src_dir = src_dir.replace('//', '/')
-        components_list = src_dir.split('/')
-        components_list[0] = '/'  # first slash is lost in split
-        file_components = len(components_list)  # it's directory'
-        parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
-        parent_selection = components_list[(file_components - parent):]
-        rootdir_src_dir = '/'.join(parent_selection)
-        file_relative_name = f'{rootdir_src_dir}/{total_relative_path}'
+
+        if truncate_basepath > 0:
+            # make sure to not truncate more the path components and account for initial / which is counted as a component
+            truncate_basepath = min(truncate_basepath, file_components - 1)
+            base_path_list = src_dir_parts[truncate_basepath + 1:]   # add 1 to account for initial / that does not count as path component
+        else:
+            parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
+            base_path_list = src_dir_parts[(file_components - parent):]
+        base_path = '/'.join(base_path_list).replace('//', '/')
+        base_path = f'{base_path}/{total_relative_path}'
+
     else:
         src_file_path = Path(src_file)
-        file_components = len(src_file_path.parts) - 1 - 1  # without the file and up to slash
-        parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
-        rootdir_src_file = src_file_path.parents[parent].as_posix()
-        file_relative_name = src_file.replace(rootdir_src_file, '', 1)
+        src_file_parts = list(src_file_path.parts)
+        file_components = len(src_file_parts) - 1 # without last element which is the file
 
-    dst_file = f'{dst}/{file_relative_name}' if dst.endswith('/') else dst
+        if truncate_basepath > 0:
+            # make sure to not truncate more the path components and account for initial / which is counted as a component
+            truncate_basepath = min(truncate_basepath, file_components - 1)
+            base_path_list = src_file_parts[truncate_basepath + 1:]   # add 1 to account for initial / that does not count as path component
+        else:
+            parent = min(parent, file_components)  # make sure maximum parent var point to first dir in path
+            base_path_list = src_file_parts[(file_components - parent):]
+        base_path = '/'.join(base_path_list).replace('//', '/')
+
+    dst_file = f'{dst}/{base_path}' if dst.endswith('/') else dst
     return os.path.normpath(dst_file)
 
 
