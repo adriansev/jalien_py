@@ -548,7 +548,8 @@ def fileIsValid(filename: str, size: Union[str, int], lfn_mtime: Union[str, int]
         if int(lfn_mtime) > local_file_mtime:  # higher mtime --> newer file; if lfn(source) newer then local_file(destination) then remove destination
             os.remove(filename)
             return RET(9, '', f'{filename} : Removed (source/lfn newer than destination/local_file)')
-        if shallow_check:
+        if shallow_check:  # file survived so far AND a check without md5 was requested
+            os.utime(filename)  # validate the check by updating BOTH access and modified time
             return RET(0, f'{filename} --> TARGET VALID (size match, source/lfn older than destination/local_file)')
         if md5(filename) != reported_md5:
             os.remove(filename)
