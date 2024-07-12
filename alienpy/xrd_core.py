@@ -22,7 +22,7 @@ from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_split
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
-                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
+                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
                          is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex, unixtime2local)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
@@ -250,7 +250,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
                 if tokens and 'answer' in tokens:
                     copy_list.append(CopyFile(src, dst_filename, isWrite, tokens['answer'], src))
         else:  # directory to be listed
-            results_list = list_files_grid(wb, src, pattern, is_regex, " ".join(find_args))
+            results_list = list_files_grid(wb, src, pattern, is_regex, find_args)
             if "results" not in results_list.ansdict or len(results_list.ansdict["results"]) < 1:
                 msg = f"No files found with: find {' '.join(find_args) if find_args else ''}{' -r ' if is_regex else ''} -a -s {src} {pattern}"
                 return RET(42, '', msg)  # ENOMSG /* No message of desired type */
@@ -484,11 +484,13 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     maxctime_arg = get_arg_value(xrd_copy_command, '-max-ctime')
     if maxctime_arg: find_args.extend(['-max-ctime', maxctime_arg])
 
-    exclude_str_arg = get_arg_value(xrd_copy_command, '-exclude')
-    if exclude_str_arg: find_args.extend(['-exclude', exclude_str_arg])
+    exclude_str_list = get_arg_value_multiple(xrd_copy_command, '-exclude')
+    for ex_str_pat in exclude_str_list:
+        find_args.extend(['-exclude', ex_str_pat])
 
-    exclude_re_arg = get_arg_value(xrd_copy_command, '-exclude_re')
-    if exclude_re_arg: find_args.extend(['-exclude_re', exclude_re_arg])
+    exclude_re_arg_list = get_arg_value_multiple(xrd_copy_command, '-exclude_re')
+    for ex_re_pat in exclude_re_arg_list:
+        find_args.extend(['-exclude_re', ex_re_pat])
 
     user_arg = get_arg_value(xrd_copy_command, '-user')
     if user_arg: find_args.extend(['-user', user_arg])
@@ -511,8 +513,9 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     ref_site = get_arg_value(xrd_copy_command, '-site')
     if ref_site: find_args.extend(['-S', ref_site])
 
-    exclude_pattern = get_arg_value(xrd_copy_command, '-e')
-    if exclude_pattern: find_args.extend(['-e', exclude_pattern])
+    exclude_pattern_list = get_arg_value_multiple(xrd_copy_command, '-e')
+    for ex_pat in exclude_pattern_list:
+        find_args.extend(['-e', ex_pat])
 
     use_regex = False
     filtering_enabled = False

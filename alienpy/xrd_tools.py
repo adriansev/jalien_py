@@ -12,7 +12,7 @@ from .data_structs import CommitInfo, RET, STAT_FILEPATH, lfn2file
 from .setup_logging import DEBUG, print_err
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, lfn_prefix_re, specs_split
 from .wb_api import SendMsg, SendMsgMulti, retf_print
-from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_lfn_key, make_tmp_fn, valid_regex, md5
+from .tools_nowb import CreateJsonCommand, PrintColor, create_metafile, filter_file_prop, get_arg, get_arg_value, get_arg_value_multiple, get_lfn_key, make_tmp_fn, valid_regex, md5
 
 
 def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, str] = None, isWrite: bool = False, strictspec: bool = False, httpurl: bool = False) -> dict:
@@ -353,13 +353,14 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     get_arg(find_args_list, '-w')
     get_arg(find_args_list, '-wh')
 
-    exclude_string = get_arg_value(find_args_list, '-exclude')
-    if exclude_string:
-        filter_args_list.extend(['-exclude', exclude_string])
+    exclude_str_list = get_arg_value_multiple(find_args_list, '-exclude')
+    for ex_str_pat in exclude_str_list:
+        filter_args_list.extend(['-exclude', ex_str_pat])
 
-    exclude_regex = get_arg_value(find_args_list, '-exclude_re')
-    if exclude_regex:
-        filter_args_list.extend(['-exclude_re', exclude_regex])
+    compiled_regex_list = []
+    exclude_re_arg_list = get_arg_value_multiple(find_args_list, '-exclude_re')
+    for ex_re_pat in exclude_re_arg_list:
+        compiled_regex_list.append(re.compile(ex_re_pat))  # precompile the regex for exclusion
 
     min_depth = get_arg_value(find_args_list, '-mindepth')
     if min_depth:
@@ -450,12 +451,9 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
     results_list_filtered = []
     # items that pass the conditions are the actual/final results
 
-    compiled_regex = None
-    if exclude_regex: compiled_regex = re.compile(exclude_regex)   # precompile the regex for exclusion
-
     for found_lfn_dict in results_list:  # parse results to apply filters
-        if not filter_file_prop(found_lfn_dict, search_dir, filter_args_list, compiled_regex): continue
-        results_list_filtered.append(found_lfn_dict)  # at this point all filters were passed
+        if filter_file_prop(found_lfn_dict, search_dir, filter_args_list, compiled_regex_list):
+            results_list_filtered.append(found_lfn_dict)  # at this point all filters were passed
 
     if not results_list_filtered:
         return RET(2, "", f"No files passed the filters :: {search_dir} /pattern: {pattern} /find_args: {find_args}")

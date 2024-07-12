@@ -313,6 +313,25 @@ def get_arg_value(target: list, item: str) -> str:
     return val  # noqa: R504
 
 
+def get_arg_value_multiple(target: list, item: str) -> list:
+    """Return the list af arguments values, for arguments used multiple times"""
+    val_list = []
+    idx_to_be_removed = []
+    arg_list_size = len(target)
+    # cannot get the value and remove from list in the same time
+    for idx, x in enumerate(target):
+        if x == item:
+            # if current index (starts at 0) is greater then len - 1, just return
+            if idx + 1 + 1 > arg_list_size: return val
+            val_list.append(target[idx + 1])
+            idx_to_be_removed.append(idx + 1)
+
+    idx_to_be_removed.reverse()
+    for idx in idx_to_be_removed: target.pop(idx)
+    list_remove_item(target, item)
+    return val_list  # noqa: R504
+
+
 def get_arg_2values(target: list, item: str) -> tuple:
     """Remove inplace all instances of item, item+1 and item+2 from list and return item+1, item+2"""
     val1 = val2 = None
@@ -789,23 +808,28 @@ def file2file_dict(fn: str) -> dict:
             'owner': pwd.getpwuid(file_name.stat().st_uid).pw_name, 'gowner': gid2name(file_name.stat().st_gid)}
 
 
-def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex: REGEX_PATTERN_TYPE = None) -> bool:
+def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex_list: Optional[list] = None) -> bool:
     """Return True if an file dict object pass the conditions in find_opts"""
     if not f_obj or not base_dir: return False
     if f_obj['lfn'].endswith('.'): return False
 
-    if not find_opts: return True
+    if not find_opts and not compiled_regex_list: return True
     opts = find_opts.split() if isinstance(find_opts, str) else find_opts.copy()
+
     lfn = get_lfn_key(f_obj)
     if not base_dir.endswith('/'): base_dir = f'{base_dir}/'
     relative_lfn = lfn.replace(base_dir, '')  # it will have N directories depth + 1 file components
 
     # string/pattern exclusion
-    exclude_string = get_arg_value(opts, '-exclude')
-    if exclude_string and exclude_string in relative_lfn: return False  # this is filtering out the string from relative lfn
+    exclude_str_list = get_arg_value_multiple(opts, '-exclude')
+    for exclude_string in exclude_str_list:
+        if exclude_string in relative_lfn:
+            return False  # this is filtering out the string from relative lfn
 
-    exclude_regex = get_arg_value(opts, '-exclude_re')
-    if exclude_regex and compiled_regex and compiled_regex.match(relative_lfn): return False
+    # regex based exclusion; we parse the already compiled regexes
+    for compiled_regex in compiled_regex_list:
+        match = compiled_regex.search(relative_lfn)
+        if match: return False
 
     min_size = get_arg_value(opts, '-minsize')
     if min_size:
