@@ -18,7 +18,6 @@ import difflib
 import json
 import signal
 from pathlib import Path
-import re
 import subprocess  # nosec
 import logging
 import shlex
@@ -61,7 +60,7 @@ from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
 from .connect_ssl import CertInfo, CertKeyMatch, CertVerify
 ##   General misc functions library
-from .tools_nowb import (GetHumanReadableSize, PrintColor, ccdb_json_cleanup, check_port, cleanup_temp, convert_jdl2dict, convert_time, convert_trace2dict,
+from .tools_nowb import (GetHumanReadableSize, PrintColor, ccdb_json_cleanup, check_port, convert_jdl2dict, convert_time, convert_trace2dict,
                          deltat_ms_perf, dequote, exit_message, exitcode, file2file_dict, file2list, getCAcerts,
                          get_arg, get_arg_multiple, get_arg_value, get_lfn_key, import_aliases, is_help, list_remove_item,
                          md5, mk_xml_local, name2regex, queryML, signal_handler, unixtime2local)
@@ -802,7 +801,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
     # clean up redundant entries from object description
     # list(map(ccdb_json_cleanup, q_dict['objects']))
-    [ccdb_json_cleanup(q) for q in q_dict['objects']]
+    for q in q_dict['objects']: ccdb_json_cleanup(q) 
 
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''

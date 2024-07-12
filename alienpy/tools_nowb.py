@@ -322,7 +322,7 @@ def get_arg_value_multiple(target: list, item: str) -> list:
     for idx, x in enumerate(target):
         if x == item:
             # if current index (starts at 0) is greater then len - 1, just return
-            if idx + 1 + 1 > arg_list_size: return val
+            if idx + 1 + 1 > arg_list_size: return val_list
             val_list.append(target[idx + 1])
             idx_to_be_removed.append(idx + 1)
 
