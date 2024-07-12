@@ -27,7 +27,7 @@ else:
 # ALICE have XRootD built in a separate recipe
 selected_requirements = base_requirements
 
-if not "ALIBUILD" in os.environ:
+if "ALIBUILD" not in os.environ:
     selected_requirements = base_requirements + local_requirements
 
 setuptools.setup(
