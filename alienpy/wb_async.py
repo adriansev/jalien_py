@@ -5,6 +5,8 @@ import sys
 import socket
 import logging
 import time
+import functools
+from importlib.metadata import version
 from typing import Optional, TYPE_CHECKING, Union
 
 try:
@@ -17,12 +19,14 @@ except Exception:
     sys.exit(1)
 from websockets import WebSocketClientProtocol
 
+ASYNC_STAGGER_PRESENT = False
 if not os.getenv('ALIENPY_NO_STAGGER'):
     try:
         import async_stagger  # type: ignore
+        ASYNC_STAGGER_PRESENT = True
     except Exception:
-        print("async_stagger module could not be imported! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
-        sys.exit(1)
+        print("async_stagger module not found! Parallel connection to FQDN aliases will be disabled! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
+
 
 from .version import ALIENPY_VERSION_STR
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
@@ -77,7 +81,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
                                               ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
                                               close_timeout = CLOSE_TIMEOUT, extra_headers = headers_list)
         except Exception as e:
-            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{e!r}'
+            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{sys.exc_info()}'
             logging.error(msg)
             print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
             return None
@@ -118,10 +122,18 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             if DEBUG:
                 logging.debug('TRY ENDPOINT: %s:%s', host, port)
                 init_begin_socket = time.perf_counter()
-            if os.getenv('ALIENPY_NO_STAGGER'):
-                socket_endpoint = socket.create_connection((host, int(port)))
+
+            if ASYNC_STAGGER_PRESENT:
+                _ASYNC_STAGGER_VER_LIST = version('async_stagger').split('.')
+
+                if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
+                    socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, async_dns = True, resolution_delay = 0.050, detailed_exceptions = True)
+                else:
+                    my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver, first_addr_family_count = 3, resolution_delay = 0.050, raise_exc_group = True)
+                    socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, resolver = my_resolver, raise_exc_group = True)
             else:
-                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), async_dns = True, delay = 0, resolution_delay = 0.050, detailed_exceptions = True)
+                socket_endpoint = socket.create_connection((host, int(port)))
+
             if init_begin_socket:
                 logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin_socket))
         except Exception as e:
