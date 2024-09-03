@@ -75,19 +75,18 @@ if not os.getenv('ALIENPY_NO_HISTORY'):
     from .tools_history import setupHistory, HAS_READLINE
 # XRootD functions
 from .xrd_tools import expand_path_grid, extract_glob_pattern, lfn2meta, lfn2uri, list_files_grid
-from .xrd_core import (DO_XrootdCp, HAS_XROOTD, download_tmp, upload_tmp, xrd_client, xrd_config_init,
-                       xrdfs_ping, xrdfs_q_config, xrdfs_q_stats, xrdfs_stat, xrdstat2dict, xrdstat_flags2dict)
 
+from .xrd_core import HAS_XROOTD, DO_XrootdCp, download_tmp, upload_tmp
+if HAS_XROOTD:
+    from .xrd_core import xrd_client, xrd_config_init, xrdfs_ping, xrdfs_q_config, xrdfs_q_stats, xrdfs_stat, xrdstat2dict, xrdstat_flags2dict
+    # Global XRootD preferences
+    xrd_config_init()
 
 session_id = None  # variable used to keep a session ID
-
-# Global XRootD preferences
-xrd_config_init()
 
 ##################################
 #   START FUNCTIONS DEFINITIONS
 ##################################
-
 
 def DO_dirs(wb: WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
     """dirs"""
