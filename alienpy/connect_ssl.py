@@ -109,26 +109,27 @@ def get_ca_path() -> str:
 
 def IsValidCert(fname: str) -> bool:
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
+    cert_bytes = None
     try:
-        with open(fname, encoding="ascii", errors="replace") as f:
-            cert_bytes = f.read()
-    except Exception:
+        with open(fname, "rb") as f: cert_bytes = f.read()
+    except Exception as e:
+        if DEBUG: logging.exception(e)
         logging.error('IsValidCert:: Unable to open certificate file %s', fname)
         return False
 
     try:
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)  # type: ignore[attr-defined]
-    except Exception:
+        x509 = cryptography.x509.load_pem_x509_certificate(cert_bytes)
+    except Exception as e:
+        if DEBUG: logging.exception(e)
         logging.error('IsValidCert:: Unable to load certificate %s', fname)
         return False
 
-    x509_notafter = x509.get_notAfter()
-    utc_time = datetime.datetime.strptime(x509_notafter.decode("utf-8"), "%Y%m%d%H%M%SZ")
-    time_notafter = int((utc_time - datetime.datetime(1970, 1, 1)).total_seconds())
-    time_current = int(datetime.datetime.now().timestamp())
-    time_remaining = time_notafter - time_current
-    if time_remaining < 1:
-        logging.error('IsValidCert:: Expired certificate %s', fname)
+    time_remaining = int(x509.not_valid_after_utc.timestamp()) - int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+
+    if time_remaining < 10:
+        msg = f'IsValidCert:: Expired certificate {fname}'
+        print_err(msg)
+        logging.error(msg)
     return time_remaining > 300
 
 
@@ -244,21 +245,30 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
 
 def CertInfo(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
+    cert_bytes = None
     try:
-        with open(fname, encoding = "ascii", errors = "replace") as f:
-            cert_bytes = f.read()
-    except Exception:
+        with open(fname, "rb") as f: cert_bytes = f.read()
+    except Exception as e:
+        logging.exception(e)
         return RET(2, '', f'File >>>{fname}<<< not found')  # ENOENT /* No such file or directory */
 
     try:
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
-    except Exception:
+        x509 = cryptography.x509.load_pem_x509_certificate(cert_bytes)
+    except Exception as e:
+        logging.exception(e)
         return RET(5, '', f'Could not load certificate >>>{fname}<<<')  # EIO /* I/O error */
 
-    utc_time_notafter = datetime.datetime.strptime(x509.get_notAfter().decode("utf-8"), "%Y%m%d%H%M%SZ")
-    utc_time_notbefore = datetime.datetime.strptime(x509.get_notBefore().decode("utf-8"), "%Y%m%d%H%M%SZ")
-    issuer = '/'.join([f'{k.decode("utf-8")}={v.decode("utf-8")}' for k, v in x509.get_issuer().get_components()])
-    subject = '/'.join([f'{k.decode("utf-8")}={v.decode("utf-8")}' for k, v in x509.get_subject().get_components()])
+    utc_time_notafter = x509.not_valid_after_utc.strftime("%Y-%m-%d %H:%M:%S")
+    utc_time_notbefore = x509.not_valid_before_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+    issuer_comp_list = x509.issuer.rfc4514_string().split(',')
+    issuer_comp_list.reverse()
+    issuer = '/'.join(issuer_comp_list)
+
+    subject_comp_list = x509.subject.rfc4514_string().split(',')
+    subject_comp_list.reverse()
+    subject = '/'.join(subject_comp_list)
+
     info = f'DN >>> {subject}\nISSUER >>> {issuer}\nBEGIN >>> {utc_time_notbefore}\nEXPIRE >>> {utc_time_notafter}'
     return RET(0, info)
 
