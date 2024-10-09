@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 import setuptools
 import traceback
 
@@ -23,6 +24,9 @@ if sys.version_info[1] < 7:
     base_requirements.append('websockets<=9.1')
 else:
     base_requirements.append('websockets')
+
+if sys.platform == 'darwin':
+    base_requirements.append('gnureadline')
 
 # ALICE have XRootD built in a separate recipe
 selected_requirements = base_requirements
