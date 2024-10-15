@@ -50,6 +50,23 @@ for r in args[0].runnr:
     r_info = { 'run': r,
                'sor': run_info['objects'][0]['SOR'], 'eor': run_info['objects'][0]['EOR'],
                'sor_nice': sor_nice, 'eor_nice': eor_nice}
+
+    if 'STF' in run_info['objects'][0]:
+        r_info['stf'] = run_info['objects'][0]['STF']
+        r_info['stf_nice'] = unixtime2local(run_info['objects'][0]['STF'])
+
+    if 'ETF' in run_info['objects'][0]:
+        r_info['etf'] = run_info['objects'][0]['ETF']
+        r_info['etf_nice'] = unixtime2local(run_info['objects'][0]['ETF'])
+
+    if 'SOX' in run_info['objects'][0]:
+        r_info['sox'] = run_info['objects'][0]['SOX']
+        r_info['sox_nice'] = unixtime2local(run_info['objects'][0]['SOX'])
+
+    if 'EOX' in run_info['objects'][0]:
+        r_info['eox'] = run_info['objects'][0]['EOX']
+        r_info['eox_nice'] = unixtime2local(run_info['objects'][0]['EOX'])
+
     rez_list.append(r_info)
 
 # rezults presentation
