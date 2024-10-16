@@ -374,7 +374,11 @@ def get_arg_multiple(target: list, item: str) -> list:
 
 def uid2name(uid: Union[str, int]) -> str:
     """Convert numeric UID to username"""
-    return pwd.getpwuid(int(uid)).pw_name
+    try:
+        user_info = pwd.getpwuid(int(uid))
+        return user_info.pw_name
+    except Exception:
+        return str(uid)
 
 
 def gid2name(gid: Union[str, int]) -> str:
