@@ -17,10 +17,11 @@ def runShellCMD(INPUT: str = '', captureout: bool = True, do_shell: bool = False
     sh_cmd = re.sub(r'^!', '', INPUT)
     args = sh_cmd if do_shell else shlex.split(sh_cmd)
     capture_args = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE} if captureout else {}
+    if timeout: timeout = int(timeout)
     status = exitcode = except_msg = None
     msg_out = msg_err = ''
     try:
-        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, **capture_args)  # pylint: disable=subprocess-run-check  # nosec
+        status = subprocess.run(args, encoding = 'utf-8', errors = 'replace', shell = do_shell, timeout = timeout, **capture_args)  # pylint: disable=subprocess-run-check  # nosec
     except subprocess.TimeoutExpired:
         print_err(f"Expired timeout: {timeout} for: {sh_cmd}")
         exitcode = int(62)
