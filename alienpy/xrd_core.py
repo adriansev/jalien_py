@@ -112,9 +112,6 @@ def xrd_config_init() -> None:
     # Time period after which an idle connection to a manager or a load balancer should be closed.
     if not os.getenv('XRD_LOADBALANCERTTL'): XRD_EnvPut('LoadBalancerTTL', int(30))  # we have no reasons to keep idle connections
 
-    # If set the client tries first IPv4 address (turned off by default).
-    if not os.getenv('XRD_PREFERIPV4'): XRD_EnvPut('PreferIPv4', int(1))
-
     # https://github.com/xrootd/xrootd/blob/v5.6.3/docs/man/xrdcp.1#L592
     # If set to 1, use the checksum available in a metalink file even if a file is being extracted from a ZIP archive.
     XRD_EnvPut('ZipMtlnCksum', int(1))
