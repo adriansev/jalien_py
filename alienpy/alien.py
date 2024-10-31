@@ -195,7 +195,6 @@ def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, l
 
 def DO_version(args: Optional[list] = None) -> RET:  # pylint: disable=unused-argument
     """Print version information"""
-    del args
     stdout = (f'alien.py version: {ALIENPY_VERSION_STR}\n'
               f'alien.py version date: {ALIENPY_VERSION_DATE}\n'
               f'alien.py version hash: {ALIENPY_VERSION_HASH}\n'
