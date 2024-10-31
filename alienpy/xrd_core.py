@@ -10,6 +10,7 @@ import logging
 import re
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import uuid
 import time
@@ -22,62 +23,43 @@ from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_split
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
-                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
+                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_url_meta, get_lfn_key, get_lfn_name, get_size_meta,
                          is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
-
 HAS_XROOTD = False
-try:
-    from XRootD import client as xrd_client  # type: ignore
-    from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
-    HAS_XROOTD = True
-except Exception:
-    print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
-
-
-def _is_valid_xrootd() -> bool:
-    if not HAS_XROOTD: return False
-    xrd_ver_arr = xrd_client.__version__.split(".")
-    _XRDVER_1 = _XRDVER_2 = None
-    if len(xrd_ver_arr) > 1:
-        _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
-        _XRDVER_2 = xrd_ver_arr[1]
-        return int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
-
-    # version is not of x.y.z form, this is git based form
-    xrdver_git = xrd_ver_arr[0].split("-")
-    _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
-    _XRDVER_2 = xrdver_git[1]
-    return int(_XRDVER_1) > 20211113
-
-
-# use only 5.3 versions and up - reference point
-HAS_XROOTD = _is_valid_xrootd()
+XRDCP_CMD = None
 HAS_XROOTD_GETDEFAULT = False
-if HAS_XROOTD:
-    def XRD_EnvPut(key: str, value: str) -> bool:  # noqa: ANN001,ANN201
-        """Sets the given key in the xrootd client environment to the given value.
-        Returns false if there is already a shell-imported setting for this key, true otherwise
-        """
-        if not key or not value: return False
-        return xrd_client.EnvPutInt(key, int(value)) if ( str(value).isdigit() or isinstance(value, int) ) else xrd_client.EnvPutString(key, str(value))
 
-    def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
-        """Get the value of the key from xrootd"""
-        if not key: return None
-        val = None
-        val = xrd_client.EnvGetString(key)
-        if not val:
-            val = xrd_client.EnvGetInt(key)
-        return val  # noqa: R504
+
+def XRD_EnvPut(key: str, value: str) -> bool:  # noqa: ANN001,ANN201
+    """Sets the given key in the xrootd client environment to the given value.
+    Returns false if there is already a shell-imported setting for this key, true otherwise
+    """
+    if not key or not value: return False
+    if HAS_XROOTD:
+        return xrd_client.EnvPutInt(key, int(value)) if ( str(value).isdigit() or isinstance(value, int) ) else xrd_client.EnvPutString(key, str(value))
+    return False
+
+
+def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
+    """Get the value of the key from xrootd"""
+    if not key: return None
+    val = None
+    if not HAS_XROOTD: return None
+    val = xrd_client.EnvGetString(key)
+    if not val:
+        val = xrd_client.EnvGetInt(key)
+    return val  # noqa: R504
 
     # Override the application name reported to the xrootd server.
-    XRD_EnvPut('XRD_APPNAME', f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}')
+    app_str = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
+    XRD_EnvPut('XRD_APPNAME', app_str)
+    os.environ['XRD_APPNAME'] = app_str
     HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
 
 
-def xrd_config_init() -> None:
+def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     """Initialize generic XRootD client vars/timeouts"""
     if not HAS_XROOTD: return
     # xrdcp parameters (used by ALICE tests)
@@ -86,53 +68,102 @@ def xrd_config_init() -> None:
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
-    if not os.getenv('XRD_TIMEOUTRESOLUTION'): XRD_EnvPut('TimeoutResolution', int(1))  # let's check the status every 1s; default 15
+    timeout_resolution = os.getenv('XRD_TIMEOUTRESOLUTION', '1')  # let's check the status every 1s; default 15
+    os.environ['XRD_TIMEOUTRESOLUTION'] = timeout_resolution
+    XRD_EnvPut('TimeoutResolution', int(timeout_resolution))  
 
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
-    if not os.getenv('XRD_CONNECTIONRETRY'): XRD_EnvPut('ConnectionRetry', int(5))  # default 5
-
+    con_retry = os.getenv('XRD_CONNECTIONRETRY', '3')  # default 5
+    os.environ['XRD_CONNECTIONRETRY'] = con_retry
+    XRD_EnvPut('ConnectionRetry', int(con_retry))    
+        
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
     # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
-    if not os.getenv('XRD_CONNECTIONWINDOW'): XRD_EnvPut('ConnectionWindow', int(10))  # default 120
+    con_window = os.getenv('XRD_CONNECTIONWINDOW', '10')  # default 120
+    os.environ['XRD_CONNECTIONWINDOW'] = con_window
+    XRD_EnvPut('ConnectionWindow', int(con_window))
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
     # N.B.!!. This is the total time for the initialization dialogue!! see https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-580004.3.6
-    if not os.getenv('XRD_REQUESTTIMEOUT'): XRD_EnvPut('RequestTimeout', int(1200))  # default 1800
+    req_timeout = os.getenv('XRD_REQUESTTIMEOUT', '1200')  # default 1800; 1200s = 20min, 20 GB for 1MB/s
+    os.environ['XRD_REQUESTTIMEOUT'] = req_timeout
+    XRD_EnvPut('RequestTimeout', int(req_timeout))
 
     # Default value for the time after which a connection error is declared (and a recovery attempted) if there are unfulfilled requests and there is no socket activity or a registered wait timeout.
     # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
-    if not os.getenv('XRD_STREAMTIMEOUT'): XRD_EnvPut('StreamTimeout', int(60))  # default 60
+    stream_timeout = os.getenv('XRD_STREAMTIMEOUT', '60')  # default 60
+    os.environ['XRD_STREAMTIMEOUT'] = stream_timeout
+    XRD_EnvPut('StreamTimeout', int(stream_timeout))     
 
     # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
-    if not os.getenv('XRD_CPINITTIMEOUT'): XRD_EnvPut('CPInitTimeout', int(300))  # default 600
+    cpinit_timeout = os.getenv('XRD_CPINITTIMEOUT', '90')  # default 600
+    os.environ['XRD_CPINITTIMEOUT'] = cpinit_timeout
+    XRD_EnvPut('CPInitTimeout', int(cpinit_timeout))  
 
     # Time period after which an idle connection to a data server should be closed.
-    if not os.getenv('XRD_DATASERVERTTL'): XRD_EnvPut('DataServerTTL', int(20))  # we have no reasons to keep idle connections
+    datasrv_ttl = os.getenv('XRD_DATASERVERTTL', '20')  # we have no reasons to keep idle connections
+    os.environ['XRD_DATASERVERTTL'] = datasrv_ttl
+    XRD_EnvPut('DataServerTTL', int(datasrv_ttl))  
 
     # Time period after which an idle connection to a manager or a load balancer should be closed.
-    if not os.getenv('XRD_LOADBALANCERTTL'): XRD_EnvPut('LoadBalancerTTL', int(30))  # we have no reasons to keep idle connections
+    loadbl_ttl = os.getenv('XRD_LOADBALANCERTTL', '30')  # we have no reasons to keep idle connections
+    os.environ['XRD_LOADBALANCERTTL'] = loadbl_ttl
+    XRD_EnvPut('LoadBalancerTTL', int(loadbl_ttl))
 
     # https://github.com/xrootd/xrootd/blob/v5.6.3/docs/man/xrdcp.1#L592
     # If set to 1, use the checksum available in a metalink file even if a file is being extracted from a ZIP archive.
-    XRD_EnvPut('ZipMtlnCksum', int(1))
+    zip_mt_cksum = os.getenv('XRD_ZIPMTLNCKSUM', '1')
+    os.environ['XRD_ZIPMTLNCKSUM'] = zip_mt_cksum
+    XRD_EnvPut('ZipMtlnCksum', int(zip_mt_cksum))
 
-    # Preserve xattrs by default
+    cp_retry_policy = os.getenv('XRD_CPRETRYPOLICY', 'force')
+    os.environ['XRD_CPRETRYPOLICY'] = cp_retry_policy
+    XRD_EnvPut('CpRetryPolicy', cp_retry_policy)
+
+    # XRD_PRESERVEXATTRS Preserve xattrs by default - enabled by default
     # XRD_EnvPut('PreserveXAttr', int(1))
 
 
-def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
-    """For a given URI (token included) set the xattrs"""
-    if not HAS_XROOTD or not uri or not xattr_list: return None
-    mode = OpenFlags.READ | OpenFlags.UPDATE | OpenFlags.WRITE
-    with xrd_client.File() as f:
-        status, response = f.open(uri, mode)
-        print(f'{status}\n{response}')
+try:
+    xrd_config_init()  # reset XRootD preferences to cp oriented settings - set before loading module 
+    from XRootD import client as xrd_client  # type: ignore
+    from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
+    XRDCP_CMD = shutil.which('xrdcp')
+    
+    xrd_ver_arr = xrd_client.__version__.split(".")
+    _XRDVER_1 = _XRDVER_2 = None
+    
+    if len(xrd_ver_arr) > 1:
+        _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
+        _XRDVER_2 = xrd_ver_arr[1]
+        HAS_XROOTD = int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
+    else:
+        # version is not of x.y.z form, this is git based form
+        xrdver_git = xrd_ver_arr[0].split("-")
+        _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
+        HAS_XROOTD = int(_XRDVER_1) > 20211113
+        
+    if not HAS_XROOTD: raise ImportError('XRootD version too low')
+except Exception:
+    print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
-        status, list_of_statuses = f.set_xattr(attrs = xattr_list)
-        print(status)
-        for s in list_of_statuses:
-            print(s[0])
-            print(s[1])
+
+# reset XRootD preferences to cp oriented settings - 2nd time for setting also the xrd module defaults
+xrd_config_init()  
+
+# def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
+#     """For a given URI (token included) set the xattrs"""
+#     if not HAS_XROOTD or not uri or not xattr_list: return None
+#     mode = OpenFlags.READ | OpenFlags.UPDATE | OpenFlags.WRITE
+#     with xrd_client.File() as f:
+#         status, response = f.open(uri, mode)
+#         print(f'{status}\n{response}')
+# 
+#         status, list_of_statuses = f.set_xattr(attrs = xattr_list)
+#         print(status)
+#         for s in list_of_statuses:
+#             print(s[0])
+#             print(s[1])
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
@@ -340,8 +371,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
         help_msg = xrdcp_help()
         return RET(22, '', f'\n{help_msg}')  # 22 /* Invalid argument */
 
-    xrd_config_init()  # reset XRootD preferences to cp oriented settings
-
     # XRootD copy parameters
     # inittimeout: copy initialization timeout(int)
     # tpctimeout: timeout for a third-party copy to finish(int)
@@ -349,63 +378,66 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     # :param checksummode: checksum mode to be used #:type    checksummode: string
     # :param checksumtype: type of the checksum to be computed  #:type    checksumtype: string
     # :param checksumpreset: pre-set checksum instead of computing it #:type  checksumpreset: string
-    hashtype = str('md5')
-    batch = int(1)   # from a list of copy jobs, start <batch> number of downloads
-    streams = int(1)  # uses num additional parallel streams to do the transfer; use defaults from XrdCl/XrdClConstants.hh
-    chunks = int(4)  # number of chunks that should be requested in parallel; use defaults from XrdCl/XrdClConstants.hh
-    chunksize = int(8388608)  # chunk size for remote transfers; use defaults from XrdCl/XrdClConstants.hh
-    overwrite = bool(False)  # overwrite target if it exists
-    cksum = bool(False)
-    timeout = int(0)
-    rate = int(0)
-
-    streams_arg = get_arg_value(xrd_copy_command, '-S')
-    if streams_arg:
-        if is_int(streams_arg):
-            streams = min(abs(int(streams)), 15)
-            if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
-                print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value: {streams}')
-            XRD_EnvPut('SubStreamsPerChannel', streams)
-    else:
-        if not os.getenv('XRD_SUBSTREAMSPERCHANNEL'): XRD_EnvPut('SubStreamsPerChannel', streams)  # if no env customization, then use our defaults
-
-    chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
-    if chunks_arg:
-        if is_int(chunks_arg):
-            chunks = abs(int(chunks_arg))
-            if os.getenv('XRD_CPPARALLELCHUNKS'):
-                print_out(f'Warning! env var XRD_CPPARALLELCHUNKS is set and will be overwritten with value: {chunks}')
-            XRD_EnvPut('CPParallelChunks', chunks)
-    else:
-        if not os.getenv('XRD_CPPARALLELCHUNKS'): XRD_EnvPut('CPParallelChunks', chunks)
-
-    chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
-    if chunksz_arg:
-        if is_int(chunksz_arg):
-            chunksize = abs(int(chunksz_arg))
-            if os.getenv('XRD_CPCHUNKSIZE'):
-                print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
-            XRD_EnvPut('CPChunkSize', chunksize)
-    else:
-        if not os.getenv('XRD_CPCHUNKSIZE'): XRD_EnvPut('CPChunkSize', chunksize)
+    hashtype  = 'md5'
+    batch     = int(8)   # from a list of copy jobs, start <batch> number of downloads
+    streams   = int(os.getenv('XRD_SUBSTREAMSPERCHANNEL', '1'))  # uses num additional parallel streams to do the transfer
+    chunks    = int(os.getenv('XRD_CPPARALLELCHUNKS', '4'))      # number of chunks that should be requested in parallel
+    chunksize = int(os.getenv('XRD_CPCHUNKSIZE', '4194304'))     # chunk size for remote transfers
+    overwrite = False  # overwrite target if it exists
+    cksum     = False
+    timeout   = int(os.getenv('XRD_CPTIMEOUT', '0'))
+    rate      = int(os.getenv('XRD_XRATETHRESHOLD', '0'))
+    retry     = int(os.getenv('XRD_CPRETRY', '2'))
 
     if get_arg(xrd_copy_command, '-noxrdzip'): os.environ["ALIENPY_NOXRDZIP"] = "nozip"
 
+    streams_arg = get_arg_value(xrd_copy_command, '-S')
+    if streams_arg and is_int(streams_arg):
+        streams = min(abs(int(streams_arg)), 15)
+        if os.getenv('XRD_SUBSTREAMSPERCHANNEL'):
+            print_out(f'Warning! env var XRD_SUBSTREAMSPERCHANNEL is set and will be overwritten with value: {streams}')
+    XRD_EnvPut('SubStreamsPerChannel', streams)  # if no env customization, then use our defaults
+    os.environ['XRD_SUBSTREAMSPERCHANNEL'] = str(streams)
+
+    chunks_arg = get_arg_value(xrd_copy_command, '-chunks')
+    if chunks_arg and is_int(chunks_arg):
+        chunks = abs(int(chunks_arg))
+        if os.getenv('XRD_CPPARALLELCHUNKS'):
+            print_out(f'Warning! env var XRD_CPPARALLELCHUNKS is set and will be overwritten with value: {chunks}')
+    XRD_EnvPut('CPParallelChunks', chunks)
+    os.environ['XRD_CPPARALLELCHUNKS'] = str(chunks)
+
+    chunksz_arg = get_arg_value(xrd_copy_command, '-chunksz')
+    if chunksz_arg and is_int(chunksz_arg):
+        chunksize = abs(int(chunksz_arg))
+        if os.getenv('XRD_CPCHUNKSIZE'):
+            print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
+    XRD_EnvPut('CPChunkSize', chunksize)
+    os.environ['XRD_CPCHUNKSIZE'] = str(chunksize)
+    
     timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
-    if timeout_arg:
+    if timeout_arg and is_int(timeout_arg):
         timeout = abs(int(timeout_arg))
-        XRD_EnvPut('CPTimeout', timeout)
+        if os.getenv('XRD_CPTIMEOUT'):
+            print_out(f'Warning! env var XRD_CPTIMEOUT is set and will be overwritten with value {timeout}')
+    XRD_EnvPut('cpTimeout', timeout)
+    os.environ['XRD_CPTIMEOUT'] = str(timeout)
 
     rate_arg = get_arg_value(xrd_copy_command, '-ratethreshold')
-    if rate_arg:
+    if rate_arg and is_int(rate_arg):
         rate = abs(int(rate_arg))
-        XRD_EnvPut('XRateThreshold', rate)
+        if os.getenv('XRD_XRATETHRESHOLD'):
+            print_out(f'Warning! env var XRD_XRATETHRESHOLD is set and will be overwritten with value {rate}')
+    XRD_EnvPut('XRateThreshold', rate)
+    os.environ['XRD_XRATETHRESHOLD'] = str(rate)
 
-    XRD_EnvPut('CpRetryPolicy', 'force')
     retry_arg = get_arg_value(xrd_copy_command, '-retry')
-    if retry_arg:
+    if retry_arg and is_int(retry_arg):
         retry = abs(int(retry_arg))
-        XRD_EnvPut('CpRetry', retry)
+        if os.getenv('XRD_CPRETRY'):
+            print_out(f'Warning! env var XRD_CPRETRY is set and will be overwritten with value {retry}')
+    XRD_EnvPut('CpRetry', retry)
+    os.environ['XRD_CPRETRY'] = str(retry)
 
     _use_system_xrdcp = get_arg(xrd_copy_command, '-xrdcp')
 
@@ -429,7 +461,6 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     # sources = int(y_arg_val)
     if y_arg_val: print_out("Ignored option! multiple source usage is known to break the files stored in zip files, so better to be ignored")
 
-    batch = 8  # a nice enough default
     batch_arg = get_arg_value(xrd_copy_command, '-T')
     if batch_arg: batch = int(batch_arg)
 
@@ -866,29 +897,120 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     return handler.copy_failed_list  # lets see what failed and try to recover
 
 
-# keep it commented until is needed - dead code for now
-# def _xrdcp_sysproc(cmdline: str, timeout: Union[str, int, None] = None) -> RET:
-#     """xrdcp stanalone system command"""
-#     if not cmdline: return RET(1, '', '_xrdcp_sysproc :: no cmdline')  # type: ignore [call-arg]
-#     if timeout is not None: timeout = int(timeout)
-#     # --nopbar --posc
-#     xrdcp_cmdline = f'xrdcp -N -P {cmdline}'
-#     return runShellCMD(xrdcp_cmdline, captureout = True, do_shell = False, timeout = timeout)
+def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> Optional[CopyFile]:
+    """xrdcp standalone copy executor"""
+    if not HAS_XROOTD:
+        print_err("XRootD not found or lower than 5.3.3")
+        return None
 
+    # MANDATORY DEFAULTS, always used
+    makedir = bool(True)  # create the parent directories when creating a file
+    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
+    sources = int(1)  # max number of download sources; we (ALICE) do not rely on parallel multi-source downloads
+    
+    # passed arguments
+    overwrite = xrd_cp_args.overwrite
+    batch = xrd_cp_args.batch
+    tpc = xrd_cp_args.tpc
+    timeout = xrd_cp_args.timeout
+    hashtype = xrd_cp_args.hashtype
+    rate = xrd_cp_args.rate
 
-# keep it commented until is needed - dead code for now
-# def _xrdcp_copyjob(copy_job: CopyFile, xrd_cp_args: XrdCpArgs) -> int:  # , printout: str = ''
-#     """xrdcp based task that process a copyfile and it's arguments"""
-#     if not copy_job: return int(2)
-#     # overwrite = xrd_cp_args.overwrite
-#     # batch = xrd_cp_args.batch
-#     # tpc = xrd_cp_args.tpc
-#     # hashtype = xrd_cp_args.hashtype
-#     # cksum = xrd_cp_args.cksum
-#     timeout = xrd_cp_args.timeout
-#     # rate = xrd_cp_args.rate
-#     cmdline = f'{copy_job.src} {copy_job.dst}'
-#     return retf_print(_xrdcp_sysproc(cmdline, timeout))
+    src = copyjob.src
+    dst = copyjob.dst
+    lfn = copyjob.lfn
+    isUpload = copyjob.isUpload
+    token_data = copyjob.token_request
+
+    cksum_mode = 'none'
+    cksum_type = cksum_preset = ''
+    if isUpload:
+        cksum_mode = 'source'
+        cksum_type = 'md5'
+        cksum_preset = token_data['md5']
+    else:  # for downloads we already have the md5 value, lets use that
+        cksum_mode = 'target'
+        cksum_type, cksum_preset = get_hash_meta(src)
+        # If the remote file had no hash registered
+    if not cksum_type or not cksum_preset:
+        logging.error('COPY:: MD5 missing for %s', lfn)
+
+    # let's customize the environment of xrdcp command
+    xrdcp_env = os.environ.copy()
+
+    # Customize environment based on size and other information
+    # XRD_CPPARALLELCHUNKS, XRD_CPCHUNKSIZE, XRD_STREAMTIMEOUT, timeout
+
+    xrdcp_cmdline = ['xrdcp', '-f', '-N', '-P']
+
+    # -C | --cksum type[:value|print|source]
+    # obtains the checksum of type (i.e. adler32, crc32, md5 or zcrc32) from the source, computes the checksum at the destination, and veri‐
+    # fies that they are the same. If auto is chosen as the checksum type, xrdcp will try to automatically infer the right checksum type based
+    # on source/destination configuration, source file type (metalink, ZIP), and available checksum plug-ins. If a value is specified, it is
+    # used as the source checksum.  When print is specified, the checksum at the destination is printed but is not verified.
+    # --rm-bad-cksum
+    # Remove the target file if checksum verification failed (enables also POSC semantics).
+    if isDownload:
+        xrdcp_cmdline.extend(['--cksum', f'{cksum_type}:{cksum_preset}', '--rm-bad-cksum'])
+
+    # --xrate-threshold rate
+    # If the transfer rate drops below given threshold force the client to use different source or if no more sources are available fail the transfer.
+    if rate:
+        xrdcp_cmdline.extend(['--xrate-threshold', rate])
+
+    # PRINTING OF beginning ! here or in manager .. there is a need of index/total information
+
+    if isUpload:
+        xrdcp_cmdline.extend([src, dst])
+        # status = subprocess.run(xrdcp_cmdline, encoding = 'utf-8', errors = 'replace', timeout = timeout, capture_output = True, env = xrdcp_env)  # pylint: disable=subprocess-run-check  # nosec
+        # do commit
+        # do end print 
+        # return copyjob if fail else None
+
+    # process download
+    list_of_replicas = get_url_meta(src)
+    for replica in list_of_replicas:
+        new_xrdcp_cmdline = xrdcp_cmdline.copy()
+        new_xrdcp_cmdline.extend([replica, dst])
+        # status = subprocess.run(new_xrdcp_cmdline, encoding = 'utf-8', errors = 'replace', timeout = timeout, capture_output = True, env = xrdcp_env)  # pylint: disable=subprocess-run-check  # nosec
+        # if success:
+        #     do end print
+        #     break
+
+   
+
+# DOWNLOAD
+# CopyFile(
+#        src='/home/adrian/tmp/f3c361b6-8677-5585-acfb-56ced24e36d5.meta4',
+#        dst='/home/adrian/work-ALICE/jalien_py/test_area/test.sh~',
+#        isUpload=False,
+#        token_request={},
+#        lfn='/alice/cern.ch/user/a/asevcenc/test.sh~'
+#     )
+
+# UPLOAD
+# CopyFile(
+#        src='/home/adrian/work-ALICE/jalien_py/test_area/test2.sh',
+#        dst='root://neos.nipne.ro:1094//02/10490/4d798722-9786-11ef-8ad0-8030e01e6668?xrd.wantprot=unix&authz=-----BEGIN SEALED CIPHER-----\nqgdhc9kDcjjKsxudKLnwvYg6NyJNAQqLkL-EREsd7dgunQcPe8LO7hxq3zzqMlY94Ur+xpv3iNQJ\nDyQBrVNUmvC3x5D0n+oSvR6XMEr5va1QkdwK8nsyhB6KiAonlFDSvXfPPSNI3sq2VNeORmE5LV9g\nl4M7B3R0S+yC4X-hT9E=\n-----END SEALED CIPHER-----\n-----BEGIN SEALED ENVELOPE-----\nAAAAgJdVSgHfLO9Pwrl4YVwKt5AaK1QvK3n0D5X+JRnTYXxldLuQDV7WdqrS3noP8FCBqNl6DCnF\nsyCrBJdXPPBnNKuWH8sOdCHLzR5G27KhVcMBfvajK+8sCM8JGoXjgqEjDC0TVMe66ufAe7mwVnBo\nfQYcau-2aLZFUWvVOWjsgwHENeloV-OtJzhscaBoZTe3GJggEEl9A3gd6q3IlLkYFaTtDMRSey-k\noknKl1JdK1CN9UDi+Nw4nuj6C4djgomqLJR87m0XWDTIc-0OSbrNMWblQlI0BteNVrJDuJLKfogu\n-lM95gJ7-MUxTI21FgciF6cgiUgn2ZZdGQwSWUGIFmZ+AMvhUUcibN1Rtj7sDR9GYU9x-3wdfFQV\nD0uggZd656ctGgv0Z8OS86xx3dXdwC4AKdfOrwSBKqgN7pUAe701c+Aawl8637kAixK0klkXPpYk\nYjfCHgKtcrjIHwRzjKu3kAAFKtbvjCuabQfBelmVyu75onhg8FOWqEhEUgeTO1fKlRL3yxgqGHZy\nvWrBT7+Kr+nRy5Jv52pecgNx4oCsfusWv1M335buizhASbN99IUJv6IXvdTsk5IINkmia0jLq7-X\nm5OWsZ0hw+bObVl6+QYW0cSBrYjq8qBN608KRX752RxxXWwa9UjtERBcktS320B60n5cTtPwsrCz\nuKWD+o1eIBuQOO7Mv6EZQB6Tk5rhSwGZhzI1xuy0ncsiwcDktOg3Cc+tjRB8mu9dB6iuc7wRK34w\n18rDMMbmoiXbeabidTWTEQoFgCyTfZ-1ef1JMSwyLmyV-YxgqT3oIO1rOBSZgMutd+UAu8Ib6AN3\nKS75++IRDJy-nvqQn9H1NvqtglN7euZo9k5maUVWuJ0bc-JXtmxFP5Bxnthe4smMJg==\n-----END SEALED ENVELOPE-----\n&scitag.flow=335&eos.app=cliUpload',
+#        isUpload=True,
+#        token_request={
+#               'envelope': '-----BEGIN SEALED CIPHER-----\nqgdhc9kDcjjKsxudKLnwvYg6NyJNAQqLkL-EREsd7dgunQcPe8LO7hxq3zzqMlY94Ur+xpv3iNQJ\nDyQBrVNUmvC3x5D0n+oSvR6XMEr5va1QkdwK8nsyhB6KiAonlFDSvXfPPSNI3sq2VNeORmE5LV9g\nl4M7B3R0S+yC4X-hT9E=\n-----END SEALED CIPHER-----\n-----BEGIN SEALED ENVELOPE-----\nAAAAgJdVSgHfLO9Pwrl4YVwKt5AaK1QvK3n0D5X+JRnTYXxldLuQDV7WdqrS3noP8FCBqNl6DCnF\nsyCrBJdXPPBnNKuWH8sOdCHLzR5G27KhVcMBfvajK+8sCM8JGoXjgqEjDC0TVMe66ufAe7mwVnBo\nfQYcau-2aLZFUWvVOWjsgwHENeloV-OtJzhscaBoZTe3GJggEEl9A3gd6q3IlLkYFaTtDMRSey-k\noknKl1JdK1CN9UDi+Nw4nuj6C4djgomqLJR87m0XWDTIc-0OSbrNMWblQlI0BteNVrJDuJLKfogu\n-lM95gJ7-MUxTI21FgciF6cgiUgn2ZZdGQwSWUGIFmZ+AMvhUUcibN1Rtj7sDR9GYU9x-3wdfFQV\nD0uggZd656ctGgv0Z8OS86xx3dXdwC4AKdfOrwSBKqgN7pUAe701c+Aawl8637kAixK0klkXPpYk\nYjfCHgKtcrjIHwRzjKu3kAAFKtbvjCuabQfBelmVyu75onhg8FOWqEhEUgeTO1fKlRL3yxgqGHZy\nvWrBT7+Kr+nRy5Jv52pecgNx4oCsfusWv1M335buizhASbN99IUJv6IXvdTsk5IINkmia0jLq7-X\nm5OWsZ0hw+bObVl6+QYW0cSBrYjq8qBN608KRX752RxxXWwa9UjtERBcktS320B60n5cTtPwsrCz\nuKWD+o1eIBuQOO7Mv6EZQB6Tk5rhSwGZhzI1xuy0ncsiwcDktOg3Cc+tjRB8mu9dB6iuc7wRK34w\n18rDMMbmoiXbeabidTWTEQoFgCyTfZ-1ef1JMSwyLmyV-YxgqT3oIO1rOBSZgMutd+UAu8Ib6AN3\nKS75++IRDJy-nvqQn9H1NvqtglN7euZo9k5maUVWuJ0bc-JXtmxFP5Bxnthe4smMJg==\n-----END SEALED ENVELOPE-----\n&scitag.flow=335&eos.app=cliUpload',
+#               'url': 'root://neos.nipne.ro:1094//02/10490/4d798722-9786-11ef-8ad0-8030e01e6668',
+#               'guid': '4d798722-9786-11ef-8ad0-8030e01e6668',
+#               'se': 'ALICE::NIHAM::EOS',
+#               'tags': '[disk, legoinput]',
+#               'nSEs': '4',
+#               'md5': '72c23cf3ecdade4ffb79f66d725d14b4',
+#               'size': '259',
+#               'qos_specs': [],
+#               'SElist_specs': [],
+#               'SElist': ['ALICE::UPB::EOS', 'ALICE::BRATISLAVA::SE', 'ALICE::ISS::EOS', 'ALICE::NIHAM::EOS'],
+#               'file': '/home/adrian/work-ALICE/jalien_py/test_area/test2.sh',
+#               'lfn': '/alice/cern.ch/user/a/asevcenc/test2.sh'
+#                },
+#        lfn='/alice/cern.ch/user/a/asevcenc/test2.sh'
+#     )
+
 
 # keep it commented until is needed - dead code for now
 # def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
