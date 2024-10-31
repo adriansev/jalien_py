@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
 MYDIR="$(dirname $(realpath ${BASH_SOURCE}))"
-python3 -m pip install --user --editable "${@}" file://${MYDIR}#egg=alienpy
+python3 -m pip install $( [[ -z ${VIRTUAL_ENV} ]] && echo "--user" ) --editable "${@}" file://${MYDIR}#egg=alienpy
 
