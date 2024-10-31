@@ -632,6 +632,14 @@ def get_hash_meta(meta_fn: str) -> tuple:
     return (content.getAttribute('type'), content.firstChild.nodeValue) if content else (None, None)
 
 
+def get_url_meta(meta_fn: str) -> list:
+    """Extract url list from metafile"""
+    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
+    if not os.path.isfile(meta_fn): return ('', '')
+    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('url')
+    return [item.firstChild.nodeValue for item in element_list if item]
+
+
 def md5(input_file: str) -> str:
     """Compute the md5 digest of the specified file"""
     if not path_readable(input_file): return '-1'
