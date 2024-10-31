@@ -6,7 +6,7 @@ import os
 import logging
 import uuid
 import tempfile
-import glob
+# import glob
 import ssl
 
 try:
@@ -312,7 +312,6 @@ def CertVerify(fname: str) -> RET:
         x509cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception as e:
         logging.exception(e)
-        logging.debug(traceback.format_exc())
         return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
 
     x509store = OpenSSL.crypto.X509Store()
@@ -381,7 +380,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         return RET(42, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}')
     except Exception as e:
         logging.exception(e)
-        return RET(1, '', f'Cert/key match :: unknown error')
+        return RET(1, '', 'Cert/key match :: unknown error')
 
 
 # HAVE A GLOBAL CA_PATH
