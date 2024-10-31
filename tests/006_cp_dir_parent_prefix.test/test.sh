@@ -13,7 +13,7 @@ ALIEN_HOME="$(ALIENPY_NO_CWD_RESTORE=yes alien.py home)"
 EXITCODE="${?}"
 [[ -z ${ALIEN_HOME} ]] && { echo "Could not get ALIEN_HOME in ${THIS_TEST}"; exit "${EXITCODE}"; }
 
-NOW="$(date +%Y%m%d_%H%M%S)"
+# NOW="$(date +%Y%m%d_%H%M%S)"
 # TESTDIR_REMOTE="${ALIEN_HOME}alienpy_ci_test_dir_${NOW}" # home already includes slash at the end
 TESTDIR_LOCAL="ci_test_dir"
 

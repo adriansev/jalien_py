@@ -52,12 +52,6 @@ def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
         val = xrd_client.EnvGetInt(key)
     return val  # noqa: R504
 
-    # Override the application name reported to the xrootd server.
-    app_str = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
-    XRD_EnvPut('XRD_APPNAME', app_str)
-    os.environ['XRD_APPNAME'] = app_str
-    HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
-
 
 def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     """Initialize generic XRootD client vars/timeouts"""
@@ -66,6 +60,11 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     # http://xrootd.org/doc/man/xrdcp.1.html
     # https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-100004.2
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
+
+    # Override the application name reported to the xrootd server.
+    app_str = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
+    XRD_EnvPut('AppName', app_str)
+    os.environ['XRD_APPNAME'] = app_str
 
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     timeout_resolution = os.getenv('XRD_TIMEOUTRESOLUTION', '1')  # let's check the status every 1s; default 15
@@ -128,7 +127,9 @@ try:
     xrd_config_init()  # reset XRootD preferences to cp oriented settings - set before loading module 
     from XRootD import client as xrd_client  # type: ignore
     from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
+
     XRDCP_CMD = shutil.which('xrdcp')
+    HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
     
     xrd_ver_arr = xrd_client.__version__.split(".")
     _XRDVER_1 = _XRDVER_2 = None
@@ -800,7 +801,7 @@ if HAS_XROOTD:
                     # Add xattrs to remote file
                     if 'ALIENPY_EXPERIMENTAL_XATTRS' in os.environ:
                         pfn_dir = urlparse(replica_dict['url']).path
-                        xrdfile_set_attr(xrdjob.dst, [ ('xroot.alice.lfn', xrdjob.lfn), ('xroot.alice.md5', md5), ('xroot.alice.pfn', pfn_dir) ])
+                        # xrdfile_set_attr(xrdjob.dst, [ ('xroot.alice.lfn', xrdjob.lfn), ('xroot.alice.md5', md5), ('xroot.alice.pfn', pfn_dir) ])
                 else:  # isDownload
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
@@ -950,7 +951,7 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
     # used as the source checksum.  When print is specified, the checksum at the destination is printed but is not verified.
     # --rm-bad-cksum
     # Remove the target file if checksum verification failed (enables also POSC semantics).
-    if isDownload:
+    if not isUpload:  # is download
         xrdcp_cmdline.extend(['--cksum', f'{cksum_type}:{cksum_preset}', '--rm-bad-cksum'])
 
     # --xrate-threshold rate
