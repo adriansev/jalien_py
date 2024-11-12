@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+rm -rf alienpy_test_env
+mkdir -p alienpy_test_env
+python3 -m venv alienpy_test_env || { echo "error"; exit 1; }
+
+source alienpy_test_env/bin/activate
+pip install --upgrade pip
+
+./install_user_dev
+
+cd tests
+./run_tests
+
