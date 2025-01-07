@@ -1,6 +1,7 @@
 """alienpy:: GLOBALS"""
 
 import os
+import platform
 import re
 import sys
 from socket import gethostname
@@ -42,6 +43,8 @@ USER_HOME = Path.home().as_posix()
 
 HOSTNAME = gethostname()
 
+UNAME = platform.uname()
+PLATFORM_ID = f'{UNAME.machine}/{UNAME.system}/{UNAME.release}'
 
 def get_certs_names() -> CertsInfo:
     """Provide the standard file names for used certificates"""
