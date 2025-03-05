@@ -121,11 +121,11 @@ def IsValidCert(fname: str) -> bool:
 
     time_remaining = int(x509cert.not_valid_after_utc.timestamp()) - int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
-    if time_remaining < 10:
+    if time_remaining < 600:
         msg = f'IsValidCert:: Expired certificate {fname}'
-        print_err(msg)
+        if DEBUG: print_err(msg)
         logging.error(msg)
-    return time_remaining > 300
+    return time_remaining >= 600
 
 
 def get_valid_certs() -> tuple:

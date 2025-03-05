@@ -31,7 +31,8 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 
 from .version import ALIENPY_VERSION_STR
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
-from .global_vars import DEBUG_TIMING, TMPDIR, PLATFORM_ID
+from .data_structs import CertsInfo
+from .global_vars import DEBUG_TIMING, TMPDIR, PLATFORM_ID, AlienSessionInfo
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import create_ssl_context, renewCredFilesInfo
 from .async_tools import start_asyncio, syncify
@@ -97,8 +98,12 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     else:
         fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
 
-        # create/refresh the definitions of cert files
-        certs_info = renewCredFilesInfo()
+        # Check the content of AlienSessionInfo for values of cert and token files
+        certs_info = None
+        if 'AlienSessionInfo' in globals() and AlienSessionInfo['token_cert'] and AlienSessionInfo['token_key'] and AlienSessionInfo['user_cert'] and AlienSessionInfo['user_key']:
+            certs_info = CertsInfo(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'], AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
+        else:
+            certs_info = renewCredFilesInfo()
 
         # Check the presence of user certs and bailout before anything else
         if not certs_info.token_cert and not certs_info.user_cert:
