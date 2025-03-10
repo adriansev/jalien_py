@@ -38,7 +38,7 @@ from .connect_ssl import create_ssl_context, renewCredFilesInfo
 from .async_tools import start_asyncio, syncify
 
 
-PYTHON_VERSION = "{}.{}.{}".format(*sys.version_info)
+PYTHON_VERSION = f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}'
 USER_AGENT = f'alienpy/{ALIENPY_VERSION_STR} websockets/{wb_version} Python/{PYTHON_VERSION} {PLATFORM_ID}'
 
 #########################
