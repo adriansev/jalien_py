@@ -49,7 +49,7 @@ def signal_handler(sig, frame) -> None:  # pylint: disable=unused-argument
     # https://stackoverflow.com/a/79497818/624734
     signal.signal(signalnum = sig, handler = signal.SIG_IGN)
 
-    print_out(f"\nCought signal {sig}, let\'s exit")
+    print_out(f"\nCaught signal {sig}, let\'s exit")
 
     # Send signal to all processes in the group
     os.killpg(0, sig)
