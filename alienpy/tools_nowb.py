@@ -20,6 +20,7 @@ import urllib.request as urlreq
 import shutil
 import shlex
 import sys
+import signal
 import xml.etree.ElementTree as ET  # noqa: N817
 import xml.dom.minidom as MD  # noqa: N812
 
@@ -45,8 +46,14 @@ def exit_message(code: int = 0, msg: str = '') -> None:
 
 def signal_handler(sig, frame) -> None:  # pylint: disable=unused-argument
     """Generig signal handler: just print the signal and exit"""
+    # https://stackoverflow.com/a/79497818/624734
+    signal.signal(signalnum = sig, handler = signal.SIG_IGN)
+
     print_out(f"\nCought signal {sig}, let\'s exit")
-    exit_message(int(AlienSessionInfo['exitcode']))
+
+    # Send signal to all processes in the group
+    os.killpg(0, sig)
+    os._exit(int(AlienSessionInfo['exitcode']))
 
 
 def is_float(arg: Union[str, float, None]) -> bool:

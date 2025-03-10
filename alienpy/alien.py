@@ -84,6 +84,8 @@ if HAS_XROOTD:
 
 session_id = None  # variable used to keep a session ID
 
+os.setpgrp()  # https://linux.die.net/man/2/setpgrp
+
 ##################################
 #   START FUNCTIONS DEFINITIONS
 ##################################
