@@ -31,18 +31,18 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     """WebSocket creation with tryouts (configurable by env ALIENPY_CONNECT_TRIES and ALIENPY_CONNECT_TRIES_INTERVAL)"""
     wb = None
     nr_tries = 0
-    init_begin = None
-
-    if TIME_CONNECT or DEBUG: init_begin = time.perf_counter()
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
     connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
 
+    init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
     while wb is None:
         nr_tries += 1
+
         try:
-            wb = wb_create(host, str(port), path, use_usercert, localConnect)
+            wb = wb_create(host, port, path, use_usercert, localConnect)
         except Exception:
             logging.exception('wb_create_tryout:: exception when wb_create')
+
         if not wb:
             if nr_tries >= connect_tries:
                 logging.error('We tried on %s:%s%s %s times', host, port, path, nr_tries)
@@ -55,9 +55,9 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
         if DEBUG: logging.debug(msg)
         if TIME_CONNECT: print_out(msg)
 
-    if wb and localConnect:
-        pid_filename = f'{TMPDIR}/jboxpy_{os.getuid()}.pid'
-        writePidFile(pid_filename)
+    # if local proxy process (a la JBox - but WIP)
+    if localConnect and wb: writePidFile(f'{TMPDIR}/jboxpy_{os.getuid()}.pid')
+    
     return wb
 
 
@@ -66,33 +66,61 @@ def AlienConnect(wb: Optional[WebSocketClientProtocol] = None, token_args: Optio
     if not token_args: token_args = []
     init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
 
-    jalien_server = os.getenv("ALIENPY_JCENTRAL", 'alice-jcentral.cern.ch')  # default value for JCENTRAL
-    jalien_websocket_port = os.getenv("ALIENPY_JCENTRAL_PORT", '8097')  # websocket port
+    SRV_DEFAULT = 'alice-jcentral.cern.ch'
+    PORT_DEFAULT = '8097'
+
+    jalien_server = os.getenv('ALIENPY_JCENTRAL', SRV_DEFAULT)  # default value for JCENTRAL
+    jalien_websocket_port = os.getenv('ALIENPY_JCENTRAL_PORT', PORT_DEFAULT)  # websocket port
     jalien_websocket_path = '/websocket/json'
     jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
+    # Prepare usage of destination specified by JBox env vars instead of jclient_token_
+    JALIEN_HOST_ENV = os.getenv('JALIEN_HOST', 'localhost')
+    JALIEN_WSPORT_ENV = os.getenv('JALIEN_WSPORT', PORT_DEFAULT)
+
     # If presentent with existing socket, let's try to close it
-    if wb: _ = wb_close(wb, code = 1000, reason = 'Close previous websocket')
+    if wb: 
+        _ = wb_close(wb, code = 1000, reason = 'Close previous websocket')
+        wb = None
 
     # let's try to get a websocket
     if localConnect:
         wb = wb_create(localConnect = True)
     else:
-        if not os.getenv("ALIENPY_JCENTRAL") and os.path.exists(jclient_env):  # If user defined ALIENPY_JCENTRAL the intent is to set and use the endpoint
-            # lets check JBOX availability
-            jalien_info = read_conf_file(jclient_env)
-            if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
-                jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
-                jbox_port = jalien_info.get('JALIEN_WSPORT', '8097')
-                if isReachable(jbox_host, jbox_port):
-                    jalien_server, jalien_websocket_port = jbox_host, jbox_port
+        # First try the JBox connection details, first env vars then jclient_token_ file
+        # N.B.!! ALIENPY_JCENTRAL env var have exclusive priority !! is present then the intent is to use the _THIS_ endpoint
+        if not os.getenv("ALIENPY_JCENTRAL"):
+            # we found env var JALIEN_HOST
+            if JALIEN_HOST_ENV:
+                if isReachable(JALIEN_HOST_ENV, JALIEN_WSPORT_ENV):
+                    jalien_server, jalien_websocket_port = JALIEN_HOST_ENV, JALIEN_WSPORT_ENV
                     logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
+                    wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
-        wb = wb_create_tryout(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert)
+            # if either no JBox env vars or the wb creation failed let's check jalien_token_ file
+            if wb is None and os.path.exists(jclient_env):
+                jalien_info = read_conf_file(jclient_env)
+                if jalien_info and 'JALIEN_PID' in jalien_info and is_my_pid(jalien_info['JALIEN_PID']):
+                    jbox_host = jalien_info.get('JALIEN_HOST', 'localhost')
+                    jbox_port = jalien_info.get('JALIEN_WSPORT', PORT_DEFAULT)
+                    if isReachable(jbox_host, jbox_port):
+                        jalien_server, jalien_websocket_port = jbox_host, jbox_port
+                        logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
+                        wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
+                        
+        if wb is None:  # Either ALIENPY_JCENTRAL set or no wb so far
+            wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
-        # if we stil do not have a socket, then try to fallback to jcentral if we did not had explicit endpoint and jcentral was not already tried
-        if wb is None and not os.getenv("ALIENPY_JCENTRAL") and jalien_server != 'alice-jcentral.cern.ch':
-            jalien_server, jalien_websocket_port = 'alice-jcentral.cern.ch', '8097'
+        # if ALIENPY_JCENTRAL is specified but no connection, treat this as hard error and exit
+        if wb is None and os.getenv("ALIENPY_JCENTRAL"):
+            msg = f'Check the logfile: {DEBUG_FILE}\nCould not connect to user specified ALIENPY_JCENTRAL: {jalien_server}:{jalien_websocket_port}\n'
+            logging.error(msg)
+            print_err(msg)
+            sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
+
+        # if we stil do not have a socket, then try to fallback to jcentral if not already tried
+        if wb is None and jalien_server != SRV_DEFAULT:
+            jalien_server, jalien_websocket_port = SRV_DEFAULT, PORT_DEFAULT
             wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
     if init_begin:
