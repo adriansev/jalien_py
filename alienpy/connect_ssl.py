@@ -108,15 +108,15 @@ def IsValidCert(fname: str) -> bool:
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
     except Exception as e:
-        logging.error('IsValidCert:: Unable to open certificate file %s', fname)
         logging.exception(e)
+        logging.error('IsValidCert:: Unable to open certificate file %s', fname)
         return False
 
     try:
         x509cert = x509.load_pem_x509_certificate(cert_bytes)
     except Exception as e:
-        logging.error('IsValidCert:: Unable to load certificate %s', fname)
         logging.exception(e)
+        logging.error('IsValidCert:: Unable to load certificate %s', fname)
         return False
 
     time_remaining = int(x509cert.not_valid_after_utc.timestamp()) - int(datetime.datetime.now(datetime.timezone.utc).timestamp())
