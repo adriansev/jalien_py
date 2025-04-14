@@ -1430,7 +1430,7 @@ def DO_quota(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     unfinishedjobs_perc = ((waiting + running) / unfinishedjobs_max) * 100
 
     pjobs_nominal = int(jquota_info["nominalparallelJobs"])
-    pjobs_max = int(jquota_info["maxparallelJobs"])
+    pjobs_max = int(jquota_info["maxParallelJobs"])
 
     size = float(fquota_info["totalSize"])
     size_MiB = size / (1024 * 1024)
@@ -1483,7 +1483,13 @@ def DO_help(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     global AlienSessionInfo
     if not args: args = []
     if not args or is_help(args):
-        msg = ('Project documentation can be found at:\n'
+        msg = ('Special arguments for alien.py command:\n'
+               '-json : will enable global printing of stdout as json (as oposed to <cmd -json>)\n'
+               '-debug : enable debug mode\n'
+               'term | terminal | console : python terminal with ready to use alienpy methods\n'
+               '<a file> : if 1st arg is a file, it will be processed as a batch of commands\n'
+               'alien_<CMD> symlink to alien.py : will execute CMD in command mode with the rest of arguments\n\n'
+               'Project documentation can be found at:\n'
                'https://jalien.docs.cern.ch/\n'
                'https://gitlab.cern.ch/jalien/xjalienfs/blob/master/README.md\n'
                'the following commands are available:')
@@ -1953,7 +1959,14 @@ def main() -> None:
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
 
-    ALIENPY_EXECUTABLE = os.path.realpath(sys.argv.pop(0))  # remove the name of the script
+    ALIENPY_EXECUTABLE = sys.argv.pop(0)  # remove the name of the script
+
+    WB = None
+    if sys.argv and (is_help(sys.argv) or sys.argv[0] == 'help'):
+        print('N.B. !!! This standalone help command will finish the execution of the process!\n')
+        JAlien(['help'])
+        sys.exit()
+        
     if get_arg(sys.argv, '-json'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
     # print(f'MAIN: {sys.argv}')
