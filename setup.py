@@ -44,10 +44,10 @@ setuptools.setup(
     long_description_content_type = "text/markdown",
     url = "https://gitlab.cern.ch/jalien/xjalienfs",
     install_requires = selected_requirements,
-    python_requires = '>=3.6',
+    python_requires = '>=3.9',
+    license = "BSD-3-Clause",
     classifiers = [
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         ],
     project_urls = {
