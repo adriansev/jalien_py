@@ -1962,7 +1962,7 @@ def main() -> None:
     ALIENPY_EXECUTABLE = sys.argv.pop(0)  # remove the name of the script
 
     WB = None
-    if sys.argv and (is_help(sys.argv) or sys.argv[0] == 'help'):
+    if sys.argv and (is_help(sys.argv[0]) or sys.argv[0] == 'help'):
         print('N.B. !!! This standalone help command will finish the execution of the process!\n')
         JAlien(['help'])
         sys.exit()
