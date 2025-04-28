@@ -75,11 +75,11 @@ def AlienConnect(wb: Optional[WebSocketClientProtocol] = None, token_args: Optio
     jclient_env = f'{TMPDIR}/jclient_token_{str(os.getuid())}'
 
     # Prepare usage of destination specified by JBox env vars instead of jclient_token_
-    JALIEN_HOST_ENV = os.getenv('JALIEN_HOST', 'localhost')
+    JALIEN_HOST_ENV = os.getenv('JALIEN_HOST', '')
     JALIEN_WSPORT_ENV = os.getenv('JALIEN_WSPORT', PORT_DEFAULT)
 
     # If presentent with existing socket, let's try to close it
-    if wb: 
+    if wb:
         _ = wb_close(wb, code = 1000, reason = 'Close previous websocket')
         wb = None
 
@@ -107,7 +107,7 @@ def AlienConnect(wb: Optional[WebSocketClientProtocol] = None, token_args: Optio
                         jalien_server, jalien_websocket_port = jbox_host, jbox_port
                         logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
                         wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
-                        
+
         if wb is None:  # Either ALIENPY_JCENTRAL set or no wb so far
             wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
