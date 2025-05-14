@@ -7,7 +7,7 @@ import logging
 from .global_vars import ALIENPY_FANCY_PRINT, TMPDIR, USER_HOME, rich_print
 
 #############################################
-###   ENABLE LOGGING BEFORE ANYTHIN ELSE
+###   ENABLE LOGGING BEFORE ANYTHING ELSE
 #############################################
 
 DEBUG = os.getenv('ALIENPY_DEBUG', '')
@@ -56,7 +56,7 @@ def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.l
 
     logging.getLogger().setLevel(MSG_LVL)
     logging.getLogger('wb_client').setLevel(MSG_LVL)
-    if os.getenv('ALIENPY_DEBUG_CONCURENT'):
+    if os.getenv('ALIENPY_DEBUG_CONCURRENT'):
         logging.getLogger('concurrent').setLevel(MSG_LVL)
         logging.getLogger('concurrent.futures').setLevel(MSG_LVL)
     if os.getenv('ALIENPY_DEBUG_ASYNCIO'):

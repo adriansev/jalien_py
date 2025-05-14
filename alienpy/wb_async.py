@@ -96,7 +96,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
             return None
     else:
-        fHostWSUrl = f'wss://{host}:{port}{path}'  # conection url
+        fHostWSUrl = f'wss://{host}:{port}{path}'  # connection url
 
         # Check the content of AlienSessionInfo for values of cert and token files
         certs_info = None
@@ -244,7 +244,7 @@ async def wb_sendmsg_multi(wb: WebSocketClientProtocol, jsonmsg_list: list) -> l
     # send pipelined messages
     for msg in jsonmsg_list: await wb.send(msg)
 
-    # receive and add to result_list the incomming messages
+    # receive and add to result_list the incoming messages
     for _i in range(nr_messages): result_list.append(await wb.recv())
 
     if time_begin: logging.debug('>>>__sendmsg time = %s ms', deltat_ms_perf(time_begin))

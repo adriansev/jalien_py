@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 
 ##############################################
-##   Start of data structures definitons
+##   Start of data structures definitions
 ##############################################
 
 class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
@@ -90,7 +90,7 @@ class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
 
 
 class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure for commit of succesful xrootd write to file catalogue"""
+    """Structure for commit of successful xrootd write to file catalogue"""
     envelope: str = ''
     size: str = ''
     lfn: str = ''
@@ -134,7 +134,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
 
 
 class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
-    """AliEn style xml collection element strucure"""
+    """AliEn style xml collection element structure"""
     name: str = ''
     aclId: str = ''
     broken: str = ''

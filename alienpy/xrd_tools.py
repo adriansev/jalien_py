@@ -100,7 +100,7 @@ def lfn2fileTokens(wb, arg_lfn2file: lfn2file, specs: Union[None, list, str] = N
     qos_tags = [el for el in specs if 'ALICE::' not in el]  # for element in specs, if not ALICE:: then is qos tag
     SEs_list_specs = [el for el in specs if 'ALICE::' in el]  # explicit requests of SEs
     SEs_list_total = [replica["se"] for replica in result["results"]]
-    # let's save for each replica the orginal request info
+    # let's save for each replica the original request info
     for replica in result["results"]:
         replica["qos_specs"] = qos_tags  # qos tags from specs
         replica["SElist_specs"] = SEs_list_specs  # SE from specs
@@ -163,7 +163,7 @@ def path_grid_stat(wb, path: str) -> STAT_FILEPATH:
 
 
 def lfnIsValid(wb, lfn: str, local_file: str, shallow_check: bool = False, removeTarget: bool = True) -> RET:
-    """Check if remote lfn coresponds with local file (source is local, target is remote lfn); target will be removed if present and not match the source"""
+    """Check if remote lfn corresponds with local file (source is local, target is remote lfn); target will be removed if present and not match the source"""
     local_file_stat = None
     if os.path.isfile(local_file): local_file_stat = os.stat(local_file)
     if not local_file_stat: return RET(2, '', 'Missing local file')
@@ -217,14 +217,14 @@ or exclusion of storages (prefixing with exclamation mark).
 %ALIEN alias have the special meaning of AliEn user home directory
 options are the following :
 -h : print help
--dryrun                  : just print the src,dst pairs that would have been transfered without actually doing so
+-dryrun                  : just print the src,dst pairs that would have been transferred without actually doing so
 -f | -force              : Do md5 verification of already present destination
--S <aditional streams>   : uses num additional parallel streams to do the transfer. (max = 15)
+-S <additional streams>   : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks>      : number of chunks that should be requested in parallel
 -chunksz <bytes>         : chunk size (bytes)
 -parent N                : keep last N path components into destination filepath
 -rmprefix N              : remove first N path components from full source path and keep the rest as basepath for destination
--T <nr_copy_jobs>        : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-T <nr_copy_jobs>        : number of parallel copy jobs from a set (for recursive copy); defaults to 8 for downloads
 -timeout <seconds>       : the job will fail if did not finish in this nr of seconds
 -retry <times>           : retry N times the copy process if failed
 -ratethreshold <bytes/s> : fail the job if the speed is lower than specified bytes/s
@@ -244,7 +244,7 @@ Further filtering of the files can be applied with the following options:
 -name    <pattern>          : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
 -name    <verb>_string      : where verb = begin|contain|ends|ext and string is the text selection criteria.
 verbs are aditive  e.g. -name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannot have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
 
 -exclude     string            : (client-side) exclude result containing this string
 -exclude_re  pattern           : (client-side) exclude result matching this regex
@@ -268,19 +268,19 @@ def pathtype_grid(wb, path: str) -> str:
 
 
 def commit(wb, tokenstr: str, size: int, lfn: str, perm: str, expire: str, pfn: str, se: str, guid: str, md5sum: str) -> RET:
-    """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
+    """Upon successful xrootd upload to server, commit the guid name into central catalogue"""
     if not wb: return RET()
     return SendMsg(wb, 'commit', [tokenstr, int(size), lfn, perm, expire, pfn, se, guid, md5sum], opts = 'log')
 
 
 def commitFile(wb, lfnInfo: CommitInfo) -> RET:
-    """Upon succesful xrootd upload to server, commit the guid name into central catalogue"""
+    """Upon successful xrootd upload to server, commit the guid name into central catalogue"""
     if not wb or not lfnInfo: return RET()
     return SendMsg(wb, 'commit', [lfnInfo.envelope, int(lfnInfo.size), lfnInfo.lfn, lfnInfo.perm, lfnInfo.expire, lfnInfo.pfn, lfnInfo.se, lfnInfo.guid, lfnInfo.md5], opts = 'log')
 
 
 def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
-    """Upon succesful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
+    """Upon successful xrootd upload to server, commit the guid name into central catalogue for a list of pfns"""
     if not wb or not lfnInfo_list: return []
     batch_size = 64
     batches_list = [lfnInfo_list[x: x + batch_size] for x in range(0, len(lfnInfo_list), batch_size)]
@@ -337,7 +337,7 @@ def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
-        # it was explictly requested that pattern is regex
+        # it was explicitly requested that pattern is regex
         if is_regex and isinstance(pattern, str) and valid_regex(pattern) is None:
             msg = f'list_files_grid:: {pattern} failed to re.compile'
             logging.error(msg)

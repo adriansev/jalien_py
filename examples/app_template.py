@@ -36,7 +36,7 @@ wb = InitConnection(cmdlist_func = constructCmdList)  # type: ignore
 #       wb is the connection socket (created above)
 #       cmd_chain is the string that defines the command (or ";" delimited array of commands)
 #     return the exitcode of the command (or last command from array)
-# 2. The programatic way, where ProcessInput is used for individual network-related commands
+# 2. The programmatic way, where ProcessInput is used for individual network-related commands
 #    and the client-side commands are to be used directly
 #    ProcessInput(wb, cmd: str, args: Union[list, None] = None, shellcmd: Union[str, None] = None) -> RET
 #       wb is the connection socket (created above)
@@ -51,7 +51,7 @@ wb = InitConnection(cmdlist_func = constructCmdList)  # type: ignore
 #               json : prints the string form of the returned dictionary
 #               if exitcode == 0 : noout|noprint will disable the printing of the "out" string
 #               if exitcode !=0  :
-#                   info|warn|err|debug will log the error string of the object to the corresponging facilities
+#                   info|warn|err|debug will log the error string of the object to the corresponding facilities
 #                   noerr|noprint will disable the printing of the "err" string
 
 # client style interaction - single command
@@ -62,23 +62,23 @@ print(f'exit code of above command: {ret_int}\n')
 ret_int = ProcessCommandChain(wb, 'll; whoami -v')  # type: ignore
 print(f'exit code of above command: {ret_int}\n')
 
-# programatic interaction
+# programmatic interaction
 # all DO_ functions (implementations of commands) (with the exception of ProcessCommandChain) return a RET object
 ret_obj = ProcessInput(wb, 'ls', ['-c', '/alice/cern.ch/user/a/admin/referenceData'])  # type: ignore
 print(f'This is the response object:\n{ret_obj}\n')
 
 # In principle, the dictionary output of command have more information than stdout/stderr of the command
-# and is programatically easier to work with
+# and is programmatically easier to work with
 print('This is the dictionary form of the server response:')
 PrintDict(ret_obj.ansdict)
 print('\n')
 
 # Example of usage of find
 # N.B.!
-# '-a' : show all files (including name beggining with dot)
+# '-a' : show all files (including name beginning with dot)
 # '-s' : do not sort the answer
 # '-r' : make find to interpret pattern as regex
-# '-f' : fill the answer dictionary with all file properties, so selections can be easly applied
+# '-f' : fill the answer dictionary with all file properties, so selections can be easily applied
 ret_obj = ProcessInput(wb, 'find', ['-f', '-a', '-s', '/alice/cern.ch/user/a/admin/referenceData', 'std*.log'])  # type: ignore
 print('Example of find usage:')
 PrintDict(ret_obj.ansdict)

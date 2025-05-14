@@ -488,7 +488,7 @@ def DO_getCE(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if not wb: return []
     if not args: args = []
     if is_help(args):
-        msg = 'Command format: getCE [-name string] [-host string] [-part string]>\nReturn the informations for the selection'
+        msg = 'Command format: getCE [-name string] [-host string] [-part string]>\nReturn the information for the selection'
         return RET(0, msg)
 
     ret_obj = SendMsg(wb, 'listCEs', [], 'nomsg')
@@ -540,7 +540,7 @@ def DO_getCE(wb: WebSocketClientProtocol, args: list = None) -> RET:
 def DO_SEqos(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if not wb: return RET()
     if not args or is_help(args):
-        msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be ommited and capitalization does not matter)'
+        msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be omitted and capitalization does not matter)'
         return RET(0, msg)
     sum_rez = []
     for se_name in args:
@@ -1134,7 +1134,7 @@ http : URIs will be for http end-points of enabled SEs
     if isWrite and write_meta:
         return RET(1, '', 'meta argument is incompatible with uploading')
     if isWrite and len(args) < 2: return RET(1, '', 'for upload URIs two elements are required: lfn local_file')
-    if len(args) < 1: return RET(1, '', 'at least one argument is neeeded: lfn')
+    if len(args) < 1: return RET(1, '', 'at least one argument is needed: lfn')
     local_file = ''
     if len(args) > 1: local_file = args[1]
     lfn = args[0]
@@ -1198,7 +1198,7 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
         md5_end = md5(tmp)
         if md5_begin != md5_end:
             uploaded_file = upload_tmp(wb, tmp, ','.join(specs), dated_backup = versioned_backup)
-            os.remove(tmp)  # clean up the temporary file not matter if the upload was succesful or not
+            os.remove(tmp)  # clean up the temporary file not matter if the upload was successful or not
             return RET(0, f'Uploaded {uploaded_file}') if uploaded_file else RET(1, '', f'Error uploading {uploaded_file}')
         return RET(0)
     return RET(1, '', f'Error downloading {lfn}, editing could not be done.')
@@ -1225,7 +1225,7 @@ def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: b
                     'N.B.!! the lfn must be the last element of the command!!\n'
                     'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                     'for working within application use <edit> or -noout argument\n'
-                    'additiona arguments recognized independent of the shell command:\n'
+                    'additional arguments recognized independent of the shell command:\n'
                     '-force : will re-download the lfn even if already present\n'
                     '-noout : will not capture output, the actual application can be used')
 
@@ -1236,7 +1236,7 @@ def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: b
                'the lfn must be the last element of the command\n'
                'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
                'for working within application use <edit>\n'
-               'additiona arguments recognized independent of the shell command:\n'
+               'additional arguments recognized independent of the shell command:\n'
                '-force : will re-download the lfn even if already present\n'
                '-noout : will not capture output, the actual application can be used')
         return RET(0, msg)
@@ -1304,14 +1304,14 @@ def DO_find2(wb: WebSocketClientProtocol, args: Union[None, list, str] = None) -
         args = args.split() if args else []
     if is_help(args):
         msg_client = f'''Client-side implementation of find, it contain the following helpers.
-Command formant: find2 <options> <directory>
+Command format: find2 <options> <directory>
 N.B. directory to be search for must be last element of command
 -glob <globbing pattern> : this is the usual AliEn globbing format; {PrintColor(COLORS.BIGreen)}N.B. this is NOT a REGEX!!!{PrintColor(COLORS.ColorReset)} defaults to all "*"
 -select <pattern>        : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to full path!!!{PrintColor(COLORS.ColorReset)}
 -name <pattern>          : select only these files to be copied; {PrintColor(COLORS.BIGreen)}N.B. this is a REGEX applied to a directory or file name!!!{PrintColor(COLORS.ColorReset)}
 -name <verb>_string      : where verb = begin|contain|ends|ext and string is the text selection criteria.
 verbs are aditive  e.g. -name begin_myf_contain_run1_ends_bla_ext_root
-{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannont have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
+{PrintColor(COLORS.BIRed)}N.B. the text to be filtered cannot have underline i.e >_< within!!!{PrintColor(COLORS.ColorReset)}
 
 -exclude     string            : (client-side) exclude result containing this string
 -exclude_re  pattern           : (client-side) exclude result matching this regex
@@ -1384,7 +1384,7 @@ The server options:'''
 
 
 def DO_quota(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    """quota : put togheter both job and file quota"""
+    """quota : put together both job and file quota"""
     if not args: args = []
     if is_help(args):
         msg = ("Client-side implementation that make use of server\'s jquota and fquota (hidden by this implementation)\n"
@@ -1394,7 +1394,7 @@ def DO_quota(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
     user = AlienSessionInfo['user']
     if len(args) > 0:
-        if args[0] != "set":  # we asume that if 'set' is not used then the argument is a username
+        if args[0] != "set":  # we assume that if 'set' is not used then the argument is a username
             user = args[0]
         else:
             msg = '>set< functionality not implemented yet'
@@ -1484,7 +1484,7 @@ def DO_help(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     if not args: args = []
     if not args or is_help(args):
         msg = ('Special arguments for alien.py command:\n'
-               '-json : will enable global printing of stdout as json (as oposed to <cmd -json>)\n'
+               '-json : will enable global printing of stdout as json (as opposed to <cmd -json>)\n'
                '-debug : enable debug mode\n'
                'term | terminal | console : python terminal with ready to use alienpy methods\n'
                '<a file> : if 1st arg is a file, it will be processed as a batch of commands\n'
@@ -1713,7 +1713,7 @@ def constructCmdList() -> None:
     make_func_map_client()
 
     # these are aliases, or directly interpreted
-    AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add clien-side cmds to list
+    AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_client'])  # add client-side cmds to list
     AlienSessionInfo['commandlist'].extend(AlienSessionInfo['cmd2func_map_nowb'])    # add nowb cmds to list
     AlienSessionInfo['commandlist'] = sorted(set(AlienSessionInfo['commandlist']))
 
@@ -1733,7 +1733,7 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
         if similar_cmds: msg = f'{msg}\nSimilar commands: {similar_cmds}'
         return RET(1, '', msg)
 
-    opts = ''  # let's proccess special server args
+    opts = ''  # let's process special server args
     if get_arg(args, '-nokeys') or get_arg(args, 'nokeys'): opts = f'{opts} nokeys'
     if get_arg(args, '-nomsg') or get_arg(args, 'nomsg'): opts = f'{opts} nomsg'
     if get_arg(args, '-showkeys') or get_arg(args, 'showkeys'): opts = f'{opts} showkeys'
@@ -1755,7 +1755,7 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
 
     ret_obj = None
     # We will not check for websocket connection as: 1. there is keep alive mechanism 2. there is recovery in SendMsg
-    if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in clien-side implementations list
+    if cmd in AlienSessionInfo['cmd2func_map_client']:  # lookup in client-side implementations list
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
@@ -1992,7 +1992,7 @@ def main() -> None:
         import code
         term = code.InteractiveConsole(locals = globals())
         term.push('jalien = AliEn()')
-        banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn seesion object is >jalien< ; try jalien.help()'
+        banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn session object is >jalien< ; try jalien.help()'
         exitmsg = 'Exiting..'
         term.interact(banner, exitmsg)
         sys.exit(int(AlienSessionInfo['exitcode']))  # pylint: disable=protected-access
@@ -2011,7 +2011,7 @@ def main() -> None:
     try:
         sys.exit(JAlien(arg_list))
     except KeyboardInterrupt:
-        print_out("Received keyboard intrerupt, exiting..")
+        print_out("Received keyboard interrupt, exiting..")
         sys.exit(1)
     except BrokenPipeError:
         # Python flushes standard streams on exit; redirect remaining output to devnull to avoid another BrokenPipeError at shutdown
@@ -2023,7 +2023,7 @@ def main() -> None:
         logging.error("\n\n")
         print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
-If the exception is reproductible including on lxplus, please create a detailed debug report this way:
+If the exception is reproducible including on lxplus, please create a detailed debug report this way:
 ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
         sys.exit(1)
 

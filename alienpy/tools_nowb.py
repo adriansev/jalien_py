@@ -39,13 +39,13 @@ def PrintColor(color: str) -> str:
 
 
 def exit_message(code: int = 0, msg: str = '') -> None:
-    """Exit with msg and with specied code"""
+    """Exit with msg and with specified code"""
     print_out(msg if msg else 'Exit')
     sys.exit(code)
 
 
 def signal_handler(sig, frame) -> None:  # pylint: disable=unused-argument
-    """Generig signal handler: just print the signal and exit"""
+    """Generic signal handler: just print the signal and exit"""
     # https://stackoverflow.com/a/79497818/624734
     signal.signal(signalnum = sig, handler = signal.SIG_IGN)
 
@@ -87,7 +87,7 @@ def time_str2unixmili(time_arg: Union[str, int, None]) -> int:
             return int(time_arg)
         return int(-1)
 
-    # asume that this is a strptime arguments in the form of: time_str, format_str
+    # assume that this is a strptime arguments in the form of: time_str, format_str
     try:
         time_obj = ast.literal_eval(f'datetime.datetime.strptime({time_arg})')
         return int((time_obj - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
@@ -176,25 +176,25 @@ def now_str() -> str: return str(datetime.datetime.now().strftime("%Y%m%d_%H%M%S
 
 
 def deltat_ms(t0: Union[str, float, None] = None) -> str:
-    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    """Return delta t in ms from a time start; if no argument it return a timestamp in ms"""
     now = datetime.datetime.now().timestamp()
     return f"{(now - float(t0)) * 1000:.3f}" if t0 else f"{now * 1000:.3f}"
 
 
 def deltat_us(t0: Union[str, float, None] = None) -> str:
-    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    """Return delta t in ms from a time start; if no argument it return a timestamp in ms"""
     now = datetime.datetime.now().timestamp()
     return f"{(now - float(t0)) * 1000000:.3f}" if t0 else f"{now * 1000000:.3f}"
 
 
 def deltat_ms_perf(t0: Union[str, float, None] = None) -> str:
-    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    """Return delta t in ms from a time start; if no argument it return a timestamp in ms"""
     if not t0: return ""
     return f"{(time.perf_counter() - float(t0)) * 1000:.3f}"
 
 
 def deltat_us_perf(t0: Union[str, float, None] = None) -> str:
-    """Return delta t in ms from a time start; if no argment it return a timestamp in ms"""
+    """Return delta t in ms from a time start; if no argument it return a timestamp in ms"""
     if not t0: return ""
     return f"{(time.perf_counter() - float(t0)) * 1000000:.3f}"
 
@@ -411,7 +411,7 @@ def GetHumanReadableSize(size_arg: Union[int, str], precision: int = 2) -> str:
 
 
 def check_ip_port(socket_object: tuple) -> bool:
-    """Check connectivity to an address, port; adress should be the tuple given by getaddrinfo"""
+    """Check connectivity to an address, port; address should be the tuple given by getaddrinfo"""
     if not socket_object: return False
     is_open = False
     # socket_object = (family, type, proto, canonname, sockaddr)
@@ -755,7 +755,7 @@ def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, s
         elif isinstance(pattern, REGEX_PATTERN_TYPE):  # unlikely but supported to match signatures
             regex = pattern
             is_regex = True
-        elif is_regex and isinstance(pattern, str):  # it was explictly requested that pattern is regex
+        elif is_regex and isinstance(pattern, str):  # it was explicitly requested that pattern is regex
             regex = valid_regex(pattern)
             if regex is None:
                 msg = f'list_files_grid:: {pattern} failed to re.compile'
@@ -811,7 +811,7 @@ def file_set_atime(path: str) -> None:
 
 
 def file2file_dict(fn: str) -> dict:
-    """Take a string as path and retur a dict with file propreties"""
+    """Take a string as path and return a dict with file properties"""
     try:
         file_path = Path(fn)
     except Exception:

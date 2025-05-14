@@ -14,7 +14,7 @@ except Exception:
 
 # in the case of AliEnMsg class just low-level json messages are exchanged with the server
 # there are no client side implementations available, only message exchange with the AliEn central services
-# default initialization have the 'dict' option enabled, with the efect that run command returns a dictionary
+# default initialization have the 'dict' option enabled, with the effect that run command returns a dictionary
 
 alien.setup_logging()
 
@@ -27,9 +27,9 @@ print()
 
 out = j.run('pwd', 'rawstr')  # let's request to have the actual string
 print(f"Output of type {type(out)}")
-print('formated:')
+print('formatted:')
 alien.PrintDict(out)
-print('raw and unformated:')
+print('raw and unformatted:')
 print(out)
 print()
 

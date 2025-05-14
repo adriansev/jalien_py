@@ -118,7 +118,7 @@ def AlienConnect(wb: Optional[WebSocketClientProtocol] = None, token_args: Optio
             print_err(msg)
             sys.exit(107)  # ENOTCONN - Transport endpoint is not connected
 
-        # if we stil do not have a socket, then try to fallback to jcentral if not already tried
+        # if we still do not have a socket, then try to fallback to jcentral if not already tried
         if wb is None and jalien_server != SRV_DEFAULT:
             jalien_server, jalien_websocket_port = SRV_DEFAULT, PORT_DEFAULT
             wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
@@ -149,9 +149,9 @@ def InitConnection(wb: Optional[WebSocketClientProtocol] = None, token_args: Opt
         rez = SendMsg(wb, 'setSite', [SET_SITE])
         logging.info(f'ALIEN_SITE :: {rez.out}')
 
-    # NO MATTER WHAT BEFORE ENYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
+    # NO MATTER WHAT BEFORE ANYTHING ELSE SESSION MUST BE INITIALIZED   !!!!!!!!!!!!!!!!
     if 'AlienSessionInfo' in globals():
-        if not AlienSessionInfo['session_started']:  # this is beggining of session, let's get session vars ONLY ONCE
+        if not AlienSessionInfo['session_started']:  # this is beginning of session, let's get session vars ONLY ONCE
             AlienSessionInfo['session_started'] = True
             session_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
 
@@ -393,7 +393,7 @@ def token(wb: WebSocketClientProtocol, args: Optional[list] = None) -> int:
         with open(certs_info.token_cert, "w", encoding = "ascii", errors = "replace") as tcert: print(f"{tokencert_content}", file = tcert)  # write the tokencert
         os.chmod(certs_info.token_cert, 0o400)  # make it readonly
     except Exception:
-        print_err(f'Error writing to file the aquired token cert; check the log file {DEBUG_FILE}!')
+        print_err(f'Error writing to file the acquired token cert; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
 
@@ -404,7 +404,7 @@ def token(wb: WebSocketClientProtocol, args: Optional[list] = None) -> int:
         with open(certs_info.token_key, "w", encoding = "ascii", errors = "replace") as tkey: print(f"{tokenkey_content}", file = tkey)  # write the tokenkey
         os.chmod(certs_info.token_key, 0o400)  # make it readonly
     except Exception:
-        print_err(f'Error writing to file the aquired token key; check the log file {DEBUG_FILE}!')
+        print_err(f'Error writing to file the acquired token key; check the log file {DEBUG_FILE}!')
         logging.debug(traceback.format_exc())
         return 5  # EIO
     if 'AlienSessionInfo' in globals():

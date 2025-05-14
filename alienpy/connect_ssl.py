@@ -332,7 +332,7 @@ def CertVerify(fname: str) -> RET:
     store_ctx = OpenSSL.crypto.X509StoreContext(x509store, x509cert)
     try:
         store_ctx.verify_certificate()
-        return RET(0, f'SSL Verification {PrintColor(COLORS.BIGreen)}succesful{PrintColor(COLORS.ColorReset)} for {fname}')
+        return RET(0, f'SSL Verification {PrintColor(COLORS.BIGreen)}successful{PrintColor(COLORS.ColorReset)} for {fname}')
     except Exception as e:
         logging.exception(e)
         return RET(1, '', f'SSL Verification {PrintColor(COLORS.BIRed)}failed{PrintColor(COLORS.ColorReset)} for {fname}')
