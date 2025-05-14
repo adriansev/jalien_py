@@ -68,7 +68,7 @@ For debugging purposes there are a few environment toggles :
 * ALIENPY_JCENTRAL - it will connect to this server, ignoring any other options   
 * ALIENPY_NO_STAGGER - disable staggered parallel host resolution and socket creation (see [RFC8305](https://tools.ietf.org/html/rfc8305))
 ---
-* ALIENPY_DEBUG - detailed debug meesages will be found in ALIENPY_DEBUG_FILE
+* ALIENPY_DEBUG - detailed debug messages will be found in ALIENPY_DEBUG_FILE
 * ALIENPY_DEBUG_FILE - set the location of log file
 * ALIENPY_DEBUG_APPEND - is set the output will be appended to the present log file. if not the file will be overwritten.
 * ALIENPY_TIMECONNECT - if set will report time for websocket creation - e.g. `ALIENPY_TIMECONNECT=1 alien.py pwd`
@@ -125,12 +125,12 @@ options are the following :
 -f : replace destination file (if destination is local it will be replaced only if integrity check fails)
 -P : enable persist on successful close semantic
 -cksum : check hash sum of the file; for downloads the central catalogue md5 will be verified;
-for uploads (for xrootd client > 4.12.0) a hash type will be negociated with remote and transfer will be validated
+for uploads (for xrootd client > 4.12.0) a hash type will be negotiated with remote and transfer will be validated
 -y <nr_sources> : use up to the number of sources specified in parallel (N.B. Ignored as it breaks download of files stored in archives)
--S <aditional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
+-S <additional TPC streams> : uses num additional parallel streams to do the transfer. (max = 15)
 -chunks <nr chunks> : number of chunks that should be requested in parallel
 -chunksz <bytes> : chunk size (bytes)
--T <nr_copy_jobs> : number of parralel copy jobs from a set (for recursive copy); defaults to 8 for downloads
+-T <nr_copy_jobs> : number of parallel copy jobs from a set (for recursive copy); defaults to 8 for downloads
 -noxrdzip: circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
 N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
 If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents
@@ -141,7 +141,7 @@ for the recursive copy of directories the following options (of the find command
 -name <pattern> : select only these files to be copied; N.B. this is a REGEX applied to a directory or file name!!!
 -name <verb>_string : where verb = begin|contain|ends|ext and string is the text selection criteria.
 verbs are aditive : -name begin_myf_contain_run1_ends_bla_ext_root
-N.B. the text to be filtered cannont have underline <_> within!!!
+N.B. the text to be filtered cannot have underline <_> within!!!
 -parent <parent depth> : in destination use this <parent depth> to add to destination ; defaults to 0
 -a : copy also the hidden files .* (for recursive copy)
 -j <queue_id> : select only the files created by the job with <queue_id>  (for recursive copy)

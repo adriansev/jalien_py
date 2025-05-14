@@ -37,8 +37,8 @@ def _run(mainasync, *, debug = False):
         raise RuntimeError(asyncio_err_msg)  # pylint: disable=protected-access
 
     if not asyncio.coroutines.iscoroutine(mainasync):
-        no_corutine_err_msg = f'a coroutine was expected, got {mainasync!r}'
-        raise ValueError(no_corutine_err_msg)
+        no_coroutine_err_msg = f'a coroutine was expected, got {mainasync!r}'
+        raise ValueError(no_coroutine_err_msg)
 
     if _alienpy_global_asyncio_loop is not None:
         loop_already_started = 'asyncio event loop already started'

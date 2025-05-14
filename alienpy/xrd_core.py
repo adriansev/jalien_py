@@ -199,7 +199,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
             pattern = pattern.pattern  # We pass the regex pattern into command as string
             is_regex = True
 
-        # it was explictly requested that pattern is regex
+        # it was explicitly requested that pattern is regex
         if is_regex and isinstance(pattern, str) and valid_regex(pattern) is None:
             msg = f"makelist_lfn:: {pattern} failed to re.compile"
             logging.error(msg)
@@ -225,7 +225,7 @@ def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list]
     if src_type == dst_type == 'grid':
         return RET(1, '', 'grid to grid copy is WIP; for the moment use two steps: download file and upload it; local src,dst should be ALWAYS prefixed with file:')
     if src_type == dst_type == 'local':
-        return RET(1, '', 'for local copy use system command; within interactiv shell start a system command with "!"')
+        return RET(1, '', 'for local copy use system command; within interactive shell start a system command with "!"')
 
     if not src_stat.type: return RET(2, '', f'Specified source {src_stat.path} not found!')
 
@@ -360,7 +360,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     if api_dst is None: api_dst = []
 
     if bool(api_src) ^ bool(api_dst): return RET(1, '', 'API _src,_dst used but only one is defined')
-    if len(api_src) != len(api_dst): return RET(1, '', 'API _src,_dst used but not of equal lenght')
+    if len(api_src) != len(api_dst): return RET(1, '', 'API _src,_dst used but not of equal length')
 
     if not wb: return RET(107, "", 'DO_XrootdCp:: websocket not found')  # ENOTCONN /* Transport endpoint is not connected */
 
@@ -661,7 +661,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     copy_jobs_nr = len(xrdcopy_job_list)
     copy_jobs_failed_nr = len(copy_failed_list)
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
-    msg1 = f"Succesful jobs (1st try): {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
+    msg1 = f"Successful jobs (1st try): {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
 
     copy_failed_list2 = []
     if copy_failed_list:
@@ -691,7 +691,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
             copy_jobs_nr1 = len(xrdcopy_job_list_2)
             copy_jobs_failed_nr1 = len(copy_failed_list2)
             copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
-            msg2 = f"Succesful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
+            msg2 = f"Successful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
 
     copy_failed_list3 = []
     if copy_failed_list2:
@@ -721,7 +721,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
             copy_jobs_nr2 = len(xrdcopy_job_list_3)
             copy_jobs_failed_nr2 = len(copy_failed_list3)
             copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
-            msg3 = f'Succesful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}' if not ('quiet' in printout or 'silent' in printout) else ''
+            msg3 = f'Successful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}' if not ('quiet' in printout or 'silent' in printout) else ''
 
     # copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
     copy_jobs_nr_total = copy_jobs_nr + copy_jobs_nr1 + copy_jobs_nr2
@@ -730,7 +730,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     # we'll return SUCCESS if at least one lfn is confirmed, FAIL if not lfns is confirmed
     msg_list = [msg1, msg2, msg3]
     if msg2 or msg3:
-        msg_sum = f"Succesful jobs (total): {copy_jobs_success_nr_total}/{copy_jobs_nr_total}" if not ('quiet' in printout or 'silent' in printout) else ''
+        msg_sum = f"Successful jobs (total): {copy_jobs_success_nr_total}/{copy_jobs_nr_total}" if not ('quiet' in printout or 'silent' in printout) else ''
         msg_list.append(msg_sum)
     msg_all = '\n'.join(x.strip() for x in msg_list if x.strip())
     if 'ALIENPY_NOXRDZIP' in os.environ: os.environ.pop("ALIENPY_NOXRDZIP")
@@ -740,7 +740,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
 if HAS_XROOTD:
     class MyCopyProgressHandler(xrd_client.utils.CopyProgressHandler):
         """Custom ProgressHandler for XRootD copy process"""
-        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'succesful_writes', 'printout', 'debug')
+        __slots__ = ('wb', 'copy_failed_list', 'jobs', 'job_list', 'xrdjob_list', 'successful_writes', 'printout', 'debug')
 
         def __init__(self) -> None:
             self.wb = None
@@ -748,7 +748,7 @@ if HAS_XROOTD:
             self.jobs = int(0)
             self.job_list = []
             self.xrdjob_list = []
-            self.succesful_writes = []
+            self.successful_writes = []
             self.printout = ''
             self.debug = False
 
@@ -775,7 +775,7 @@ if HAS_XROOTD:
                 status = f'{PrintColor(COLORS.BIRed)}UNKNOWN{PrintColor(COLORS.ColorReset)}'
 
             job_info = self.job_list[jobId - 1]
-            xrdjob = self.xrdjob_list[jobId - 1]  # joblist initilized when starting; we use the internal index to locate the job
+            xrdjob = self.xrdjob_list[jobId - 1]  # joblist initialized when starting; we use the internal index to locate the job
             replica_dict = xrdjob.token_request
             job_status_info = f"jobID: {jobId}/{self.jobs} >>> STATUS {status}"
 
@@ -795,7 +795,7 @@ if HAS_XROOTD:
 
                 if xrdjob.isUpload:  # isUpload
                     md5 = results['sourceCheckSum'].replace('md5:','',1)
-                    self.succesful_writes.append(CommitInfo(envelope = replica_dict['envelope'], size = replica_dict['size'], 
+                    self.successful_writes.append(CommitInfo(envelope = replica_dict['envelope'], size = replica_dict['size'], 
                                                             lfn = xrdjob.lfn, perm = '644', expire = '0',
                                                             pfn = replica_dict['url'], se = replica_dict['se'], guid = replica_dict['guid'], md5 = md5))
                     # Add xattrs to remote file
@@ -859,7 +859,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
     handler.wb = wb
     handler.xrdjob_list = job_list
     handler.printout = printout
-    handler.succesful_writes = []
+    handler.successful_writes = []
     if DEBUG: handler.debug = True
 
     process = xrd_client.CopyProcess()
@@ -887,13 +887,13 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
         else:
             process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
                             checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
-                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreashold = xrd_client.EnvGetInt('XRateThreshold') )
+                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
     process.run(handler)
 
-    if handler.succesful_writes:  # if there were succesful uploads/remote writes, let's commit them to file catalogue
-        ret_list = commitFileList(wb, handler.succesful_writes)
+    if handler.successful_writes:  # if there were successful uploads/remote writes, let's commit them to file catalogue
+        ret_list = commitFileList(wb, handler.successful_writes)
         for ret in ret_list: retf_print(ret, 'noout err')
     return handler.copy_failed_list  # lets see what failed and try to recover
 
@@ -1017,7 +1017,7 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
 # def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
 #     """XRootD copy command :: the actual XRootD copy process"""
 #     if not HAS_XROOTD:
-#         print_err("XRootD not found or lower version thant 5.3.3")
+#         print_err("XRootD not found or lower version than 5.3.3")
 #         return []
 #     if not xrd_cp_args:
 #         print_err("cp arguments are not set, XrdCpArgs tuple missing")

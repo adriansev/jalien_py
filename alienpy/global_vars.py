@@ -76,10 +76,10 @@ SET_SITE = os.getenv('ALIEN_SITE', '')
 
 REGEX_PATTERN_TYPE = type(re.compile('.'))
 guid_regex = re.compile('[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}', re.IGNORECASE)  # regex for identification of GUIDs
-cmds_split = re.compile(';|\n')  # regex for spliting chained commands
-specs_split = re.compile('@|,')  # regex for spliting the specification of cp command
+cmds_split = re.compile(';|\n')  # regex for splitting chained commands
+specs_split = re.compile('@|,')  # regex for splitting the specification of cp command
 lfn_prefix_re = re.compile('(alien|file){1}(:|/{2})+')  # regex for identification of lfn prefix
-ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identifiy a range of comments
+ignore_comments_re = re.compile('^\\s*(#|;|//)+', re.MULTILINE)  # identify a range of comments
 emptyline_re = re.compile('^\\s*$', re.MULTILINE)  # whitespace line
 time_pattern_match_13 = re.compile(r'\d{13}', re.ASCII)
 time_pattern_match_10 = re.compile(r'\d{10}', re.ASCII)

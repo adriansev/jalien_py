@@ -26,7 +26,7 @@ def help2markup(cmd: str):
     if not cmd: return
     if cmd in f_client_nowb:  # these commands do NOT need wb connection
         result = f_client_nowb[cmd](['-h'])
-    if cmd in f_client_wb:  # lookup in clien-side implementations list
+    if cmd in f_client_wb:  # lookup in client-side implementations list
         result = f_client_wb[cmd](j.wb(), ['-h'])
     elif cmd in f_server_wb:  # lookup in server-side list
         result = f_server_wb[cmd](j.wb(), cmd, ['-h'])

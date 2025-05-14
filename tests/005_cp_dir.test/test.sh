@@ -26,7 +26,7 @@ alien.py rm -rf "${TESTDIR_R}" &> /dev/null # let's try to clean up, does not ma
 alienpy_clean_testdir "${TESTDIR_REMOTE}" "${TESTDIR_LOCAL}"
 
 # get the files for upload test
-echo -ne "Downlod reference files in ${TESTDIR_LOCAL} .. "
+echo -ne "Download reference files in ${TESTDIR_LOCAL} .. "
 export XRD_LOGFILE=xrdlog_download.txt
 alien.py cp -retry 3 "/alice/cern.ch/user/a/admin/referenceData/*.log" "file:${TESTDIR_LOCAL}/" &> out.log || { EXITCODE="${?}"; echo "Could not download reference files in ${THIS_TEST}"; cat out.log; exit "${EXITCODE}"; }
 echo "OK"
@@ -42,7 +42,7 @@ echo "OK"
 FOUND_REMOTE_FILES=$(alien.py find "${TESTDIR_REMOTE} .log" | grep ${TESTDIR_REMOTE} | wc -l)
 GOOD_RESULT="4"
 echo -ne "Checking correct number of uploaded files .. "
-[[ "${FOUND_REMOTE_FILES}" -eq "${GOOD_RESULT}" ]] || { echo "Wrong count of files in ${THIS_TEST} but operations succesful so far!! Send the logs to developer!"; exit 1; }
+[[ "${FOUND_REMOTE_FILES}" -eq "${GOOD_RESULT}" ]] || { echo "Wrong count of files in ${THIS_TEST} but operations successful so far!! Send the logs to developer!"; exit 1; }
 echo "OK"
 
 # clean ci dir
