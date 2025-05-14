@@ -57,7 +57,7 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
 
     # if local proxy process (a la JBox - but WIP)
     if localConnect and wb: writePidFile(f'{TMPDIR}/jboxpy_{os.getuid()}.pid')
-    
+
     return wb
 
 
@@ -91,11 +91,10 @@ def AlienConnect(wb: Optional[WebSocketClientProtocol] = None, token_args: Optio
         # N.B.!! ALIENPY_JCENTRAL env var have exclusive priority !! is present then the intent is to use the _THIS_ endpoint
         if not os.getenv("ALIENPY_JCENTRAL"):
             # we found env var JALIEN_HOST
-            if JALIEN_HOST_ENV:
-                if isReachable(JALIEN_HOST_ENV, JALIEN_WSPORT_ENV):
-                    jalien_server, jalien_websocket_port = JALIEN_HOST_ENV, JALIEN_WSPORT_ENV
-                    logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
-                    wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
+            if JALIEN_HOST_ENV and isReachable(JALIEN_HOST_ENV, JALIEN_WSPORT_ENV):
+                jalien_server, jalien_websocket_port = JALIEN_HOST_ENV, JALIEN_WSPORT_ENV
+                logging.warning('AlienConnect:: JBox connection to %s:%s', jalien_server, jalien_websocket_port)
+                wb = wb_create_tryout(jalien_server, jalien_websocket_port, jalien_websocket_path, use_usercert)
 
             # if either no JBox env vars or the wb creation failed let's check jalien_token_ file
             if wb is None and os.path.exists(jclient_env):

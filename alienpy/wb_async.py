@@ -148,10 +148,10 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
                 #     socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, resolver = my_resolver, raise_exc_group = True)
 
                 if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
-                    stagger_args = { "async_dns": True, "resolution_delay": 0.050, "detailed_exceptions": True }
+                    stagger_args = { "async_dns": True, "resolution_delay": 0.050, "detailed_exceptions": True }  # skipcq
                 else:
                     my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver, first_addr_family_count = 3, resolution_delay = 0.050, raise_exc_group = True)
-                    stagger_args = { "resolver": my_resolver, "raise_exc_group": True }
+                    stagger_args = { "resolver": my_resolver, "raise_exc_group": True }  # skipcq
 
                 socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, **stagger_args)
 
