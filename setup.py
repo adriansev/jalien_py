@@ -16,13 +16,13 @@ except Exception:
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-base_requirements = [ 'async-stagger', 'pyOpenSSL', 'rich', 'requests', ]
-local_requirements = [ 'xrootd' ]
+base_requirements = [ 'async-stagger >= 0.3.1', 'pyOpenSSL >= 25.0.0', 'rich', 'requests', ]
+local_requirements = [ 'xrootd >= 5.8.2' ]
 
 if sys.version_info[1] < 7:
-    base_requirements.append('websockets<=9.1')
+    base_requirements.append('websockets <= 9.1')
 else:
-    base_requirements.append('websockets')
+    base_requirements.append('websockets >= 15.0.0')
 
 if sys.platform == 'darwin':
     base_requirements.append('gnureadline')

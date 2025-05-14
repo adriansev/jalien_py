@@ -138,13 +138,23 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
                 init_begin_socket = time.perf_counter()
 
             if ASYNC_STAGGER_PRESENT:
+                # async_stagger requires Python 3.11 or later from v0.4.0 onwards. Please use v0.3.1 for Python 3.6 - 3.10.
                 _ASYNC_STAGGER_VER_LIST = version('async_stagger').split('.')
 
+                # if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
+                #     socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, async_dns = True, resolution_delay = 0.050, detailed_exceptions = True)
+                # else:
+                #     my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver, first_addr_family_count = 3, resolution_delay = 0.050, raise_exc_group = True)
+                #     socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, resolver = my_resolver, raise_exc_group = True)
+
                 if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
-                    socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, async_dns = True, resolution_delay = 0.050, detailed_exceptions = True)
+                    stagger_args = { "async_dns": True, "resolution_delay": 0.050, "detailed_exceptions": True }
                 else:
                     my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver, first_addr_family_count = 3, resolution_delay = 0.050, raise_exc_group = True)
-                    socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, resolver = my_resolver, raise_exc_group = True)
+                    stagger_args = { "resolver": my_resolver, "raise_exc_group": True }
+
+                socket_endpoint = await async_stagger.create_connected_sock(host, int(port), delay = 0, **stagger_args)
+
             else:
                 socket_endpoint = socket.create_connection((host, int(port)))
 

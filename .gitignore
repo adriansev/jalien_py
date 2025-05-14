@@ -15,4 +15,8 @@
 
 attic/**
 test_area/**
+alienpy_test_env/
+alienpy_test_env312/
+alienpy_test_env_pip/
+alienpy_test_env_pip312/
 

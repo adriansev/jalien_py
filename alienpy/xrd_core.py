@@ -69,13 +69,13 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     timeout_resolution = os.getenv('XRD_TIMEOUTRESOLUTION', '1')  # let's check the status every 1s; default 15
     os.environ['XRD_TIMEOUTRESOLUTION'] = timeout_resolution
-    XRD_EnvPut('TimeoutResolution', int(timeout_resolution))  
+    XRD_EnvPut('TimeoutResolution', int(timeout_resolution))
 
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
     con_retry = os.getenv('XRD_CONNECTIONRETRY', '3')  # default 5
     os.environ['XRD_CONNECTIONRETRY'] = con_retry
-    XRD_EnvPut('ConnectionRetry', int(con_retry))    
-        
+    XRD_EnvPut('ConnectionRetry', int(con_retry))
+
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
     # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
     con_window = os.getenv('XRD_CONNECTIONWINDOW', '10')  # default 120
@@ -92,17 +92,17 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
     stream_timeout = os.getenv('XRD_STREAMTIMEOUT', '60')  # default 60
     os.environ['XRD_STREAMTIMEOUT'] = stream_timeout
-    XRD_EnvPut('StreamTimeout', int(stream_timeout))     
+    XRD_EnvPut('StreamTimeout', int(stream_timeout))
 
     # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
     cpinit_timeout = os.getenv('XRD_CPINITTIMEOUT', '90')  # default 600
     os.environ['XRD_CPINITTIMEOUT'] = cpinit_timeout
-    XRD_EnvPut('CPInitTimeout', int(cpinit_timeout))  
+    XRD_EnvPut('CPInitTimeout', int(cpinit_timeout))
 
     # Time period after which an idle connection to a data server should be closed.
     datasrv_ttl = os.getenv('XRD_DATASERVERTTL', '20')  # we have no reasons to keep idle connections
     os.environ['XRD_DATASERVERTTL'] = datasrv_ttl
-    XRD_EnvPut('DataServerTTL', int(datasrv_ttl))  
+    XRD_EnvPut('DataServerTTL', int(datasrv_ttl))
 
     # Time period after which an idle connection to a manager or a load balancer should be closed.
     loadbl_ttl = os.getenv('XRD_LOADBALANCERTTL', '30')  # we have no reasons to keep idle connections
@@ -124,16 +124,16 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
 
 
 try:
-    xrd_config_init()  # reset XRootD preferences to cp oriented settings - set before loading module 
+    xrd_config_init()  # reset XRootD preferences to cp oriented settings - set before loading module
     from XRootD import client as xrd_client  # type: ignore
     from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
 
     XRDCP_CMD = shutil.which('xrdcp')
     HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
-    
+
     xrd_ver_arr = xrd_client.__version__.split(".")
     _XRDVER_1 = _XRDVER_2 = None
-    
+
     if len(xrd_ver_arr) > 1:
         _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
         _XRDVER_2 = xrd_ver_arr[1]
@@ -143,14 +143,14 @@ try:
         xrdver_git = xrd_ver_arr[0].split("-")
         _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
         HAS_XROOTD = int(_XRDVER_1) > 20211113
-        
+
     if not HAS_XROOTD: raise ImportError('XRootD version too low')
 except Exception:
     print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
 
 # reset XRootD preferences to cp oriented settings - 2nd time for setting also the xrd module defaults
-xrd_config_init()  
+xrd_config_init()
 
 # def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
 #     """For a given URI (token included) set the xattrs"""
@@ -159,7 +159,7 @@ xrd_config_init()
 #     with xrd_client.File() as f:
 #         status, response = f.open(uri, mode)
 #         print(f'{status}\n{response}')
-# 
+#
 #         status, list_of_statuses = f.set_xattr(attrs = xattr_list)
 #         print(status)
 #         for s in list_of_statuses:
@@ -415,7 +415,7 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
             print_out(f'Warning! env var XRD_CPCHUNKSIZE is set and will be overwritten with value {chunksize}')
     XRD_EnvPut('CPChunkSize', chunksize)
     os.environ['XRD_CPCHUNKSIZE'] = str(chunksize)
-    
+
     timeout_arg = get_arg_value(xrd_copy_command, '-timeout')
     if timeout_arg and is_int(timeout_arg):
         timeout = abs(int(timeout_arg))
@@ -795,7 +795,7 @@ if HAS_XROOTD:
 
                 if xrdjob.isUpload:  # isUpload
                     md5 = results['sourceCheckSum'].replace('md5:','',1)
-                    self.successful_writes.append(CommitInfo(envelope = replica_dict['envelope'], size = replica_dict['size'], 
+                    self.successful_writes.append(CommitInfo(envelope = replica_dict['envelope'], size = replica_dict['size'],
                                                             lfn = xrdjob.lfn, perm = '644', expire = '0',
                                                             pfn = replica_dict['url'], se = replica_dict['se'], guid = replica_dict['guid'], md5 = md5))
                     # Add xattrs to remote file
@@ -880,14 +880,9 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
                 cksum_type = cksum_preset = ''
 
         delete_invalid_cksum = cksum_mode != 'none'  # if no checksumming mode, disable rmBadCksum
-        if 'xrateThreshold' in process.add_job.__code__.co_varnames:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
-                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
-                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
-        else:
-            process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
-                            checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
-                            retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
+        process.add_job(copy_job.src, copy_job.dst, sourcelimit = sources, posc = posc, mkdir = makedir, force = overwrite, thirdparty = tpc,
+                        checksummode = cksum_mode, checksumtype = cksum_type, checksumpreset = cksum_preset, rmBadCksum = delete_invalid_cksum,
+                        retry = xrd_client.EnvGetInt('CpRetry'), cptimeout = xrd_client.EnvGetInt('CPTimeout'), xrateThreshold = xrd_client.EnvGetInt('XRateThreshold') )
 
     process.prepare()
     process.run(handler)
@@ -908,7 +903,7 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
     makedir = bool(True)  # create the parent directories when creating a file
     posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
     sources = int(1)  # max number of download sources; we (ALICE) do not rely on parallel multi-source downloads
-    
+
     # passed arguments
     overwrite = xrd_cp_args.overwrite
     batch = xrd_cp_args.batch
@@ -965,7 +960,7 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
         xrdcp_cmdline.extend([src, dst])
         # status = subprocess.run(xrdcp_cmdline, encoding = 'utf-8', errors = 'replace', timeout = timeout, capture_output = True, env = xrdcp_env)  # pylint: disable=subprocess-run-check  # nosec
         # do commit
-        # do end print 
+        # do end print
         # return copyjob if fail else None
 
     # process download
@@ -978,7 +973,7 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
         #     do end print
         #     break
 
-   
+
 
 # DOWNLOAD
 # CopyFile(
