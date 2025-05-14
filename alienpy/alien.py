@@ -801,7 +801,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
     # clean up redundant entries from object description
     # list(map(ccdb_json_cleanup, q_dict['objects']))
-    for q in q_dict['objects']: ccdb_json_cleanup(q) 
+    for q in q_dict['objects']: ccdb_json_cleanup(q)
 
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
@@ -1429,7 +1429,7 @@ def DO_quota(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     running = int(jquota_info["running"])
     unfinishedjobs_perc = ((waiting + running) / unfinishedjobs_max) * 100
 
-    pjobs_nominal = int(jquota_info["nominalparallelJobs"])
+    pjobs_nominal = int(jquota_info["nominalParallelJobs"])
     pjobs_max = int(jquota_info["maxParallelJobs"])
 
     size = float(fquota_info["totalSize"])
@@ -1966,7 +1966,7 @@ def main() -> None:
         print('N.B. !!! This standalone help command will finish the execution of the process!\n')
         JAlien(['help'])
         sys.exit()
-        
+
     if get_arg(sys.argv, '-json'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
     # print(f'MAIN: {sys.argv}')
