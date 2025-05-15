@@ -1816,7 +1816,7 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
         if cmdline.startswith('!'):
             capture_out = '-noout' in cmdline
             if not capture_out: cmdline.replace(' -noout', '')
-            ret_obj = runShellCMD(cmdline, capture_out)
+            ret_obj = runShellCMD(cmdline, captureout = capture_out, do_shell = True)
             exitcode = retf_print(ret_obj, 'debug')
             AlienSessionInfo['exitcode'] = exitcode
             continue
