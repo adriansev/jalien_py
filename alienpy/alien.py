@@ -1438,8 +1438,8 @@ def DO_quota(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     size_max_MiB = size_max / (1024 * 1024)
     size_perc = (size / size_max) * 100
 
-    files = float(fquota_info["nbFiles"])
-    files_max = float(fquota_info["maxNbFiles"])
+    files = int(fquota_info["nbFiles"])
+    files_max = int(fquota_info["maxNbFiles"])
     files_perc = (files / files_max) * 100
 
     msg = f"""Quota report for user : {username}
