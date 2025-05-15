@@ -8,13 +8,8 @@ try:
     from alienpy.tools_nowb import unixtime2local
     from alienpy.alien import *  # nosec PYL-W0614
 except Exception:
-    try:
-        from xjalienfs.wb_api import PrintDict, retf_print
-        from xjalienfs.tools_nowb import unixtime2local
-        from xjalienfs.alien import *  # nosec PYL-W0614
-    except Exception:
-        print("Can't load alienpy, exiting...")
-        sys.exit(1)
+    print("Can't load alienpy, exiting...")
+    sys.exit(1)
 
 from rich.console import Console
 from rich.table import Table

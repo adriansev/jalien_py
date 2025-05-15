@@ -7,11 +7,8 @@ import sys
 try:
     from alienpy import alien
 except Exception:
-    try:
-        from xjalienfs import alien
-    except Exception:
-        print("Can't load alienpy, exiting...")
-        sys.exit(1)
+    print("Can't load alienpy, exiting...")
+    sys.exit(1)
 
 
 alien.setup_logging()

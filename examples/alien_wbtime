@@ -3,18 +3,18 @@
 import os
 import sys
 import time
-from datetime import datetime, timezone
 import traceback
 import statistics
+import logging
 
 try:
     from alienpy import alien
+    from alienpy.wb_async import wb_create, wb_close
+    from alienpy.tools_nowb import deltat_ms_perf
+
 except Exception:
-    try:
-        from xjalienfs import alien
-    except Exception:
-        print("Can't load alienpy, exiting...")
-        sys.exit(1)
+    print("Can't load alienpy, exiting...")
+    sys.exit(1)
 
 
 alien.setup_logging()
@@ -31,12 +31,11 @@ localConnect = False
 def do_wb_connect():
     wb = None
     nr_tries = 0
-    init_delta = float(-999.0)
-    init_begin = datetime.now().timestamp()
+    init_begin = time.perf_counter()
     while wb is None:
         try:
             nr_tries += 1
-            wb = alien.wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert, localConnect)
+            wb = wb_create(jalien_server, str(jalien_websocket_port), jalien_websocket_path, use_usercert, localConnect)
         except Exception as e:
             logging.debug(traceback.format_exc())
         if not wb:
@@ -45,13 +44,11 @@ def do_wb_connect():
                 break
             time.sleep(connect_tries_interval)
 
-    init_end = datetime.now().timestamp()
-    init_delta = float((init_end - init_begin) * 1000)
+    init_delta = float(deltat_ms_perf(init_begin))
     if wb:
-        alien.wb_close(wb, 1000, "just close")
+        wb_close(wb, 1000, "just close")
         return init_delta
-    else:
-        return float(999999.0)
+    return float(999999.0)
 
 
 if len(sys.argv) > 1 and sys.argv[1].isdigit():
