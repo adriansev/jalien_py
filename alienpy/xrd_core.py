@@ -28,25 +28,21 @@ from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_m
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
 HAS_XROOTD = False
-XRDCP_CMD = None
-HAS_XROOTD_GETDEFAULT = False
+#XRDCP_CMD = None
 
 
 def XRD_EnvPut(key: str, value: str) -> bool:  # noqa: ANN001,ANN201
     """Sets the given key in the xrootd client environment to the given value.
     Returns false if there is already a shell-imported setting for this key, true otherwise
     """
-    if not key or not value: return False
-    if HAS_XROOTD:
-        return xrd_client.EnvPutInt(key, int(value)) if ( str(value).isdigit() or isinstance(value, int) ) else xrd_client.EnvPutString(key, str(value))
-    return False
+    if not HAS_XROOTD or not key or not value: return False
+    return xrd_client.EnvPutInt(key, int(value)) if ( str(value).isdigit() or isinstance(value, int) ) else xrd_client.EnvPutString(key, str(value))
 
 
 def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
     """Get the value of the key from xrootd"""
-    if not key: return None
+    if not HAS_XROOTD or not key: return None
     val = None
-    if not HAS_XROOTD: return None
     val = xrd_client.EnvGetString(key)
     if not val:
         val = xrd_client.EnvGetInt(key)
@@ -55,14 +51,15 @@ def XRD_EnvGet(key: str) -> Union[None, int, str]:  # noqa: ANN001,ANN201
 
 def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     """Initialize generic XRootD client vars/timeouts"""
-    if not HAS_XROOTD: return
     # xrdcp parameters (used by ALICE tests)
     # http://xrootd.org/doc/man/xrdcp.1.html
     # https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-100004.2
     # xrootd defaults https://github.com/xrootd/xrootd/blob/master/src/XrdCl/XrdClConstants.hh
 
     # Override the application name reported to the xrootd server.
-    app_str = f'alien.py/{ALIENPY_VERSION_STR} xrootd/{xrd_client.__version__}'
+    app_str = f'alien.py/{ALIENPY_VERSION_STR}'
+    if HAS_XROOTD: app_str = f'{app_str} xrootd/{xrd_client.__version__}'
+
     XRD_EnvPut('AppName', app_str)
     os.environ['XRD_APPNAME'] = app_str
 
@@ -122,29 +119,13 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     # XRD_PRESERVEXATTRS Preserve xattrs by default - enabled by default
     # XRD_EnvPut('PreserveXAttr', int(1))
 
-
 try:
     xrd_config_init()  # reset XRootD preferences to cp oriented settings - set before loading module
     from XRootD import client as xrd_client  # type: ignore
     from XRootD.client.flags import QueryCode, OpenFlags, AccessMode, StatInfoFlags, AccessType
 
-    XRDCP_CMD = shutil.which('xrdcp')
-    HAS_XROOTD_GETDEFAULT = hasattr(xrd_client, 'EnvGetDefault')
-
-    xrd_ver_arr = xrd_client.__version__.split(".")
-    _XRDVER_1 = _XRDVER_2 = None
-
-    if len(xrd_ver_arr) > 1:
-        _XRDVER_1 = xrd_ver_arr[0][1:] if xrd_ver_arr[0].startswith('v') else xrd_ver_arr[0]  # take out the v if present
-        _XRDVER_2 = xrd_ver_arr[1]
-        HAS_XROOTD = int(_XRDVER_1) >= 5 and int(_XRDVER_2) > 2
-    else:
-        # version is not of x.y.z form, this is git based form
-        xrdver_git = xrd_ver_arr[0].split("-")
-        _XRDVER_1 = xrdver_git[0][1:] if xrdver_git[0].startswith('v') else xrdver_git[0]  # take out the v if present
-        HAS_XROOTD = int(_XRDVER_1) > 20211113
-
-    if not HAS_XROOTD: raise ImportError('XRootD version too low')
+    # XRDCP_CMD = shutil.which('xrdcp')
+    HAS_XROOTD = True
 except Exception:
     print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
@@ -353,7 +334,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list) -> None:
 
 def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '', api_src: Optional[list] = None, api_dst: Optional[list] = None) -> RET:
     """XRootD cp function :: process list of arguments for a xrootd copy command"""
-    if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found or lower than 5.3.3, the copy process cannot continue')
+    if not HAS_XROOTD: return RET(1, "", 'DO_XrootdCp:: python XRootD module not found, the copy process cannot continue')
 
     if xrd_copy_command is None: xrd_copy_command = []
     if api_src is None: api_src = []
@@ -839,10 +820,10 @@ if HAS_XROOTD:
 def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> list:
     """XRootD copy command :: the actual XRootD copy process"""
     if not HAS_XROOTD:
-        print_err("XRootD not found or lower than 5.3.3")
+        print_err("XrdCopy:: XRootD not found!!")
         return []
     if not xrd_cp_args:
-        print_err("cp arguments are not set, XrdCpArgs tuple missing")
+        print_err("XrdCopy:: cp arguments are not set, XrdCpArgs tuple missing")
         return []
 
     # MANDATORY DEFAULTS, always used
@@ -896,7 +877,7 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
 def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> Optional[CopyFile]:
     """xrdcp standalone copy executor"""
     if not HAS_XROOTD:
-        print_err("XRootD not found or lower than 5.3.3")
+        print_err("XRootD not found")
         return None
 
     # MANDATORY DEFAULTS, always used
@@ -1039,10 +1020,10 @@ def xrd_response2dict(response_status) -> dict:
     """Convert a XRootD response status answer to a dict"""
     if not response_status: return {}
     if not HAS_XROOTD:
-        print_err('XRootD not present')
+        print_err('xrd_response2dict:: XRootD not present')
         return {}
     if not isinstance(response_status, xrd_client.responses.XRootDStatus):
-        print_err('Invalid argument type passed to xrd_response2dict')
+        print_err('xrd_response2dict:: Invalid argument type passed')
         return {}
     return {'status': response_status.status, 'code': response_status.code, 'errno': response_status.errno, 'message': response_status.message.strip(),
             'shellcode': response_status.shellcode, 'error': response_status.error, 'fatal': response_status.fatal, 'ok': response_status.ok}
