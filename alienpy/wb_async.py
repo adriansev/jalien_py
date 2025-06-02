@@ -13,7 +13,6 @@ try:
     from websockets.asyncio.client import connect as wb_connect
     from websockets.asyncio.client import unix_connect as wb_connect_unix
     import websockets.exceptions as wb_exceptions
-    from websockets.version import version as wb_version
     from websockets.extensions import permessage_deflate as _wb_permessage_deflate
 except Exception:
     print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.client as wb_client'", file = sys.stderr, flush = True)
@@ -29,23 +28,23 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
         print("async_stagger module not found! Parallel connection to FQDN aliases will be disabled! Make sure you can do:\npython3 -c 'import async_stagger'", file = sys.stderr, flush = True)
 
 
-from .version import ALIENPY_VERSION_STR
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
 from .data_structs import CertsInfo
-from .global_vars import DEBUG_TIMING, TMPDIR, PLATFORM_ID, AlienSessionInfo
+from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import create_ssl_context, renewCredFilesInfo
 from .async_tools import start_asyncio, syncify
 
-
-PYTHON_VERSION = f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}'
-USER_AGENT = f'alienpy/{ALIENPY_VERSION_STR} websockets/{wb_version} Python/{PYTHON_VERSION} {PLATFORM_ID}'
 
 #########################
 #   ASYNCIO MECHANICS
 #########################
 # Let's start the asyncio main thread
 start_asyncio()
+
+
+def wb_process_exception(exp):
+    raise exp
 
 
 @syncify

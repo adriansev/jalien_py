@@ -3,14 +3,16 @@
 import os
 import platform
 import re
+import requests
 import sys
 from socket import gethostname
 import tempfile
 from collections import deque
 from pathlib import Path
+import uuid
 
+from .version import ALIENPY_VERSION_STR
 from .data_structs import COLORS_COLL, CertsInfo
-
 
 try:
     from rich import print as rich_print
@@ -21,6 +23,25 @@ try:
 except Exception:
     print("rich module could not be imported! Make sure you can do:\npython3 -c 'from rich.pretty import pprint'", file = sys.stderr, flush = True)
     sys.exit(1)
+
+try:
+    from websockets.version import version as wb_version
+except Exception:
+    print("websockets.version module could not be imported! Make sure you can do:\npython3 -c 'from websockets.version import version as wb_version'", file = sys.stderr, flush = True)
+    sys.exit(1)
+
+
+TMPDIR = tempfile.gettempdir()
+
+
+def get_certs_names() -> CertsInfo:
+    """Provide the standard file names for used certificates"""
+    usercert = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
+    userkey = os.getenv('X509_USER_KEY', f'{USER_HOME}/.globus/userkey.pem')
+    tokencert = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
+    tokenkey = os.getenv('JALIEN_TOKEN_KEY', f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
+    return CertsInfo(usercert, userkey, tokencert, tokenkey)
+
 
 ##################################################
 #   GLOBAL POINTER TO WB CONNECTION  #############
@@ -38,22 +59,25 @@ ALIENPY_EXECUTABLE = ''
 
 COLORS = COLORS_COLL()  # definition of colors
 
-TMPDIR = tempfile.gettempdir()
 USER_HOME = Path.home().as_posix()
 
 HOSTNAME = gethostname()
 
 UNAME = platform.uname()
-PLATFORM_ID = f'{UNAME.machine}/{UNAME.system}/{UNAME.release}'
+PLATFORM_ID = f'{UNAME.system}-{UNAME.machine}/{UNAME.release}'
 
-def get_certs_names() -> CertsInfo:
-    """Provide the standard file names for used certificates"""
-    usercert = os.getenv('X509_USER_CERT', f'{USER_HOME}/.globus/usercert.pem')
-    userkey = os.getenv('X509_USER_KEY', f'{USER_HOME}/.globus/userkey.pem')
-    tokencert = os.getenv('JALIEN_TOKEN_CERT', f'{TMPDIR}/tokencert_{str(os.getuid())}.pem')
-    tokenkey = os.getenv('JALIEN_TOKEN_KEY', f'{TMPDIR}/tokenkey_{str(os.getuid())}.pem')
-    return CertsInfo(usercert, userkey, tokencert, tokenkey)
+ALIEN_JOB_ID = os.getenv('ALIEN_PROC_ID', '')
+I_AM_GRID_JOB = bool(ALIEN_JOB_ID)
 
+session_id = str(uuid.uuid1())
+
+PYTHON_VERSION = f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}'
+USER_AGENT = f'alienpy/{ALIENPY_VERSION_STR} websockets/{wb_version} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{os.getlogin()}@{HOSTNAME}'
+USER_AGENT_HTTP = f'alienpy/{ALIENPY_VERSION_STR} requests/{requests.__version__} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{os.getlogin()}@{HOSTNAME} session/{session_id}'
+
+if I_AM_GRID_JOB:
+    USER_AGENT = f'{USER_AGENT} jobid/{ALIEN_JOB_ID}'
+    USER_AGENT_HTTP = f'{USER_AGENT_HTTP} jobid/{ALIEN_JOB_ID}'
 
 CERT_NAMES = get_certs_names()
 # Have global variables for certificate file names, defaults being overridden by env vars
@@ -67,8 +91,6 @@ HAS_COLOR = HAS_TTY  # if it has tty then it supports colors
 
 # environment debug variable
 if os.getenv('ALIENPY_JSON'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
-
-I_AM_GRID_JOB = bool(os.getenv('ALIEN_PROC_ID', ''))
 
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs

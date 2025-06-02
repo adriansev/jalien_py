@@ -49,12 +49,10 @@ from websockets import WebSocketClientProtocol  # noqa: TC002
 ##   START LOGGING BEFORE ANYTHING ELSE
 from .setup_logging import DEBUG, DEBUG_FILE, print_err, print_out, setup_logging
 setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
-##   IMPORT VERSION STRINGS
-from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION_STR
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13, USER_AGENT, USER_AGENT_HTTP
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -81,8 +79,6 @@ if HAS_XROOTD:
     from .xrd_core import xrd_client, xrd_config_init, xrdfs_ping, xrdfs_q_config, xrdfs_q_stats, xrdfs_stat, xrdstat2dict, xrdstat_flags2dict
     # Global XRootD preferences
     xrd_config_init()
-
-session_id = None  # variable used to keep a session ID
 
 os.setpgrp()  # https://linux.die.net/man/2/setpgrp
 
@@ -656,7 +652,7 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
 def ccdb_runinfo(run: str = '') -> dict:
     """Get the CCDB registered information for run number"""
     if not run: return {}
-    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': '99'}
+    headers = { 'User-Agent': USER_AGENT_HTTP, 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': '99'}
     ccdb_query = requests.get(f'http://alice-ccdb.cern.ch/latest/RCT/Info/RunInformation/{run}', headers = headers, timeout = 5)
     if ccdb_query.status_code != 200: return {}
     return ccdb_query.json()
@@ -664,7 +660,7 @@ def ccdb_runinfo(run: str = '') -> dict:
 
 def DO_ccdb_query(args: list = None) -> RET:
     """Query CCDB for object data"""
-    global session_id, ALIENPY_GLOBAL_WB
+    global ALIENPY_GLOBAL_WB
     if not args: return RET(2, '', 'empty query! Use at least a "/" as argument')
 
     if is_help(args):
@@ -761,12 +757,10 @@ task name / detector name / [ / time [ / key = value]* ]
     query_str = f'{ccdb_obj_path}{"/" if ccdb_time else ""}{ccdb_time}{"/" if key_selection else ""}{key_selection}'
 
     if do_report: query_str = f'{query_str}{"?" if "?" not in query_str else ""}report=true'
-    if not session_id: session_id = str(uuid.uuid1())
-
     if DEBUG: logging.info('CCDB path: %s', query_str)
 
     # if do_mirror: limit_results = '999999'
-    headers = { 'User-Agent': f'alien.py/{ALIENPY_VERSION_STR} id/{os.getlogin()}@{HOSTNAME} session/{session_id}', 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
+    headers = { 'User-Agent': USER_AGENT_HTTP, 'Accept': 'application/json', 'Accept-encoding': 'gzip, deflate', 'Browse-Limit': str(limit_results)}
     for h_el in headers_list:
         k, _, v = h_el.partition(':')
         headers[k.strip()] = v.strip()
