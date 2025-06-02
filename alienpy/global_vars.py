@@ -68,6 +68,8 @@ HAS_COLOR = HAS_TTY  # if it has tty then it supports colors
 # environment debug variable
 if os.getenv('ALIENPY_JSON'): os.environ['ALIENPY_JSON_OUT_GLOBAL'] = '1'
 
+I_AM_GRID_JOB = bool(os.getenv('ALIEN_PROC_ID', ''))
+
 TIME_CONNECT = os.getenv('ALIENPY_TIMECONNECT', '')
 DEBUG_TIMING = os.getenv('ALIENPY_TIMING', '')  # enable really detailed timings in logs
 

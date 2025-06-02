@@ -24,7 +24,7 @@ except Exception:
 ##   GLOBALS
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
 from .data_structs import CertsInfo, RET
-from .global_vars import AlienSessionInfo, COLORS, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME
+from .global_vars import AlienSessionInfo, COLORS, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME, I_AM_GRID_JOB
 from .tools_nowb import PrintColor, path_readable
 
 
@@ -109,13 +109,14 @@ def IsValidCert(fname: str) -> bool:
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
     except FileNotFoundError:
-        logging.error('IsValidCert:: certificate file %s not found', fname)
-        base_fname = os.path.basename(fname)
-        if 'tokencert' in base_fname or 'token' in base_fname: logging.error('IsValidCert:: This is a token check, it is normal to be missing')
+        if not I_AM_GRID_JOB:
+            logging.error('IsValidCert:: certificate file %s not found', fname)
+            base_fname = os.path.basename(fname)
+            if 'tokencert' in base_fname or 'token' in base_fname: logging.error('IsValidCert:: This is a token check, it is normal to be missing')
         return False
     except Exception as e:
         logging.exception(e)
-        logging.error('IsValidCert:: Unable to open certificate file %s', fname)
+        logging.error('IsValidCert:: Unknown exception reading %s', fname)
         return False
 
     x509cert = None
@@ -141,21 +142,25 @@ def get_valid_certs() -> tuple:
 
     FOUND = path_readable(USERCERT_NAME) and path_readable(USERKEY_NAME)
     if not FOUND:
-        msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection might be not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
-        logging.error(msg)
-        return None, None
+        msg = None
+        if I_AM_GRID_JOB:
+            if DEBUG: msg = 'GRID jobs do not use usercert files, usercert missing is fine.'
+        else:
+            msg = f'User certificate files NOT FOUND or NOT accessible!!! Connection might be not be possible!!\nCheck content of {os.path.expanduser("~")}/.globus'
+        if msg: logging.error(msg)
+        return (None, None)
 
     INVALID = not IsValidCert(USERCERT_NAME)
     if INVALID:
         msg = f'Invalid/expired user certificate!! Check the content of {USERCERT_NAME}'
         logging.error(msg)
-        return None, None
+        return (None, None)
 
     if 'AlienSessionInfo' in globals():
         AlienSessionInfo['verified_cert'] = True  # This means that we already checked
         AlienSessionInfo['user_cert'] = USERCERT_NAME
         AlienSessionInfo['user_key'] = USERKEY_NAME
-    return USERCERT_NAME, USERKEY_NAME
+    return (USERCERT_NAME, USERKEY_NAME)
 
 
 def get_valid_tokens() -> tuple:
