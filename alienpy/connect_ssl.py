@@ -104,14 +104,21 @@ def get_ca_path() -> str:
 
 def IsValidCert(fname: str) -> bool:
     """Check if the certificate file (argument) is present and valid. It will return false also for less than 5min of validity"""
+    if not fname: return False
     cert_bytes = None
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
+    except FileNotFoundError:
+        logging.error('IsValidCert:: certificate file %s not found', fname)
+        base_fname = os.path.basename(fname)
+        if 'tokencert' in base_fname or 'token' in base_fname: logging.error('IsValidCert:: This is a token check, it is normal to be missing')
+        return False
     except Exception as e:
         logging.exception(e)
         logging.error('IsValidCert:: Unable to open certificate file %s', fname)
         return False
 
+    x509cert = None
     try:
         x509cert = x509.load_pem_x509_certificate(cert_bytes)
     except Exception as e:
