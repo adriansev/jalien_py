@@ -52,6 +52,8 @@ setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
 from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13, USER_AGENT_HTTP
+##   IMPORT VERSION STRINGS
+from .version import ALIENPY_VERSION_STR, ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
