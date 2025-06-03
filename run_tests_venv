@@ -5,7 +5,7 @@ mkdir -p alienpy_test_env
 python3 -m venv alienpy_test_env || { echo "error"; exit 1; }
 
 source alienpy_test_env/bin/activate
-pip install --upgrade pip
+pip install --no-cache-dir --upgrade pip setuptools[core] wheel
 
 ./install_user_dev
 
