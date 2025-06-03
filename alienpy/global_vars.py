@@ -67,6 +67,7 @@ UNAME = platform.uname()
 PLATFORM_ID = f'{UNAME.system}-{UNAME.machine}/{UNAME.release}'
 
 ALIEN_JOB_ID = os.getenv('ALIEN_PROC_ID', '')
+ALIEN_MASTERJOB_ID = os.getenv('ALIEN_MASTERJOB_ID', '')
 I_AM_GRID_JOB = bool(ALIEN_JOB_ID)
 
 session_id = str(uuid.uuid1())
@@ -78,6 +79,9 @@ USER_AGENT_HTTP = f'alienpy/{ALIENPY_VERSION_STR} requests/{requests.__version__
 if I_AM_GRID_JOB:
     USER_AGENT = f'{USER_AGENT} jobid/{ALIEN_JOB_ID}'
     USER_AGENT_HTTP = f'{USER_AGENT_HTTP} jobid/{ALIEN_JOB_ID}'
+    if ALIEN_MASTERJOB_ID:
+        USER_AGENT = f'{USER_AGENT} masterjobid/{ALIEN_MASTERJOB_ID}'
+        USER_AGENT_HTTP = f'{USER_AGENT_HTTP} masterjobid/{ALIEN_MASTERJOB_ID}'
 
 CERT_NAMES = get_certs_names()
 # Have global variables for certificate file names, defaults being overridden by env vars
