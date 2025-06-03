@@ -10,7 +10,7 @@ import logging
 import re
 from pathlib import Path
 import shlex
-import shutil
+# import shutil
 import subprocess
 import uuid
 import time

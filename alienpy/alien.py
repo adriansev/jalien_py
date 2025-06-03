@@ -25,7 +25,6 @@ import statistics
 from typing import Optional, Union
 import time
 from urllib.parse import urlparse
-import uuid
 
 # External imports
 try:
@@ -52,7 +51,7 @@ setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, HOSTNAME, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13, USER_AGENT, USER_AGENT_HTTP
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13, USER_AGENT_HTTP
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
