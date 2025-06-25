@@ -4,3 +4,4 @@ pyOpenSSL
 rich
 requests
 xrootd
+humanfriendly
