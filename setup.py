@@ -16,7 +16,7 @@ except Exception:
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-base_requirements = [ 'async-stagger >= 0.3.1', 'pyOpenSSL >= 25.0.0', 'rich', 'requests', ]
+base_requirements = [ 'async-stagger >= 0.3.1', 'pyOpenSSL >= 25.0.0', 'rich', 'requests', 'xmltodict', 'humanfriendly' ]
 local_requirements = [ 'xrootd >= 5.8.2' ]
 
 if sys.version_info[1] < 7:

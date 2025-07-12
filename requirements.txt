@@ -3,5 +3,6 @@ websockets
 pyOpenSSL
 rich
 requests
-xrootd
+xmltodict
 humanfriendly
+xrootd
