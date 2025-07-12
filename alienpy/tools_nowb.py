@@ -21,6 +21,7 @@ import shutil
 import shlex
 import sys
 import signal
+import xmltodict
 import xml.etree.ElementTree as ET  # noqa: N817
 import xml.dom.minidom as MD  # noqa: N812
 
@@ -614,29 +615,69 @@ def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Uni
         return ''
 
 
+def metaf2dict(meta_fn: str) -> dict:
+    """Extract all values from a metafile as a dict"""
+    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
+    if not os.path.isfile(meta_fn): return {}
+    xml_content = None
+    try:
+        with open(meta_fn,'r') as f: xml_content = f.read()
+    except Exception:
+        return {}
+    xml_dict = xmltodict.parse(xml_content, process_namespaces = False)
+    return xml_dict
+
+
 def get_lfn_meta(meta_fn: str) -> str:
     """Extract lfn value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
-    if not os.path.isfile(meta_fn): return ''
-    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('lfn')
-    return element_list[0].firstChild.nodeValue if element_list else ''  # nosec B318:blacklist
-
+    metaf_info = metaf2dict(meta_fn)
+    if not metaf_info: return ''
+    return metaf_info['metalink']['file']['lfn']
 
 def get_size_meta(meta_fn: str) -> int:
     """Extract size value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
-    if not os.path.isfile(meta_fn): return int(-1)
-    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('size')
-    return int(element_list[0].firstChild.nodeValue) if element_list else -1  # nosec B318:blacklist
+    metaf_info = metaf2dict(meta_fn)
+    if not metaf_info: return ''
+    return metaf_info['metalink']['file']['size']
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
     """Extract hash value from metafile"""
-    if 'meta4?' in meta_fn: meta_fn, _, _ = meta_fn.partition('?')
-    if not os.path.isfile(meta_fn): return ('', '')
-    element_list = MD.parse(meta_fn).documentElement.getElementsByTagName('hash')
-    content = element_list[0] if element_list else None  # nosec B318:blacklist
-    return (content.getAttribute('type'), content.firstChild.nodeValue) if content else (None, None)
+    metaf_info = metaf2dict(meta_fn)
+    if not metaf_info: return ''
+    return ( metaf_info['metalink']['file']['hash']['@type'], metaf_info['metalink']['file']['hash']['#text'] )
+
+
+def set_xattr(path: str, attr: str, value: str) -> bool:
+    '''Set an xattr to a local file'''
+    if not path or not attr or not value: return False
+    try:
+        os.setxattr(path, attr, value, flags = os.XATTR_CREATE, follow_symlinks = True)
+    except EEXISTS:
+        try:
+            os.setxattr(path, attr, value, flags = os.XATTR_REPLACE, follow_symlinks = True)
+        except Exception:
+            return False
+    return True
+
+
+def set_xattr_list(path: str, attr_kv_list: list) -> list:
+    '''Set a list of xattrs to a local file'''
+    if not path or not attr_kv_list: return False
+    result_list = []
+    for kv in attr_kv_list:
+        attr = f'user.{kv[0]}'.encode()
+        value = kv[1].encode()
+        try:
+            os.setxattr(path, attr, value, flags = os.XATTR_CREATE, follow_symlinks = True)
+        except Exception:
+            try:
+                # we should never reach this as any downloaded file is a new one
+                os.setxattr(path, attr, value, flags = os.XATTR_REPLACE, follow_symlinks = True)
+            except Exception:
+                result_list.append(False)
+                break  # if any error just give up
+    return result_list
 
 
 def get_url_meta(meta_fn: str) -> list:

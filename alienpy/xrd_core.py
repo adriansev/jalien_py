@@ -24,7 +24,7 @@ from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_spl
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
                          fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_url_meta, get_lfn_key, get_lfn_name, get_size_meta,
-                         is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
+                         metaf2dict, set_xattr_list, is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
 HAS_XROOTD = False
@@ -329,7 +329,7 @@ def makelist_xrdjobs(copylist_lfns: list, copylist_xrd: list) -> None:
             AlienSessionInfo['templist'].append(metafile)
             if file_in_zip and 'ALIENPY_NOXRDZIP' not in os.environ: metafile = f'{metafile}?xrdcl.unzip={file_in_zip}'
             if DEBUG: print_out(f'makelist_xrdjobs:: {metafile}')
-            copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, {}, cpfile.src))  # we do not need the tokens in job list when downloading
+            copylist_xrd.append(CopyFile(metafile, cpfile.dst, cpfile.isUpload, cpfile.token_request['results'], cpfile.src))  # we do not need the tokens in job list when downloading
 
 
 def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '', api_src: Optional[list] = None, api_dst: Optional[list] = None) -> RET:
@@ -757,7 +757,6 @@ if HAS_XROOTD:
 
             job_info = self.job_list[jobId - 1]
             xrdjob = self.xrdjob_list[jobId - 1]  # joblist initialized when starting; we use the internal index to locate the job
-            replica_dict = xrdjob.token_request
             job_status_info = f"jobID: {jobId}/{self.jobs} >>> STATUS {status}"
 
             deltaT = datetime.datetime.now().timestamp() - float(job_info['start'])
@@ -773,6 +772,7 @@ if HAS_XROOTD:
                 speed = float(job_info['bytes_total']) / deltaT
                 speed_str = f'{GetHumanReadableSize(speed)}/s'
                 job_msg = f'{job_status_info} >>> SPEED {speed_str}'
+                replica_dict = xrdjob.token_request  # common to both upload and download
 
                 if xrdjob.isUpload:  # isUpload
                     md5 = results['sourceCheckSum'].replace('md5:','',1)
@@ -784,6 +784,19 @@ if HAS_XROOTD:
                         pfn_dir = urlparse(replica_dict['url']).path
                         # xrdfile_set_attr(xrdjob.dst, [ ('xroot.alice.lfn', xrdjob.lfn), ('xroot.alice.md5', md5), ('xroot.alice.pfn', pfn_dir) ])
                 else:  # isDownload
+                    replica_info = replica_dict[0]  # for lfn information, information from 1st replica is enough
+                    guid = replica_info['guid']
+                    lfn = replica_info['lfn']
+                    size = replica_info['size']
+                    md5 = replica_info['md5']
+                    ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
+                    attr_list = []
+                    attr_list.append(('guid', guid))
+                    attr_list.append(('lfn', lfn))
+                    attr_list.append(('size', size))
+                    attr_list.append(('md5', md5))
+                    attr_list.append(('ts', ts))
+
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
                         src_file_name = os.path.basename(xrdjob.lfn)
@@ -798,6 +811,8 @@ if HAS_XROOTD:
                             else:  # the downloaded file is actually a zip file
                                 os.replace(zip_name, xrdjob.dst)
                         if os.path.isfile(zip_name): os.remove(zip_name)
+
+                    set_xattr_list(xrdjob.dst, attr_list)
 
                 if not ('quiet' in self.printout or 'silent' in self.printout): print_out(job_msg)
             else:
