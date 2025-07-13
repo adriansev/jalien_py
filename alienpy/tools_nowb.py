@@ -1006,6 +1006,10 @@ def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
     if p.is_dir(): return ALIEN_COLLECTION_EL()
     p_stat = p.stat()
     turl = f'file://{p.as_posix()}'
+
+    # update ts_r xattr to signal that the file was read and put into a collection
+    update_xattr_ts(p)
+
     return ALIEN_COLLECTION_EL(
         name = p.name, aclId = "", broken = "0", ctime = time_unix2simple(p_stat.st_ctime),
         dir = '', entryId = '', expiretime = '', gowner = p.group(), guid = '', guidtime = '', jobid = '', lfn = turl,
@@ -1013,10 +1017,10 @@ def file2xml_el(filepath: str) -> ALIEN_COLLECTION_EL:
         size = str(p_stat.st_size), turl = turl, type = 'f')
 
 
-def mk_xml_local(filepath_list: list) -> str:
+def mk_xml_local(filepath_list: list, coll_name: str = 'tempCollection') -> str:
     """Create AliEn collection XML output for local files"""
     xml_root = ET.Element('alien')
-    collection = ET.SubElement(xml_root, 'collection', attrib={'name': 'tempCollection'})
+    collection = ET.SubElement(xml_root, 'collection', attrib={'name': coll_name })
     for idx, item in enumerate(filepath_list, start = 1):
         e = ET.SubElement(collection, 'event', attrib={'name': str(idx)})
         ET.SubElement(e, 'file', attrib = file2xml_el(lfn_prefix_re.sub('', item))._asdict())
