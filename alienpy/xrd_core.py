@@ -795,7 +795,8 @@ if HAS_XROOTD:
                     attr_list.append(('lfn', lfn))
                     attr_list.append(('size', size))
                     attr_list.append(('md5', md5))
-                    attr_list.append(('ts', ts))
+                    attr_list.append(('ts_r', ts))  # timestamp for read  (when read by tool - avoid lack of access time of the filesystem)
+                    attr_list.append(('ts_w', ts))  # timestamp for write (when downloaded)
 
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):

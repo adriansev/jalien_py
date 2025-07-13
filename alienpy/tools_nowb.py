@@ -648,13 +648,16 @@ def get_hash_meta(meta_fn: str) -> tuple:
     return ( metaf_info['metalink']['file']['hash']['@type'], metaf_info['metalink']['file']['hash']['#text'] )
 
 
-def set_xattr(path: str, attr: str, value: str) -> bool:
+def set_xattr(path: str, attr_arg: str, value_arg: str) -> bool:
     '''Set an xattr to a local file'''
-    if not path or not attr or not value: return False
+    if not path or not attr_arg or not value_arg or not os.path.isfile(path): return False
+    attr = f'user.{attr_arg}'.encode()
+    value = value_arg.encode()
     try:
         os.setxattr(path, attr, value, flags = os.XATTR_CREATE, follow_symlinks = True)
-    except EEXISTS:
+    except Exception:
         try:
+            # we should never reach this as any downloaded file is a new one
             os.setxattr(path, attr, value, flags = os.XATTR_REPLACE, follow_symlinks = True)
         except Exception:
             return False
@@ -665,19 +668,22 @@ def set_xattr_list(path: str, attr_kv_list: list) -> list:
     '''Set a list of xattrs to a local file'''
     if not path or not attr_kv_list: return False
     result_list = []
-    for kv in attr_kv_list:
-        attr = f'user.{kv[0]}'.encode()
-        value = kv[1].encode()
-        try:
-            os.setxattr(path, attr, value, flags = os.XATTR_CREATE, follow_symlinks = True)
-        except Exception:
-            try:
-                # we should never reach this as any downloaded file is a new one
-                os.setxattr(path, attr, value, flags = os.XATTR_REPLACE, follow_symlinks = True)
-            except Exception:
-                result_list.append(False)
-                break  # if any error just give up
+    for k, v in attr_kv_list:
+        result = set_xattr(path, k, v)
+        result_list.append(result)
+        if not result: break  # if any error while setting xattr just stop any other processing
     return result_list
+
+
+def set_xattr_ts(path, ts_value) -> bool:
+    '''Set ts_r (timestamp read value) to ts_value'''
+    return set_xattr(path, 'ts_r', ts_value)
+
+
+def update_xattr_ts(path: str) -> bool:
+    '''Update ts_r xattr of a file'''
+    ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
+    return set_xattr_ts(path, ts)
 
 
 def get_url_meta(meta_fn: str) -> list:
