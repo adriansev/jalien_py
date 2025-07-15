@@ -590,6 +590,25 @@ def fileIsValid(filename: str, size: Union[str, int], lfn_mtime: Union[str, int]
     return RET(2, '', f'{filename} : No such file')  # ENOENT
 
 
+def check_file_vs_attr(filename: str, verbose: bool = False) -> bool:
+    '''Check file properties against the recorded xattr'''
+    if not filename: return -1  # let's encode -1 as invalid answer
+    if not os.path.isfile(filename): return -1
+    stat_info = os.stat(filename)
+    xattr_dict = get_xattr_dict(filename)
+
+    if int(stat_info.st_size) != int(xattr_dict['user.size']):
+        if verbose: print(f'{filename} --> Size mismatch')
+        return False
+
+    computed_md5 = md5(filename)
+    if xattr_dict['user.md5'] != computed_md5:
+        if verbose: print(f'{filename} --> MD5 mismatch')
+        return False
+
+    return True
+
+
 def create_metafile(meta_filename: str, lfn: str, local_filename: str, size: Union[str, int], md5in: str, replica_list: Optional[list] = None) -> str:
     """Generate a meta4 xrootd virtual redirector with the specified location and using the rest of arguments"""
     if not (meta_filename and replica_list): return ''
@@ -646,6 +665,20 @@ def get_hash_meta(meta_fn: str) -> tuple:
     metaf_info = metaf2dict(meta_fn)
     if not metaf_info: return ''
     return ( metaf_info['metalink']['file']['hash']['@type'], metaf_info['metalink']['file']['hash']['#text'] )
+
+
+def get_xattr_list(path: str) -> list:
+    '''Return a list of xattr of file'''
+    if not path or not os.path.isfile(path): return []
+    return os.listxattr(path, follow_symlinks = True)
+
+
+def get_xattr_dict(path:str) -> dict:
+    '''Return a dict of xattr and their values'''
+    xattr_dict = {}
+    for attr in get_xattr_list(path):
+        xattr_dict[attr] = os.getxattr(path, attr, follow_symlinks = True).decode('ascii')
+    return xattr_dict
 
 
 def set_xattr(path: str, attr_arg: str, value_arg: str) -> bool:
