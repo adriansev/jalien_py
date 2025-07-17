@@ -228,6 +228,10 @@ options are the following :
 -timeout <seconds>       : the job will fail if did not finish in this nr of seconds
 -retry <times>           : retry N times the copy process if failed
 -ratethreshold <bytes/s> : fail the job if the speed is lower than specified bytes/s
+
+EXPERT OPTIONS!!
+-strictspec              : request from central services ONLY the specified QOS options.
+-norecovery              : DO NOT run the recovery process if the main copy failed
 -noxrdzip                : circumvent the XRootD mechanism of zip member copy and download the archive and locally extract the intended member.
 N.B.!!! for recursive copy (all files) the same archive will be downloaded for each member.
 If there are problems with native XRootD zip mechanism, download only the zip archive and locally extract the contents

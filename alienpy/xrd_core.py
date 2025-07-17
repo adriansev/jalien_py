@@ -435,6 +435,10 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
 
     dryrun = get_arg(xrd_copy_command, '-dryrun')
 
+    # do no try to recover an failed copy
+    no_recovery = get_arg(xrd_copy_command, '-norecovery')
+    if no_recovery: print('N.B.! norecovery enabled! there will be no fallback for a failed copy!')
+
     tpc = 'none'
     if get_arg(xrd_copy_command, '-tpc'): tpc = 'first'
     if tpc != 'none': return RET(1, "", 'DO_XrootdCp:: TPC is not allowed!!')
@@ -644,65 +648,71 @@ def DO_XrootdCp(wb, xrd_copy_command: Optional[list] = None, printout: str = '',
     copy_jobs_success_nr = copy_jobs_nr - copy_jobs_failed_nr
     msg1 = f"Successful jobs (1st try): {copy_jobs_success_nr}/{copy_jobs_nr}" if not ('quiet' in printout or 'silent' in printout) else ''
 
-    copy_failed_list2 = []
-    if copy_failed_list:
-        to_recover_list_try1 = []
-        failed_lfns = {copy_job.lfn for copy_job in copy_failed_list if copy_job.isUpload}  # get which lfns had problems only for uploads
-        for lfn in failed_lfns:  # process failed transfers per lfn
-            failed_lfn_copy_jobs = [x for x in copy_failed_list if x.lfn == lfn]  # gather all failed copy jobs for one lfn
-            failed_replica_nr = len(failed_lfn_copy_jobs)
-            excluded_SEs_list = []
-            for job in failed_lfn_copy_jobs:
-                for se in job.token_request["SElist"]:
-                    excluded_SEs_list.append(f'!{se}')
-            excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
-            specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
+    copy_jobs_nr1 = copy_jobs_nr2 = 0
+    copy_jobs_success_nr1 = copy_jobs_success_nr2 = 0
+    msg2 = msg3 = ''
 
-            job_file = failed_lfn_copy_jobs[0].token_request['file']
-            job_lfn = failed_lfn_copy_jobs[0].token_request['lfn']
-            job_isWrite = failed_lfn_copy_jobs[0].isUpload
-            tokens_retry1 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
-            if not tokens_retry1 or 'answer' not in tokens_retry1: continue
-            to_recover_list_try1.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry1['answer'], job_lfn))
+    if not no_recovery:
 
-        if to_recover_list_try1:
-            xrdcopy_job_list_2 = []
-            makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
-            copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_2, my_cp_args)
-            copy_jobs_nr1 = len(xrdcopy_job_list_2)
-            copy_jobs_failed_nr1 = len(copy_failed_list2)
-            copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
-            msg2 = f"Successful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
+        copy_failed_list2 = []
+        if copy_failed_list:
+            to_recover_list_try1 = []
+            failed_lfns = {copy_job.lfn for copy_job in copy_failed_list if copy_job.isUpload}  # get which lfns had problems only for uploads
+            for lfn in failed_lfns:  # process failed transfers per lfn
+                failed_lfn_copy_jobs = [x for x in copy_failed_list if x.lfn == lfn]  # gather all failed copy jobs for one lfn
+                failed_replica_nr = len(failed_lfn_copy_jobs)
+                excluded_SEs_list = []
+                for job in failed_lfn_copy_jobs:
+                    for se in job.token_request["SElist"]:
+                        excluded_SEs_list.append(f'!{se}')
+                excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
+                specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
 
-    copy_failed_list3 = []
-    if copy_failed_list2:
-        to_recover_list_try2 = []
-        failed_lfns2 = {copy_job.lfn for copy_job in copy_failed_list2 if copy_job.isUpload}  # get which lfns had problems only for uploads
-        for lfn in failed_lfns2:  # process failed transfers per lfn
-            failed_lfn_copy_jobs2 = [x for x in copy_failed_list2 if x.lfn == lfn]  # gather all failed copy jobs for one lfn
-            failed_replica_nr = len(failed_lfn_copy_jobs2)
-            excluded_SEs_list = []
-            for job in failed_lfn_copy_jobs2:
-                for se in job.token_request["SElist"]:
-                    excluded_SEs_list.append(f'!{se}')
-            excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
-            specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
+                job_file = failed_lfn_copy_jobs[0].token_request['file']
+                job_lfn = failed_lfn_copy_jobs[0].token_request['lfn']
+                job_isWrite = failed_lfn_copy_jobs[0].isUpload
+                tokens_retry1 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
+                if not tokens_retry1 or 'answer' not in tokens_retry1: continue
+                to_recover_list_try1.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry1['answer'], job_lfn))
 
-            job_file = failed_lfn_copy_jobs2[0].token_request['file']
-            job_lfn = failed_lfn_copy_jobs2[0].token_request['lfn']
-            job_isWrite = failed_lfn_copy_jobs2[0].isUpload
-            tokens_retry2 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
-            if not tokens_retry2 or 'answer' not in tokens_retry2: continue
-            to_recover_list_try2.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry2['answer'], job_lfn))
+            if to_recover_list_try1:
+                xrdcopy_job_list_2 = []
+                makelist_xrdjobs(to_recover_list_try1, xrdcopy_job_list_2)
+                copy_failed_list2 = XrdCopy(wb, xrdcopy_job_list_2, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_2, my_cp_args)
+                copy_jobs_nr1 = len(xrdcopy_job_list_2)
+                copy_jobs_failed_nr1 = len(copy_failed_list2)
+                copy_jobs_success_nr1 = copy_jobs_nr1 - copy_jobs_failed_nr1
+                msg2 = f"Successful jobs (2nd try): {copy_jobs_success_nr1}/{copy_jobs_nr1}" if not ('quiet' in printout or 'silent' in printout) else ''
 
-        if to_recover_list_try2:
-            xrdcopy_job_list_3 = []
-            makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
-            copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_3, my_cp_args)
-            copy_jobs_nr2 = len(xrdcopy_job_list_3)
-            copy_jobs_failed_nr2 = len(copy_failed_list3)
-            copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
-            msg3 = f'Successful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}' if not ('quiet' in printout or 'silent' in printout) else ''
+        copy_failed_list3 = []
+        if copy_failed_list2:
+            to_recover_list_try2 = []
+            failed_lfns2 = {copy_job.lfn for copy_job in copy_failed_list2 if copy_job.isUpload}  # get which lfns had problems only for uploads
+            for lfn in failed_lfns2:  # process failed transfers per lfn
+                failed_lfn_copy_jobs2 = [x for x in copy_failed_list2 if x.lfn == lfn]  # gather all failed copy jobs for one lfn
+                failed_replica_nr = len(failed_lfn_copy_jobs2)
+                excluded_SEs_list = []
+                for job in failed_lfn_copy_jobs2:
+                    for se in job.token_request["SElist"]:
+                        excluded_SEs_list.append(f'!{se}')
+                excluded_SEs = ','.join(set(excluded_SEs_list))  # exclude already used SEs
+                specs_list = f'disk:{failed_replica_nr},{excluded_SEs}'  # request N replicas (in place of failed ones), and exclude anything used
+
+                job_file = failed_lfn_copy_jobs2[0].token_request['file']
+                job_lfn = failed_lfn_copy_jobs2[0].token_request['lfn']
+                job_isWrite = failed_lfn_copy_jobs2[0].isUpload
+                tokens_retry2 = lfn2fileTokens(wb, lfn2file(job_lfn, job_file), specs_list, job_isWrite, strictspec, httpurl)
+                if not tokens_retry2 or 'answer' not in tokens_retry2: continue
+                to_recover_list_try2.append(CopyFile(job_file, job_lfn, job_isWrite, tokens_retry2['answer'], job_lfn))
+
+            if to_recover_list_try2:
+                xrdcopy_job_list_3 = []
+                makelist_xrdjobs(to_recover_list_try2, xrdcopy_job_list_3)
+                copy_failed_list3 = XrdCopy(wb, xrdcopy_job_list_3, my_cp_args, printout)  # if not _use_system_xrdcp else XrdCopy_xrdcp(xrdcopy_job_list_3, my_cp_args)
+                copy_jobs_nr2 = len(xrdcopy_job_list_3)
+                copy_jobs_failed_nr2 = len(copy_failed_list3)
+                copy_jobs_success_nr2 = copy_jobs_nr2 - copy_jobs_failed_nr2
+                msg3 = f'Successful jobs (3rd try): {copy_jobs_success_nr2}/{copy_jobs_nr2}' if not ('quiet' in printout or 'silent' in printout) else ''
 
     # copy_jobs_failed_total = copy_jobs_failed_nr + copy_jobs_failed_nr1 + copy_jobs_failed_nr2
     copy_jobs_nr_total = copy_jobs_nr + copy_jobs_nr1 + copy_jobs_nr2
@@ -780,8 +790,8 @@ if HAS_XROOTD:
                                                             lfn = xrdjob.lfn, perm = '644', expire = '0',
                                                             pfn = replica_dict['url'], se = replica_dict['se'], guid = replica_dict['guid'], md5 = md5))
                     # Add xattrs to remote file
-                    if 'ALIENPY_EXPERIMENTAL_XATTRS' in os.environ:
-                        pfn_dir = urlparse(replica_dict['url']).path
+                    # if 'ALIENPY_EXPERIMENTAL_XATTRS' in os.environ:
+                        # pfn_dir = urlparse(replica_dict['url']).path
                         # xrdfile_set_attr(xrdjob.dst, [ ('xroot.alice.lfn', xrdjob.lfn), ('xroot.alice.md5', md5), ('xroot.alice.pfn', pfn_dir) ])
                 else:  # isDownload
                     replica_info = replica_dict[0]  # for lfn information, information from 1st replica is enough
@@ -888,147 +898,6 @@ def XrdCopy(wb, job_list: list, xrd_cp_args: XrdCpArgs, printout: str = '') -> l
         ret_list = commitFileList(wb, handler.successful_writes)
         for ret in ret_list: retf_print(ret, 'noout err')
     return handler.copy_failed_list  # lets see what failed and try to recover
-
-
-def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> Optional[CopyFile]:
-    """xrdcp standalone copy executor"""
-    if not HAS_XROOTD:
-        print_err("XRootD not found")
-        return None
-
-    # MANDATORY DEFAULTS, always used
-    makedir = bool(True)  # create the parent directories when creating a file
-    posc = bool(True)  # persist on successful close; Files are automatically deleted should they not be successfully closed.
-    sources = int(1)  # max number of download sources; we (ALICE) do not rely on parallel multi-source downloads
-
-    # passed arguments
-    overwrite = xrd_cp_args.overwrite
-    batch = xrd_cp_args.batch
-    tpc = xrd_cp_args.tpc
-    timeout = xrd_cp_args.timeout
-    hashtype = xrd_cp_args.hashtype
-    rate = xrd_cp_args.rate
-
-    src = copyjob.src
-    dst = copyjob.dst
-    lfn = copyjob.lfn
-    isUpload = copyjob.isUpload
-    token_data = copyjob.token_request
-
-    cksum_mode = 'none'
-    cksum_type = cksum_preset = ''
-    if isUpload:
-        cksum_mode = 'source'
-        cksum_type = 'md5'
-        cksum_preset = token_data['md5']
-    else:  # for downloads we already have the md5 value, lets use that
-        cksum_mode = 'target'
-        cksum_type, cksum_preset = get_hash_meta(src)
-        # If the remote file had no hash registered
-    if not cksum_type or not cksum_preset:
-        logging.error('COPY:: MD5 missing for %s', lfn)
-
-    # let's customize the environment of xrdcp command
-    xrdcp_env = os.environ.copy()
-
-    # Customize environment based on size and other information
-    # XRD_CPPARALLELCHUNKS, XRD_CPCHUNKSIZE, XRD_STREAMTIMEOUT, timeout
-
-    xrdcp_cmdline = ['xrdcp', '-f', '-N', '-P']
-
-    # -C | --cksum type[:value|print|source]
-    # obtains the checksum of type (i.e. adler32, crc32, md5 or zcrc32) from the source, computes the checksum at the destination, and veri‐
-    # fies that they are the same. If auto is chosen as the checksum type, xrdcp will try to automatically infer the right checksum type based
-    # on source/destination configuration, source file type (metalink, ZIP), and available checksum plug-ins. If a value is specified, it is
-    # used as the source checksum.  When print is specified, the checksum at the destination is printed but is not verified.
-    # --rm-bad-cksum
-    # Remove the target file if checksum verification failed (enables also POSC semantics).
-    if not isUpload:  # is download
-        xrdcp_cmdline.extend(['--cksum', f'{cksum_type}:{cksum_preset}', '--rm-bad-cksum'])
-
-    # --xrate-threshold rate
-    # If the transfer rate drops below given threshold force the client to use different source or if no more sources are available fail the transfer.
-    if rate:
-        xrdcp_cmdline.extend(['--xrate-threshold', rate])
-
-    # PRINTING OF beginning ! here or in manager .. there is a need of index/total information
-
-    if isUpload:
-        xrdcp_cmdline.extend([src, dst])
-        # status = subprocess.run(xrdcp_cmdline, encoding = 'utf-8', errors = 'replace', timeout = timeout, capture_output = True, env = xrdcp_env)  # pylint: disable=subprocess-run-check  # nosec
-        # do commit
-        # do end print
-        # return copyjob if fail else None
-
-    # process download
-    list_of_replicas = get_url_meta(src)
-    for replica in list_of_replicas:
-        new_xrdcp_cmdline = xrdcp_cmdline.copy()
-        new_xrdcp_cmdline.extend([replica, dst])
-        # status = subprocess.run(new_xrdcp_cmdline, encoding = 'utf-8', errors = 'replace', timeout = timeout, capture_output = True, env = xrdcp_env)  # pylint: disable=subprocess-run-check  # nosec
-        # if success:
-        #     do end print
-        #     break
-
-
-
-# DOWNLOAD
-# CopyFile(
-#        src='/home/adrian/tmp/f3c361b6-8677-5585-acfb-56ced24e36d5.meta4',
-#        dst='/home/adrian/work-ALICE/jalien_py/test_area/test.sh~',
-#        isUpload=False,
-#        token_request={},
-#        lfn='/alice/cern.ch/user/a/asevcenc/test.sh~'
-#     )
-
-# UPLOAD
-# CopyFile(
-#        src='/home/adrian/work-ALICE/jalien_py/test_area/test2.sh',
-#        dst='root://neos.nipne.ro:1094//02/10490/4d798722-9786-11ef-8ad0-8030e01e6668?xrd.wantprot=unix&authz=-----BEGIN SEALED CIPHER-----\nqgdhc9kDcjjKsxudKLnwvYg6NyJNAQqLkL-EREsd7dgunQcPe8LO7hxq3zzqMlY94Ur+xpv3iNQJ\nDyQBrVNUmvC3x5D0n+oSvR6XMEr5va1QkdwK8nsyhB6KiAonlFDSvXfPPSNI3sq2VNeORmE5LV9g\nl4M7B3R0S+yC4X-hT9E=\n-----END SEALED CIPHER-----\n-----BEGIN SEALED ENVELOPE-----\nAAAAgJdVSgHfLO9Pwrl4YVwKt5AaK1QvK3n0D5X+JRnTYXxldLuQDV7WdqrS3noP8FCBqNl6DCnF\nsyCrBJdXPPBnNKuWH8sOdCHLzR5G27KhVcMBfvajK+8sCM8JGoXjgqEjDC0TVMe66ufAe7mwVnBo\nfQYcau-2aLZFUWvVOWjsgwHENeloV-OtJzhscaBoZTe3GJggEEl9A3gd6q3IlLkYFaTtDMRSey-k\noknKl1JdK1CN9UDi+Nw4nuj6C4djgomqLJR87m0XWDTIc-0OSbrNMWblQlI0BteNVrJDuJLKfogu\n-lM95gJ7-MUxTI21FgciF6cgiUgn2ZZdGQwSWUGIFmZ+AMvhUUcibN1Rtj7sDR9GYU9x-3wdfFQV\nD0uggZd656ctGgv0Z8OS86xx3dXdwC4AKdfOrwSBKqgN7pUAe701c+Aawl8637kAixK0klkXPpYk\nYjfCHgKtcrjIHwRzjKu3kAAFKtbvjCuabQfBelmVyu75onhg8FOWqEhEUgeTO1fKlRL3yxgqGHZy\nvWrBT7+Kr+nRy5Jv52pecgNx4oCsfusWv1M335buizhASbN99IUJv6IXvdTsk5IINkmia0jLq7-X\nm5OWsZ0hw+bObVl6+QYW0cSBrYjq8qBN608KRX752RxxXWwa9UjtERBcktS320B60n5cTtPwsrCz\nuKWD+o1eIBuQOO7Mv6EZQB6Tk5rhSwGZhzI1xuy0ncsiwcDktOg3Cc+tjRB8mu9dB6iuc7wRK34w\n18rDMMbmoiXbeabidTWTEQoFgCyTfZ-1ef1JMSwyLmyV-YxgqT3oIO1rOBSZgMutd+UAu8Ib6AN3\nKS75++IRDJy-nvqQn9H1NvqtglN7euZo9k5maUVWuJ0bc-JXtmxFP5Bxnthe4smMJg==\n-----END SEALED ENVELOPE-----\n&scitag.flow=335&eos.app=cliUpload',
-#        isUpload=True,
-#        token_request={
-#               'envelope': '-----BEGIN SEALED CIPHER-----\nqgdhc9kDcjjKsxudKLnwvYg6NyJNAQqLkL-EREsd7dgunQcPe8LO7hxq3zzqMlY94Ur+xpv3iNQJ\nDyQBrVNUmvC3x5D0n+oSvR6XMEr5va1QkdwK8nsyhB6KiAonlFDSvXfPPSNI3sq2VNeORmE5LV9g\nl4M7B3R0S+yC4X-hT9E=\n-----END SEALED CIPHER-----\n-----BEGIN SEALED ENVELOPE-----\nAAAAgJdVSgHfLO9Pwrl4YVwKt5AaK1QvK3n0D5X+JRnTYXxldLuQDV7WdqrS3noP8FCBqNl6DCnF\nsyCrBJdXPPBnNKuWH8sOdCHLzR5G27KhVcMBfvajK+8sCM8JGoXjgqEjDC0TVMe66ufAe7mwVnBo\nfQYcau-2aLZFUWvVOWjsgwHENeloV-OtJzhscaBoZTe3GJggEEl9A3gd6q3IlLkYFaTtDMRSey-k\noknKl1JdK1CN9UDi+Nw4nuj6C4djgomqLJR87m0XWDTIc-0OSbrNMWblQlI0BteNVrJDuJLKfogu\n-lM95gJ7-MUxTI21FgciF6cgiUgn2ZZdGQwSWUGIFmZ+AMvhUUcibN1Rtj7sDR9GYU9x-3wdfFQV\nD0uggZd656ctGgv0Z8OS86xx3dXdwC4AKdfOrwSBKqgN7pUAe701c+Aawl8637kAixK0klkXPpYk\nYjfCHgKtcrjIHwRzjKu3kAAFKtbvjCuabQfBelmVyu75onhg8FOWqEhEUgeTO1fKlRL3yxgqGHZy\nvWrBT7+Kr+nRy5Jv52pecgNx4oCsfusWv1M335buizhASbN99IUJv6IXvdTsk5IINkmia0jLq7-X\nm5OWsZ0hw+bObVl6+QYW0cSBrYjq8qBN608KRX752RxxXWwa9UjtERBcktS320B60n5cTtPwsrCz\nuKWD+o1eIBuQOO7Mv6EZQB6Tk5rhSwGZhzI1xuy0ncsiwcDktOg3Cc+tjRB8mu9dB6iuc7wRK34w\n18rDMMbmoiXbeabidTWTEQoFgCyTfZ-1ef1JMSwyLmyV-YxgqT3oIO1rOBSZgMutd+UAu8Ib6AN3\nKS75++IRDJy-nvqQn9H1NvqtglN7euZo9k5maUVWuJ0bc-JXtmxFP5Bxnthe4smMJg==\n-----END SEALED ENVELOPE-----\n&scitag.flow=335&eos.app=cliUpload',
-#               'url': 'root://neos.nipne.ro:1094//02/10490/4d798722-9786-11ef-8ad0-8030e01e6668',
-#               'guid': '4d798722-9786-11ef-8ad0-8030e01e6668',
-#               'se': 'ALICE::NIHAM::EOS',
-#               'tags': '[disk, legoinput]',
-#               'nSEs': '4',
-#               'md5': '72c23cf3ecdade4ffb79f66d725d14b4',
-#               'size': '259',
-#               'qos_specs': [],
-#               'SElist_specs': [],
-#               'SElist': ['ALICE::UPB::EOS', 'ALICE::BRATISLAVA::SE', 'ALICE::ISS::EOS', 'ALICE::NIHAM::EOS'],
-#               'file': '/home/adrian/work-ALICE/jalien_py/test_area/test2.sh',
-#               'lfn': '/alice/cern.ch/user/a/asevcenc/test2.sh'
-#                },
-#        lfn='/alice/cern.ch/user/a/asevcenc/test2.sh'
-#     )
-
-
-# keep it commented until is needed - dead code for now
-# def XrdCopy_xrdcp(job_list: list, xrd_cp_args: XrdCpArgs) -> list:  # , printout: str = ''
-#     """XRootD copy command :: the actual XRootD copy process"""
-#     if not HAS_XROOTD:
-#         print_err("XRootD not found or lower version than 5.3.3")
-#         return []
-#     if not xrd_cp_args:
-#         print_err("cp arguments are not set, XrdCpArgs tuple missing")
-#         return []
-#     # overwrite = xrd_cp_args.overwrite
-#     # batch = xrd_cp_args.batch
-#     # makedir = xrd_cp_args.makedir
-#
-#     # ctx = mp.get_context('forkserver')
-#     # q = ctx.JoinableQueue()
-#     # p = ctx.Process(target=_xrdcp_copyjob, args=(q,))
-#     # p.start()
-#     # print(q.get())
-#     # p.join()
-#     for copy_job in job_list:
-#         if DEBUG: logging.debug('\nadd copy job with\nsrc: %s\ndst: %s\n', copy_job.src, copy_job.dst)
-#         # xrdcp_cmd = f' {copy_job.src} {copy_job.dst}'
-#         if DEBUG: print_out(copy_job)
-#     return []
 
 
 # no typing for argument as to not break if xrootd not present
