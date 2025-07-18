@@ -72,9 +72,15 @@ I_AM_GRID_JOB = bool(ALIEN_JOB_ID)
 
 session_id = str(uuid.uuid1())
 
+USER = None
+try:
+    USER = os.getlogin()
+except Exception:
+    USER = 'unknown'
+
 PYTHON_VERSION = f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}'
-USER_AGENT = f'alienpy/{ALIENPY_VERSION_STR} websockets/{wb_version} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{os.getlogin()}@{HOSTNAME}'
-USER_AGENT_HTTP = f'alienpy/{ALIENPY_VERSION_STR} requests/{requests.__version__} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{os.getlogin()}@{HOSTNAME} session/{session_id}'
+USER_AGENT = f'alienpy/{ALIENPY_VERSION_STR} websockets/{wb_version} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{USER}@{HOSTNAME}'
+USER_AGENT_HTTP = f'alienpy/{ALIENPY_VERSION_STR} requests/{requests.__version__} Python/{PYTHON_VERSION} platform/{PLATFORM_ID} id/{USER}@{HOSTNAME} session/{session_id}'
 
 if I_AM_GRID_JOB:
     USER_AGENT = f'{USER_AGENT} jobid/{ALIEN_JOB_ID}'
