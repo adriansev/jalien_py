@@ -592,8 +592,7 @@ def fileIsValid(filename: str, size: Union[str, int], lfn_mtime: Union[str, int]
 
 def check_file_vs_attr(filename: str, verbose: bool = False) -> bool:
     '''Check file properties against the recorded xattr'''
-    if not filename: return -1  # let's encode -1 as invalid answer
-    if not os.path.isfile(filename): return -1
+    if not filename or not os.path.isfile(filename): return False
     stat_info = os.stat(filename)
     xattr_dict = get_xattr_dict(filename)
 

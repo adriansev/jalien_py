@@ -138,5 +138,20 @@ def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str
 #     return []
 
 
+# def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
+#     """For a given URI (token included) set the xattrs"""
+#     if not HAS_XROOTD or not uri or not xattr_list: return None
+#     mode = OpenFlags.READ | OpenFlags.UPDATE | OpenFlags.WRITE
+#     with xrd_client.File() as f:
+#         status, response = f.open(uri, mode)
+#         print(f'{status}\n{response}')
+#
+#         status, list_of_statuses = f.set_xattr(attrs = xattr_list)
+#         print(status)
+#         for s in list_of_statuses:
+#             print(s[0])
+#             print(s[1])
+
+
 
 

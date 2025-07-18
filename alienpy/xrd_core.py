@@ -24,7 +24,7 @@ from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_spl
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
                          fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_url_meta, get_lfn_key, get_lfn_name, get_size_meta,
-                         metaf2dict, set_xattr_list, is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
+                         metaf2dict, set_xattr_list, get_xattr_dict, set_xattr, is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
 HAS_XROOTD = False
@@ -132,20 +132,6 @@ except Exception:
 
 # reset XRootD preferences to cp oriented settings - 2nd time for setting also the xrd module defaults
 xrd_config_init()
-
-# def xrdfile_set_attr(uri: str = '', xattr_list: Optional[list] = None):
-#     """For a given URI (token included) set the xattrs"""
-#     if not HAS_XROOTD or not uri or not xattr_list: return None
-#     mode = OpenFlags.READ | OpenFlags.UPDATE | OpenFlags.WRITE
-#     with xrd_client.File() as f:
-#         status, response = f.open(uri, mode)
-#         print(f'{status}\n{response}')
-#
-#         status, list_of_statuses = f.set_xattr(attrs = xattr_list)
-#         print(status)
-#         for s in list_of_statuses:
-#             print(s[0])
-#             print(s[1])
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
@@ -1108,6 +1094,32 @@ def upload_tmp(wb, temp_file_name: str, upload_specs: str = '', dated_backup: bo
     ret_obj = SendMsg(wb, 'mv', [lfn_backup, lfn])  # if the upload failed let's move back the backup to original lfn name'
     retf_print(ret_obj, 'debug')
     return ''
+
+
+def sync_attr_from_alien(wb, lfn: str, filename: str) -> bool:
+    '''Sync the lfn attributs to xattr of file if md5 is the same'''
+
+    if not lfn or not filename or not os.path.isfile(filename): return False
+
+    on_disk_md5 = md5(filename)
+
+    alien_stat_query = SendMsg(wb, 'stat', [ lfn ], opts = 'nomsg')
+    alien_stat = alien_stat_query.ansdict['results'][0]
+
+    if on_disk_md5 != alien_stat['md5'] : return False
+
+    attr_list_2update = []
+    attr_list_2update.append(('md5', alien_stat['md5']))
+    attr_list_2update.append(('guid', alien_stat['guid']))
+    attr_list_2update.append(('lfn', alien_stat['lfn']))
+    attr_list_2update.append(('size', alien_stat['size']))
+
+    ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
+    attr_list_2update.append(('ts_r', ts))
+    attr_list_2update.append(('ts_w', ts))
+
+    res_list = set_xattr_list(filename, attr_list_2update)
+    return all(res_list)
 
 
 if __name__ == '__main__':
