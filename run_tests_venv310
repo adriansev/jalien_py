@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+VENV_DIR="alienpy_test_env310"
+
+rm -rf "${VENV_DIR}"
+mkdir -p "${VENV_DIR}"
+python3.10 -m venv "${VENV_DIR}" || { echo "error"; exit 1; }
+
+source "${VENV_DIR}/bin/activate"
+pip install --no-cache-dir --upgrade pip
+pip install --no-cache-dir --upgrade setuptools[core] wheel distutils
+
+./install_user_dev
+
+cd tests
+./run_tests
+
