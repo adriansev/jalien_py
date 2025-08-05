@@ -1,3 +1,36 @@
+##############################################################################################
+# def CertVerify_v2(fname: str) -> RET:
+#     """Print certificate information (subject, issuer, notbefore, notafter)"""
+#     cert_bytes = None
+#     try:
+#         with open(fname, "rb") as f: cert_bytes = f.read()
+#     except Exception:
+#         return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
+#
+#     try:
+#         x509cert = x509.load_pem_x509_certificate(cert_bytes)
+#     except Exception:
+#         logging.debug(traceback.format_exc())
+#         return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
+#
+#     ca_pem_list = glob.glob(f'{CA_PATH}/*.pem')
+#     ca_list_bytes = bytearray()
+#     for ca in ca_pem_list:
+#         try:
+#             with open(ca, "rb") as f: ca_list_bytes += f.read()
+#         except Exception:
+#             pass
+#     ca_list_x509 = x509.load_pem_x509_certificates(bytes(ca_list_bytes))
+#
+#     ca_store = x509.verification.Store(ca_list_x509)
+#     builder = x509.verification.PolicyBuilder().store(ca_store).time(datetime.datetime.now())
+#     verifier = builder.build_client_verifier()
+#     verified_client = verifier.verify(x509cert, ca_list_x509)
+#
+#     from rich.pretty import pprint
+#     pprint(verified_client)
+##############################################################################################
+
 
 def _xrdcp_executor(wb, copyjob: CopyFile, xrd_cp_args: XrdCpArgs, printout: str = '') -> Optional[CopyFile]:
     """xrdcp standalone copy executor"""

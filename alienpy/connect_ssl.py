@@ -112,18 +112,24 @@ def IsValidCert(fname: str) -> bool:
         if not I_AM_GRID_JOB:
             logging.error('IsValidCert:: certificate file %s not found', fname)
             base_fname = os.path.basename(fname)
-            if 'tokencert' in base_fname or 'token' in base_fname: logging.error('IsValidCert:: This is a token check, it is normal to be missing')
+            if 'tokencert' in base_fname or 'token' in base_fname:
+                logging.error('IsValidCert:: This is a token check, it is normal to be missing')
         return False
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         logging.error('IsValidCert:: Unknown exception reading %s', fname)
+        return False
+
+    if cert_bytes is None:
+        msg = f'IsValidCert:: {fname} read but empty!'
+        logging.error(msg)
         return False
 
     x509cert = None
     try:
         x509cert = x509.load_pem_x509_certificate(cert_bytes)
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         logging.error('IsValidCert:: Unable to load certificate %s', fname)
         return False
 
@@ -226,12 +232,12 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     else:
         capath = CA_PATH
 
-    if DEBUG: logging.debug('SSL context:: Loading verify location:\n%s', CA_PATH)
+    logging.info('SSL context:: Loading verify location:\n%s', CA_PATH)
     try:
         ctx.load_verify_locations(cafile = cafile, capath = capath)
     except Exception as e:
-        logging.exception('Could not load verify location!!!\n')
-        logging.exception(e)
+        logging.error(f'Could not load verify location {CA_PATH}!!!\n')
+        if DEBUG: logging.exception(e)
         print_err(f'Verify location could not be loaded!!! check content of >>> {CA_PATH} <<< and the log')
         return None  # EIO /* I/O error */
 
@@ -239,12 +245,12 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     try:
         ctx.load_cert_chain(certfile = cert, keyfile = key)
     except Exception as e:
-        logging.exception('Could not load certificates!!!\n')
-        logging.exception(e)
+        logging.error(f'Could not load cert/key pair:\nCert: {cert}\nKey: {key}\n')
+        if DEBUG: logging.exception(e)
         print_err(f'Error loading certificate pair!! Check the content of {DEBUG_FILE}')
         return None  # EIO /* I/O error */
 
-    if DEBUG: logging.debug('\n... SSL context done.')
+    logging.info('\n... SSL context done.')
     return ctx
 
 
@@ -254,14 +260,19 @@ def CertInfo(fname: str) -> RET:
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
     except Exception as e:
-        logging.exception(e)
-        return RET(2, '', f'File >>>{fname}<<< not found')  # ENOENT /* No such file or directory */
+        if DEBUG: logging.exception(e)
+        return RET(2, '', f'File >>> {fname} <<< not found/accessible!')  # ENOENT /* No such file or directory */
+
+    if cert_bytes is None:
+        msg = f'CertInfo:: {fname} read but empty!'
+        logging.error(msg)
+        return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
     try:
         x509cert = x509.load_pem_x509_certificate(cert_bytes)
     except Exception as e:
-        logging.exception(e)
-        return RET(5, '', f'Could not load certificate >>>{fname}<<<')  # EIO /* I/O error */
+        if DEBUG: logging.exception(e)
+        return RET(5, '', f'CertInfo::load_pem_x509_certificate:: error loading certificate >>> {fname} <<<')  # EIO /* I/O error */
 
     utc_time_notafter = x509cert.not_valid_after_utc.strftime("%Y-%m-%d %H:%M:%S")
     utc_time_notbefore = x509cert.not_valid_before_utc.strftime("%Y-%m-%d %H:%M:%S")
@@ -278,53 +289,25 @@ def CertInfo(fname: str) -> RET:
     return RET(0, info)
 
 
-##############################################################################################
-# def CertVerify_v2(fname: str) -> RET:
-#     """Print certificate information (subject, issuer, notbefore, notafter)"""
-#     cert_bytes = None
-#     try:
-#         with open(fname, "rb") as f: cert_bytes = f.read()
-#     except Exception:
-#         return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
-# 
-#     try:
-#         x509cert = x509.load_pem_x509_certificate(cert_bytes)
-#     except Exception:
-#         logging.debug(traceback.format_exc())
-#         return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
-# 
-#     ca_pem_list = glob.glob(f'{CA_PATH}/*.pem')
-#     ca_list_bytes = bytearray()
-#     for ca in ca_pem_list:
-#         try:
-#             with open(ca, "rb") as f: ca_list_bytes += f.read()
-#         except Exception:
-#             pass
-#     ca_list_x509 = x509.load_pem_x509_certificates(bytes(ca_list_bytes))
-# 
-#     ca_store = x509.verification.Store(ca_list_x509)
-#     builder = x509.verification.PolicyBuilder().store(ca_store).time(datetime.datetime.now())
-#     verifier = builder.build_client_verifier()
-#     verified_client = verifier.verify(x509cert, ca_list_x509)
-# 
-#     from rich.pretty import pprint
-#     pprint(verified_client)
-##############################################################################################
-
-
 def CertVerify(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
+    cert_bytes = None
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
     except Exception as e:
-        logging.exception(e)
-        return RET(2, "", f"File >>>{fname}<<< not found")  # ENOENT /* No such file or directory */
+        if DEBUG: logging.exception(e)
+        return RET(2, "", f"File >>> {fname} <<< not found/accesible")  # ENOENT /* No such file or directory */
+
+    if cert_bytes is None:
+        msg = f'CertVerify:: {fname} read but empty!'
+        logging.error(msg)
+        return RET(2, '', msg)  # ENOENT /* No such file or directory */
 
     try:
         x509cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception as e:
-        logging.exception(e)
-        return RET(5, "", f"Could not load certificate >>>{fname}<<<")  # EIO /* I/O error */
+        if DEBUG: logging.exception(e)
+        return RET(5, "", f"Could not load certificate >>> {fname} <<<")  # EIO /* I/O error */
 
     x509store = OpenSSL.crypto.X509Store()
     x509store.set_flags(OpenSSL.crypto.X509StoreFlags.ALLOW_PROXY_CERTS)
@@ -338,15 +321,15 @@ def CertVerify(fname: str) -> RET:
     try:
         x509store.load_locations(cafile = cafile, capath = capath)
     except Exception as e:
-        logging.exception(e)
-        return RET(5, "", f"Could not load verify location >>>{CA_PATH}<<<")  # EIO /* I/O error */
+        if DEBUG: logging.exception(e)
+        return RET(5, '', f'Could not load verify location >>> {CA_PATH} <<<')  # EIO /* I/O error */
 
     store_ctx = OpenSSL.crypto.X509StoreContext(x509store, x509cert)
     try:
         store_ctx.verify_certificate()
         return RET(0, f'SSL Verification {PrintColor(COLORS.BIGreen)}successful{PrintColor(COLORS.ColorReset)} for {fname}')
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         return RET(1, '', f'SSL Verification {PrintColor(COLORS.BIRed)}failed{PrintColor(COLORS.ColorReset)} for {fname}')
 
 
@@ -357,7 +340,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         with open(cert_fname, "rb") as f: cert_bytes = f.read()
         x509cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_bytes)
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         return RET(5, "", f'Could not load certificate >>>{cert_fname}<<<')  # EIO /* I/O error */
 
     key_bytes = None
@@ -365,7 +348,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         with open(key_fname, "rb") as g: key_bytes = g.read()
         x509key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_bytes)
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         return RET(5, "", f'Could not load key >>>{key_fname}<<<')  # EIO /* I/O error */
 
     ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)  # skipcq: PTC-W6001
@@ -382,16 +365,16 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
     try:
         ctx.load_verify_locations(cafile = cafile, capath = capath)
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         return RET(5, "", f"Could not load verify location >>>{CA_PATH}<<<")  # EIO /* I/O error */
 
     try:
         ctx.check_privatekey()
-        return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}')
+        return RET(0, f'Cert/key {PrintColor(COLORS.BIGreen)}match{PrintColor(COLORS.ColorReset)}!')
     except OpenSSL.SSL.Error:
-        return RET(42, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}')
+        return RET(42, '', f'Cert/key {PrintColor(COLORS.BIRed)}DO NOT match{PrintColor(COLORS.ColorReset)}!')
     except Exception as e:
-        logging.exception(e)
+        if DEBUG: logging.exception(e)
         return RET(1, '', 'Cert/key match :: unknown error')
 
 
