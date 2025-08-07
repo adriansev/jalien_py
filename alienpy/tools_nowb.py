@@ -54,7 +54,7 @@ def signal_handler(sig, frame) -> None:  # pylint: disable=unused-argument
 
     # Send signal to all processes in the group
     os.killpg(0, sig)
-    os._exit(int(AlienSessionInfo['exitcode']))
+    sys.exit(int(AlienSessionInfo['exitcode']))
 
 
 def is_float(arg: Union[str, float, None]) -> bool:
