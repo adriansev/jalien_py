@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VENV_DIR="alienpy_test_env_pip"
+VENV_DIR="alienpy_test_env_pip_local"
 
 rm -rf "${VENV_DIR}"
 mkdir -p "${VENV_DIR}"
