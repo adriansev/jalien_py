@@ -37,68 +37,75 @@ def is_x509dir_valid(x509dir: str = '') -> bool:
 
 def get_ca_path() -> str:
     """Return either the CA path or file, priority given to X509_CERT_FILE and X509_CERT_DIR"""
-    system_ca_path = '/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
-    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
+
+    # Fast path, when some local CAs are explicitly requested - ALIENPY_USE_LOCAL_CAS case
     local_ca_certs_dir = f'{USER_HOME}/.globus/certificates'
-
-    x509file = os.getenv('X509_CERT_FILE', default = '')
-    x509dir = os.getenv('X509_CERT_DIR', default = '')
-
     use_local_cas_dir = os.getenv('ALIENPY_USE_LOCAL_CAS', default = '')
-    capath_default = None
 
     if use_local_cas_dir:  # explicit requested by env var, so top priority
+        # if ALIENPY_USE_LOCAL_CAS is set to a directory that is present we can assume that is the CAs location
+        if os.path.isdir(use_local_cas_dir):
+            local_ca_certs_dir = use_local_cas_dir
+
         # This is location of ALIEN-CAS repository download
         if is_x509dir_valid(local_ca_certs_dir) and os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
-            capath_default = local_ca_certs_dir
-            os.environ['X509_CERT_DIR'] = capath_default
-            logging.debug('CApath::LOCAL_CAS:: enabled and set to ~/.globus/certificates')
+            logging.debug(f'CApath::LOCAL_CAS:: requested and set to {local_ca_certs_dir}')
+            os.environ['X509_CERT_DIR'] = local_ca_certs_dir
+            return local_ca_certs_dir
         else:
             msg = f'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found in {local_ca_certs_dir}!!!\nrun: "alien.py getCAcerts" first'
             print_err(msg)
             logging.error(msg)
             sys.exit(2)
 
-    if not capath_default and x509dir:
+    # Fast path 2, when some local CAs are explicitly requested - X509_CERT_DIR case
+    x509dir = os.getenv('X509_CERT_DIR', default = '')
+    if x509dir:
         if is_x509dir_valid(x509dir):
-            capath_default = x509dir
             logging.debug(f'CApath::X509_CERT_DIR:: requested and set to {x509dir}')
+            return x509dir
         else:
             msg = f'X509_CERT_DIR set by environment is invalid! Check content of {x509dir}'
             print_err(msg)
             logging.error(msg)
             sys.exit(2)
 
-    if not capath_default and x509file:
+    # X509_CERT_FILE case
+    x509file = os.getenv('X509_CERT_FILE', default = '')
+    if x509file:
         if os.path.isfile(x509file):
-            capath_default = x509file
             logging.debug(f'CApath::X509_CERT_FILE:: requested and set to {x509file}')
+            return x509file
         else:
             msg = f'X509_CERT_FILE set by environment but is missing! Check existence of {x509file}'
             print_err(msg)
             logging.error(msg)
             sys.exit(2)
 
-    # no env var setup so far, so let's try some known places
-    if not capath_default:
-        if is_x509dir_valid(alice_cvmfs_ca_path_lx):
-            capath_default = alice_cvmfs_ca_path_lx
-        elif is_x509dir_valid(alice_cvmfs_ca_path_macos):
-            capath_default = alice_cvmfs_ca_path_macos
-        elif is_x509dir_valid(local_ca_certs_dir) and os.path.isfile(f'{local_ca_certs_dir}/CERN-GridCA.pem'):
-            capath_default = local_ca_certs_dir  # This is location of ALIEN-CAS repository download
-        elif is_x509dir_valid(system_ca_path):
-            capath_default = system_ca_path
-        else:
-            msg = "No CA locations found!!! Connection will not be possible!! Either set X509_CERT_DIR to a known good CApath or run:\nalien.py getCAcerts\nto download CAs to ~/.globus/certificates"
-            print_err(msg)
-            logging.error(msg)
-            sys.exit(2)
 
-    if DEBUG:
-        dbg_msg = f'\nX509_CERT_FILE = {x509file}\nCAfile = {capath_default}' if x509file else f'\nX509_CERT_DIR = {x509dir}\nCApath = {capath_default}'
-        logging.debug('%s', dbg_msg)
+    system_ca_path = '/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
+    alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
+
+    capath_default = None
+
+    if is_x509dir_valid(alice_cvmfs_ca_path_lx):
+        capath_default = alice_cvmfs_ca_path_lx
+
+    if not capath_default and is_x509dir_valid(alice_cvmfs_ca_path_macos):
+            capath_default = alice_cvmfs_ca_path_macos
+
+    if not capath_default and is_x509dir_valid(system_ca_path):
+            capath_default = system_ca_path
+
+    if not capath_default:
+        msg = "No CA locations found!!! Connection will not be possible!! Either set X509_CERT_DIR to a known good CApath or run:\nalien.py getCAcerts\nto download CAs to ~/.globus/certificates"
+        print_err(msg)
+        logging.error(msg)
+        sys.exit(2)
+
+    os.environ['X509_CERT_DIR'] = capath_default
+    logging.debug(f'CApath:: found and set to {capath_default}')
     return capath_default
 
 
@@ -256,6 +263,9 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
 
 def CertInfo(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
+    if not fname:
+        return RET(2, '', f'No certificate filename provided!')  # ENOENT /* No such file or directory */
+
     cert_bytes = None
     try:
         with open(fname, "rb") as f: cert_bytes = f.read()
