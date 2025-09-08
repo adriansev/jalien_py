@@ -1170,26 +1170,27 @@ def queryML(args: list = None) -> RET:
 
 
 def ccdb_json_cleanup(item_dict: dict) -> None:
+    '''Clean up CCDB JSON response object by removing unnecessary fields'''
     item_dict.pop('createTime', None)
     item_dict.pop('lastModified', None)
     item_dict.pop('id', None)  # replaced by ETag
     item_dict.pop('validFrom', None)
     item_dict.pop('validUntil', None)
     item_dict.pop('partName', None)
-
     item_dict.pop('initialValidity', None)  # replaced by InitialValidityLimit
     item_dict.pop('InitialValidityLimit', None)  # unclear use for this field
-
     item_dict.pop('MD5', None)  # replaced by Content-MD5
     item_dict.pop('fileName', None)  # replaced by Content-Disposition
-
     item_dict.pop('contentType', None)
     item_dict.pop('size', None)  # replaced by Content-Length
-
     # get and create the filename
-    content_disposition = item_dict.pop('Content-Disposition')
-    filename = content_disposition.replace('inline;filename=', '').replace('"', '')
-    item_dict['filename'] = filename
+    if not 'fileName' in item_dict:
+        content_disposition = item_dict.pop('Content-Disposition', '')
+        if content_disposition:
+            filename = content_disposition.replace('inline;filename=', '').replace('"', '').replace('::', '-').strip()
+            item_dict['filename'] = filename
+    else:
+        item_dict['filename'] = item_dict.pop('fileName', '').replace('::', '-').strip()
 
 
 def getCAcerts(custom_dir: str = '') -> RET:
