@@ -138,9 +138,9 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     PROTO = socket.IPPROTO_TCP
     ENV_NETWORKSTACK = str(os.getenv('ALIENPY_NETWORKSTACK')).lower()
 
-    if ENV_NETWORKSTACK == 'ipv4':
+    if ENV_NETWORKSTACK == 'ipv4' or ENV_NETWORKSTACK == 'v4' or ENV_NETWORKSTACK == '4':
         ADDRESS_FAMILY = socket.AddressFamily.AF_INET
-    if ENV_NETWORKSTACK == 'ipv6':
+    if ENV_NETWORKSTACK == 'ipv6' or ENV_NETWORKSTACK == 'v6' or ENV_NETWORKSTACK == '6':
         ADDRESS_FAMILY = socket.AddressFamily.AF_INET6
 
     socket.setdefaulttimeout(0.3)  # 300 milisec should be a good timeout for socket creation
