@@ -32,16 +32,21 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
     wb = None
     nr_tries = 0
     connect_tries = int(os.getenv('ALIENPY_CONNECT_TRIES', '3'))
-    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.5'))
+    if os.getenv('ALIENPY_NETWORKSTACK') and not os.getenv('ALIENPY_CONNECT_TRIES'):
+        connect_tries = 2  # specific IP stack requested, and no number of tries specified, let's try only twice
+    connect_tries_interval = float(os.getenv('ALIENPY_CONNECT_TRIES_INTERVAL', '0.3'))
 
     init_begin = time.perf_counter() if (TIME_CONNECT or DEBUG) else None
     while wb is None:
         nr_tries += 1
+        if not os.getenv('ALIENPY_NETWORKSTACK') and nr_tries > 2:  # we alreadyt tried twice and the user did not requested an IP stack
+            os.environ["ALIENPY_NETWORKSTACK"] = "ipv4"  # let's try ipv4 only if the first 2 times did not work
+            if not os.getenv('ALIENPY_CONNECT_TRIES'): connect_tries = 4  # let's increase the tryouts if not user requested
 
         try:
             wb = wb_create(host, port, path, use_usercert, localConnect)
-        except Exception:
-            logging.exception('wb_create_tryout:: exception when wb_create')
+        except Exception as e:
+            logging.exception(f'wb_create_tryout:: exception when wb_create; try_nr {nr_tries}')
 
         if not wb:
             if nr_tries >= connect_tries:

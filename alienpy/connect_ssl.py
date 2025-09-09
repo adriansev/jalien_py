@@ -6,8 +6,8 @@ import os
 import logging
 import uuid
 import tempfile
-# import glob
 import ssl
+from typing import Optional
 
 try:
     from cryptography import x509
@@ -258,6 +258,33 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         return None  # EIO /* I/O error */
 
     logging.info('\n... SSL context done.')
+    return ctx
+
+
+def make_connection_ctx(use_usercert: bool = False) -> Optional[ssl.SSLContext]:
+    ctx = None
+    # Check the content of AlienSessionInfo for values of cert and token files
+    certs_info = None
+    if 'AlienSessionInfo' in globals() and AlienSessionInfo['token_cert'] and AlienSessionInfo['token_key'] and AlienSessionInfo['user_cert'] and AlienSessionInfo['user_key']:
+        certs_info = CertsInfo(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'], AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
+    else:
+        certs_info = renewCredFilesInfo()
+            
+    # Check the presence of user certs and bailout before anything else
+    if not certs_info.token_cert and not certs_info.user_cert:
+        print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
+        return None
+    
+    try:
+        ctx = create_ssl_context(use_usercert,
+                                    user_cert = certs_info.user_cert, user_key = certs_info.user_key,
+                                    token_cert = certs_info.token_cert, token_key = certs_info.token_key)
+    except Exception as e:
+        msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}\n{e!r}'
+        logging.error(msg)
+        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+        return None
+    
     return ctx
 
 

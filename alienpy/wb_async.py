@@ -32,7 +32,7 @@ from .setup_logging import DEBUG, DEBUG_FILE, print_err
 from .data_structs import CertsInfo
 from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT
 from .tools_nowb import deltat_ms_perf
-from .connect_ssl import create_ssl_context, renewCredFilesInfo
+from .connect_ssl import make_connection_ctx
 from .async_tools import start_asyncio, syncify
 
 
@@ -47,6 +47,78 @@ def wb_process_exception(exp):
     raise exp
 
 
+async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/') -> Optional[socket.socket]:
+    '''Create a TCP socket to be later upgraded to a WebSocket connection; by default Happy-EyeBalls will be used'''
+    logging.info('Request connection to: %s:%s%s', host, port, path)
+    socket_endpoint = None
+
+    ADDRESS_FAMILY = socket.AddressFamily.AF_UNSPEC
+    PROTO = socket.IPPROTO_TCP
+    ENV_NETWORKSTACK = str(os.getenv('ALIENPY_NETWORKSTACK')).lower()
+
+    ipv4_names = ('ipv4', 'v4', '4')
+    if ENV_NETWORKSTACK in ipv4_names:
+        ADDRESS_FAMILY = socket.AddressFamily.AF_INET
+
+    ipv6_names = ('ipv6', 'v6', '6')
+    if ENV_NETWORKSTACK in ipv6_names:
+        ADDRESS_FAMILY = socket.AddressFamily.AF_INET6
+
+    socket.setdefaulttimeout(0.3)  # 300 milisec should be a good timeout for socket creation
+
+    init_begin_socket = None
+    if DEBUG:
+        logging.debug('TRY ENDPOINT: %s:%s', host, port)
+        init_begin_socket = time.perf_counter()
+
+    # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
+    # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
+
+    if ASYNC_STAGGER_PRESENT:
+        # async_stagger requires Python 3.11 or later from v0.4.0 onwards. Please use v0.3.1 for Python 3.6 - 3.10.
+        _ASYNC_STAGGER_VER_LIST = version('async_stagger').split('.')
+        if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
+            stagger_args = { "async_dns": True, "resolution_delay": 0.050, "detailed_exceptions": True }  # [skipcq]
+        else:
+            # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.resolvers.concurrent_resolver
+            my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver,
+                                            family = ADDRESS_FAMILY, proto = PROTO,
+                                            first_addr_family_count = 3, resolution_delay = 0.05, raise_exc_group = True)
+            stagger_args = { "resolver": my_resolver, "raise_exc_group": True }  # [skipcq]
+
+        try:
+            socket_endpoint = await async_stagger.create_connected_sock(host, port, family = ADDRESS_FAMILY, proto = PROTO,
+                                                                        delay = 0, **stagger_args) # [skipcq]
+        except Exception as e:
+            msg = f'Could NOT establish connection (TCP socket)(async_stagger) to {host}:{port}\n{e!r}\n'
+            logging.error(msg)
+            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+            return None
+
+    else:
+        resolved_addr_list = socket.getaddrinfo(host, port, family = ADDRESS_FAMILY, proto = PROTO)
+        for addr in resolved_addr_list:
+            try:
+                socket_endpoint = socket.create_connection((addr[-1][0], addr[-1][1]))
+                break
+            except Exception as e:
+                msg = f'Could NOT establish connection (TCP socket)(socket.create_connection) to {host}:{port}\n{e!r}\n'
+                logging.error(msg)
+
+    if init_begin_socket:
+        logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin_socket))
+
+    if not socket_endpoint:
+        msg = f'Invalid socket to {host}:{port}!'
+        logging.error(msg)
+        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+        return None
+
+    socket_endpoint_addr, socket_endpoint_port = socket_endpoint.getpeername()
+    logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
+    return socket_endpoint
+
+    
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Optional[WebSocketClientProtocol]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
@@ -73,12 +145,10 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     # https://websockets.readthedocs.io/en/stable/api.html#websockets.protocol.WebSocketCommonProtocol
     # we use some conservative values, higher than this might hurt the sensitivity to intreruptions
 
-    wb = None
-    ctx = None
-    # Compressiont settings given by https://docs.python.org/3/library/zlib.html#zlib.compressobj
-    # client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
-    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 8, 'level': 7})
     headers_list = None # [('User-Agent', USER_AGENT)]
+    wb = None
+
+    # Connection to a local UNIX socket
     if localConnect:
         fHostWSUrl = 'ws://localhost/'
         logging.info('Request connection to : %s', fHostWSUrl)
@@ -96,116 +166,32 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             return None
         return wb
 
-    # we are doing a normal TCP/IP connect
-    fHostWSUrl = f'wss://{host}:{port}{path}'  # connection url
-
-    # Check the content of AlienSessionInfo for values of cert and token files
-    certs_info = None
-    if 'AlienSessionInfo' in globals() and AlienSessionInfo['token_cert'] and AlienSessionInfo['token_key'] and AlienSessionInfo['user_cert'] and AlienSessionInfo['user_key']:
-        certs_info = CertsInfo(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'], AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
-    else:
-        certs_info = renewCredFilesInfo()
-
-    # Check the presence of user certs and bailout before anything else
-    if not certs_info.token_cert and not certs_info.user_cert:
-        print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
-        sys.exit(126)
-
-    try:
-        ctx = create_ssl_context(use_usercert,
-                                 user_cert = certs_info.user_cert, user_key = certs_info.user_key,
-                                 token_cert = certs_info.token_cert, token_key = certs_info.token_key)
-    except Exception as e:
-        msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}\n{e!r}'
-        logging.error(msg)
-        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-        return None
-
+    ctx = make_connection_ctx(use_usercert)
     if not ctx:
         msg = f'SSL context invalid using cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}'
         logging.error(msg)
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
         return None
 
-    logging.info('Request connection to: %s:%s%s', host, port, path)
-
-    socket_endpoint = None
-    # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.create_connected_sock
-    # AI_* flags --> https://linux.die.net/man/3/getaddrinfo
-    init_begin_socket = None
-
-    ADDRESS_FAMILY = socket.AddressFamily.AF_UNSPEC
-    PROTO = socket.IPPROTO_TCP
-    ENV_NETWORKSTACK = str(os.getenv('ALIENPY_NETWORKSTACK')).lower()
-
-    if ENV_NETWORKSTACK == 'ipv4' or ENV_NETWORKSTACK == 'v4' or ENV_NETWORKSTACK == '4':
-        ADDRESS_FAMILY = socket.AddressFamily.AF_INET
-    if ENV_NETWORKSTACK == 'ipv6' or ENV_NETWORKSTACK == 'v6' or ENV_NETWORKSTACK == '6':
-        ADDRESS_FAMILY = socket.AddressFamily.AF_INET6
-
-    socket.setdefaulttimeout(0.3)  # 300 milisec should be a good timeout for socket creation
-
-    if DEBUG:
-        logging.debug('TRY ENDPOINT: %s:%s', host, port)
-        init_begin_socket = time.perf_counter()
-
-    if ASYNC_STAGGER_PRESENT:
-        # async_stagger requires Python 3.11 or later from v0.4.0 onwards. Please use v0.3.1 for Python 3.6 - 3.10.
-        _ASYNC_STAGGER_VER_LIST = version('async_stagger').split('.')
-        if int(_ASYNC_STAGGER_VER_LIST[0]) == 0 and int(_ASYNC_STAGGER_VER_LIST[1]) < 4:
-            stagger_args = { "async_dns": True, "resolution_delay": 0.050, "detailed_exceptions": True }  # [skipcq]
-        else:
-            my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver, first_addr_family_count = 3, resolution_delay = 0.050, raise_exc_group = True)
-            stagger_args = { "resolver": my_resolver, "raise_exc_group": True }  # [skipcq]
-
-        try:
-            socket_endpoint = await async_stagger.create_connected_sock(host, port, family = ADDRESS_FAMILY, proto = PROTO,
-                                                                        delay = 0, **stagger_args) # [skipcq]
-        except Exception as e:
-            msg = f'Could NOT establish connection (TCP socket) to {host}:{port}\n{e!r}'
-            logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-            return None
-
-    else:
-        resolved_addr_list = socket.getaddrinfo(host, port, family = ADDRESS_FAMILY, proto = PROTO)
-        for addr in resolved_addr_list:
-            try:
-                socket_endpoint = socket.create_connection((addr[-1][0], addr[-1][1]))
-                break
-            except Exception as e:
-                pass
-
+    socket_endpoint = await create_socket(host, port, path)
     if not socket_endpoint:
-        msg = f'Invalid socket to {host}:{port}!'
-        logging.error(msg)
-        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
         return None
 
+    # Compression settings given by https://docs.python.org/3/library/zlib.html#zlib.compressobj
+    # client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
+    deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 8, 'level': 7})
+    
+    # we are doing a normal TCP/IP connect
+    fHostWSUrl = f'wss://{host}:{port}{path}'  # connection url
+    init_begin_wb = None
+    if DEBUG: init_begin_wb = time.perf_counter()
 
-    if init_begin_socket:
-        logging.debug('TCP SOCKET DELTA: %s ms', deltat_ms_perf(init_begin_socket))
-
-    peer_info = socket_endpoint.getpeername()
-    socket_endpoint_addr = None
-    socket_endpoint_port = None
-    if peer_info:
-        socket_endpoint_addr = peer_info[0]
-        socket_endpoint_port = peer_info[1]
-    else:
-        msg = f'Could NOT get peer information for {host}:{port}! This should be not reached, contact support!'
-        logging.error(msg)
-        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-        return None
-    logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
     try:
-        init_begin_wb = None
-        if DEBUG: init_begin_wb = time.perf_counter()
         wb = await wb_connect(fHostWSUrl, sock = socket_endpoint, server_hostname = host, ssl = ctx, extensions = [deflateFact],
-                                max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
-                                ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
-                                open_timeout = OPEN_TIMEOUT, close_timeout = CLOSE_TIMEOUT,
-                                user_agent_header = USER_AGENT, additional_headers = headers_list)
+                              max_queue = QUEUE_SIZE, max_size = MSG_SIZE,
+                              ping_interval = PING_INTERVAL, ping_timeout = PING_TIMEOUT,
+                              open_timeout = OPEN_TIMEOUT, close_timeout = CLOSE_TIMEOUT,
+                              user_agent_header = USER_AGENT, additional_headers = headers_list)
 
     except wb_exceptions.InvalidStatus as e:
         msg = f'Invalid status code {e.response.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}'
@@ -229,7 +215,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
 
 @syncify
 async def IsWbConnected(wb: WebSocketClientProtocol) -> bool:
-    """Check if websocket is connected with the protocol ping/pong"""
+    '''Check if websocket is connected with the protocol ping/pong'''
     time_begin = time.perf_counter() if DEBUG_TIMING else None
     if DEBUG:
         logging.info('Called from: %s', sys._getframe().f_back.f_code.co_name)  # pylint: disable=protected-access
@@ -245,7 +231,7 @@ async def IsWbConnected(wb: WebSocketClientProtocol) -> bool:
 
 @syncify
 async def wb_close(wb: WebSocketClientProtocol, code, reason):
-    """Send close to websocket"""
+    '''Send close to websocket'''
     try:
         await wb.close(code = code, reason = reason)
     except Exception:  # nosec
