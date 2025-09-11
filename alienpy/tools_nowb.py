@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET  # noqa: N817
 import xml.dom.minidom as MD  # noqa: N812
 
 from .data_structs import ALIEN_COLLECTION_EL, KV, RET, STAT_FILEPATH
-from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, COLORS, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
+from .global_vars import ALIENPY_FANCY_PRINT, AlienSessionInfo, ALIENPY_ADDRESS_FAMILY, COLORS, HAS_COLOR, REGEX_PATTERN_TYPE, TMPDIR, USER_HOME, emptyline_re, guid_regex, ignore_comments_re, lfn_prefix_re, rich_print_json
 from .setup_logging import DEBUG, print_err, print_out
 from .tools_shell import is_cmd, runShellCMD
 
@@ -427,10 +427,12 @@ def check_ip_port(socket_object: tuple) -> bool:
     return is_open  # noqa: R504
 
 
-def check_port(address: str, port: Union[str, int]) -> list:
+def check_port(address: str, port: Union[str, int] = 8097) -> list:
     """Check TCP connection to fqdn:port"""
+    if not address or not port: return []
+
     try:
-        ip_list = socket.getaddrinfo(address, int(port), proto = socket.IPPROTO_TCP)
+        ip_list = socket.getaddrinfo(address, int(port), family = ALIENPY_ADDRESS_FAMILY, proto = socket.IPPROTO_TCP)
     except Exception:
         print_out(f'check_port:: error getting address info for host: {address} ; port: {port}')
         return []

@@ -5,6 +5,7 @@ import platform
 import re
 import requests
 import sys
+import socket
 from socket import gethostname
 import tempfile
 from collections import deque
@@ -43,6 +44,21 @@ def get_certs_names() -> CertsInfo:
     return CertsInfo(usercert, userkey, tokencert, tokenkey)
 
 
+def get_address_family() -> socket.AddressFamily:
+    """Return preffered adress family for socket connection"""
+    ADDRESS_FAMILY = socket.AddressFamily.AF_UNSPEC
+    ENV_NETWORKSTACK = os.getenv('ALIENPY_NETWORKSTACK')
+    if ENV_NETWORKSTACK:
+        ENV_NETWORKSTACK = str(ENV_NETWORKSTACK).lower()
+        ipv4_names = ('ipv4', 'v4', '4')
+        ipv6_names = ('ipv6', 'v6', '6')
+        if ENV_NETWORKSTACK in ipv4_names:
+            ADDRESS_FAMILY = socket.AddressFamily.AF_INET
+        elif ENV_NETWORKSTACK in ipv6_names:
+            ADDRESS_FAMILY = socket.AddressFamily.AF_INET6
+    return ADDRESS_FAMILY
+
+
 ##################################################
 #   GLOBAL POINTER TO WB CONNECTION  #############
 ALIENPY_GLOBAL_WB = None
@@ -65,6 +81,8 @@ HOSTNAME = gethostname()
 
 UNAME = platform.uname()
 PLATFORM_ID = f'{UNAME.system}-{UNAME.machine}/{UNAME.release}'
+
+ALIENPY_ADDRESS_FAMILY = get_address_family()
 
 ALIEN_JOB_ID = os.getenv('ALIEN_PROC_ID', '')
 ALIEN_MASTERJOB_ID = os.getenv('ALIEN_MASTERJOB_ID', '')

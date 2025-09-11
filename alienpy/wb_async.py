@@ -30,7 +30,7 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
 from .data_structs import CertsInfo
-from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT
+from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT, ALIENPY_ADDRESS_FAMILY
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import make_connection_ctx
 from .async_tools import start_asyncio, syncify
@@ -52,18 +52,7 @@ async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097',
     logging.info('Request connection to: %s:%s%s', host, port, path)
     socket_endpoint = None
 
-    ADDRESS_FAMILY = socket.AddressFamily.AF_UNSPEC
     PROTO = socket.IPPROTO_TCP
-    ENV_NETWORKSTACK = str(os.getenv('ALIENPY_NETWORKSTACK')).lower()
-
-    ipv4_names = ('ipv4', 'v4', '4')
-    if ENV_NETWORKSTACK in ipv4_names:
-        ADDRESS_FAMILY = socket.AddressFamily.AF_INET
-
-    ipv6_names = ('ipv6', 'v6', '6')
-    if ENV_NETWORKSTACK in ipv6_names:
-        ADDRESS_FAMILY = socket.AddressFamily.AF_INET6
-
     socket.setdefaulttimeout(0.3)  # 300 milisec should be a good timeout for socket creation
 
     init_begin_socket = None
@@ -82,12 +71,12 @@ async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097',
         else:
             # https://async-stagger.readthedocs.io/en/latest/reference.html#async_stagger.resolvers.concurrent_resolver
             my_resolver = functools.partial(async_stagger.resolvers.concurrent_resolver,
-                                            family = ADDRESS_FAMILY, proto = PROTO,
+                                            family = ALIENPY_ADDRESS_FAMILY, proto = PROTO,
                                             first_addr_family_count = 3, resolution_delay = 0.05, raise_exc_group = True)
             stagger_args = { "resolver": my_resolver, "raise_exc_group": True }  # [skipcq]
 
         try:
-            socket_endpoint = await async_stagger.create_connected_sock(host, port, family = ADDRESS_FAMILY, proto = PROTO,
+            socket_endpoint = await async_stagger.create_connected_sock(host, port, family = ALIENPY_ADDRESS_FAMILY, proto = PROTO,
                                                                         delay = 0, **stagger_args) # [skipcq]
         except Exception as e:
             msg = f'Could NOT establish connection (TCP socket)(async_stagger) to {host}:{port}\n{e!r}\n'
@@ -96,7 +85,7 @@ async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097',
             return None
 
     else:
-        resolved_addr_list = socket.getaddrinfo(host, port, family = ADDRESS_FAMILY, proto = PROTO)
+        resolved_addr_list = socket.getaddrinfo(host, port, family = ALIENPY_ADDRESS_FAMILY, proto = PROTO)
         for addr in resolved_addr_list:
             try:
                 socket_endpoint = socket.create_connection((addr[-1][0], addr[-1][1]))
@@ -114,11 +103,11 @@ async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097',
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
         return None
 
-    socket_endpoint_addr, socket_endpoint_port = socket_endpoint.getpeername()
-    logging.info('GOT SOCKET TO: %s:%s', socket_endpoint_addr, socket_endpoint_port)
+    peer_name = socket_endpoint.getpeername()
+    logging.info('GOT SOCKET TO: %s:%s', peer_name[0], peer_name[1])
     return socket_endpoint
 
-    
+
 @syncify
 async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Optional[WebSocketClientProtocol]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
@@ -180,7 +169,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     # Compression settings given by https://docs.python.org/3/library/zlib.html#zlib.compressobj
     # client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
     deflateFact = _wb_permessage_deflate.ClientPerMessageDeflateFactory(compress_settings={'memLevel': 8, 'level': 7})
-    
+
     # we are doing a normal TCP/IP connect
     fHostWSUrl = f'wss://{host}:{port}{path}'  # connection url
     init_begin_wb = None
