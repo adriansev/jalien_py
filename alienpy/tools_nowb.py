@@ -128,7 +128,7 @@ def convert_time(str_line: str, color: bool = True) -> str:
     if timestamp:
         nice_timestamp = f'{PrintColor(COLORS.BIGreen)}{unixtime2local(timestamp[0])}{PrintColor(COLORS.ColorReset)}' if color else unixtime2local(timestamp[0])
         return str_line.replace(str(timestamp[0]), nice_timestamp)
-    return ''
+    return str_line
 
 
 def unquote_str(arg: str) -> str: return ast.literal_eval(arg) if isinstance(arg, str) else ''
