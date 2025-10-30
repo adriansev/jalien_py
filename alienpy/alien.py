@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
+import sys
+if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 9):
+    print("This packages requires a minimum of Python version 3.9", file = sys.stderr, flush = True)
+    sys.exit(1)
 import ctypes
 try:
     libgcc_s = ctypes.CDLL('libgcc_s.so.1')
 except Exception:
     pass
-
 import os
-import sys
-if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 6):
-    print("This packages requires a minimum of Python version 3.6", file = sys.stderr, flush = True)
-    sys.exit(1)
 import collections
 import datetime
 import difflib
@@ -21,6 +20,7 @@ from pathlib import Path
 import subprocess  # nosec
 import logging
 import shlex
+from shlex import join as shlex_join
 import statistics
 from typing import Optional, Union
 import time
@@ -33,14 +33,8 @@ except Exception:
     print("requests module could not be imported! Make sure you can do:\npython3 -c 'import requests'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-# Adapt and define shlex.join
-if sys.version_info.major == 3 and sys.version_info.minor < 8:
-    def shlex_join(split_command: list) -> str: return ' '.join(shlex.quote(arg) for arg in split_command)
-else:
-    from shlex import join as shlex_join
-
 # For type hinting
-from websockets import WebSocketClientProtocol  # noqa: TC002
+from websockets import ClientConnection as WebSocketClientProtocol  # noqa: TC002
 
 ###############################################################
 ##   IMPORT ALIENPY SUB-MODULES
@@ -51,9 +45,9 @@ setup_logging(bool(DEBUG), DEBUG_FILE)  # Initialize logging
 ##   IMPORT DATA STRUCTURES
 from .data_structs import RET
 ##   IMPORT GLOBAL VARIABLES
-from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13, USER_AGENT_HTTP
+from .global_vars import ALIENPY_EXECUTABLE, ALIENPY_GLOBAL_WB, AlienSessionInfo, COLORS, TOKENCERT_NAME, USER_AGENT_HTTP, cmds_split, lfn_prefix_re, specs_split, time_pattern_match_13
 ##   IMPORT VERSION STRINGS
-from .version import ALIENPY_VERSION_STR, ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH
+from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION_STR
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
@@ -70,16 +64,14 @@ from .tools_shell import runShellCMD
 # Session save
 from .setup_cwd import SessionRestore, SessionSave
 # Setup history
-if not os.getenv('ALIENPY_NO_HISTORY'):
-    from .tools_history import setupHistory, HAS_READLINE
+from .tools_history import HAS_READLINE, setupHistory
 # XRootD functions
 from .xrd_tools import expand_path_grid, extract_glob_pattern, lfn2meta, lfn2uri, list_files_grid
+from .xrd_core import (DO_XrootdCp, HAS_XROOTD, download_tmp, upload_tmp, xrd_client, xrd_config_init, xrdfs_ping,
+                       xrdfs_q_config, xrdfs_q_stats, xrdfs_stat, xrdstat2dict, xrdstat_flags2dict)
 
-from .xrd_core import HAS_XROOTD, DO_XrootdCp, download_tmp, upload_tmp
-if HAS_XROOTD:
-    from .xrd_core import xrd_client, xrd_config_init, xrdfs_ping, xrdfs_q_config, xrdfs_q_stats, xrdfs_stat, xrdstat2dict, xrdstat_flags2dict
-    # Global XRootD preferences
-    xrd_config_init()
+# Global XRootD preferences
+if HAS_XROOTD: xrd_config_init()
 
 # https://linux.die.net/man/2/setpgrp
 # equivalent of setpgid(0, 0) : PGID of the own process (ourself) is made the same as process ID (also self)
@@ -110,14 +102,13 @@ def DO_pushd(wb: WebSocketClientProtocol, args: Union[str, list, None] = None) -
 
 def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
-    global AlienSessionInfo
     if not cmd: return RET(1)  # type: ignore [call-arg]
     if args is None: args = []
     arg_list = args.split() if isinstance(args, str) else args
     do_not_cd = get_arg(args, '-n')
     msg = ''
 
-#    if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
+    # if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
     if is_help(arg_list):
         help_msg = ('Directory stacking implementation (as in Linux shell):\n'
                     'dirs [-clpv] [+N | -N]\n'
@@ -131,8 +122,9 @@ def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, l
     for arg in arg_list:
         if arg[0] == '+' or arg[0] == '-':
             sign = arg[0]
-            if not arg[1:].isdecimal(): return RET(1, '', "-N | +N argument is invalid")  # type: ignore [call-arg]
-            position = int(arg[1:])
+            position = arg[1:]
+            if not position.isdecimal(): continue
+            position = int(position)
             arg_list.remove(arg)
             pos = int(arg)
 
@@ -213,16 +205,17 @@ def DO_version(args: Optional[list] = None) -> RET:  # pylint: disable=unused-ar
 
 
 def DO_exit(args: Optional[list] = None) -> Optional[RET]:
+    """exit :: exit the application with code , optional to stderr and custom message"""
     if not args: args = []
     if is_help(args):
-        msg = 'Command format: exit [code] [stderr|err] [message]'
-        return RET(0, msg)  # type: ignore [call-arg]
+        return RET(0, 'Command format: exit [code] [stderr|err] [message]')  # type: ignore [call-arg]
     code = AlienSessionInfo['exitcode']
     msg = ''
     if len(args) > 0:
         if args[0].isdecimal(): code = args.pop(0)
-        if args[0] == 'stderr' or args[0] == 'err': args.pop(0)
-        msg = ' '.join(args).strip()
+        if args[0] == 'stderr' or args[0] == 'err':
+            args.pop(0)
+        if args: msg = ' '.join(args).strip()
         if msg:
             if code == 0:
                 print_out(msg)
@@ -232,7 +225,7 @@ def DO_exit(args: Optional[list] = None) -> Optional[RET]:
 
 
 def DO_xrd_ping(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """XRootD ping to a given storage and return an RTT"""
     if not args: args = ['-h']
     if is_help(args):
         msg = ('Command format: xrd_ping [-c count] fqdn[:port] | SE name | SE id\n'
@@ -265,15 +258,15 @@ def DO_xrd_ping(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET
             rtt_max = max(results)
             rtt_avg = statistics.mean(results)
             rtt_stddev = statistics.stdev(results) if len(results) > 1 else 0.0
-            msg = f'{msg}\n{se_name : <32} rtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}'
+            msg = f'{msg}\n{se_name: <32} rtt min/avg/max/mdev (ms) = {rtt_min:.3f}/{rtt_avg:.3f}/{rtt_max:.3f}/{rtt_stddev:.3f}'
         else:
-            msg = f'{msg}\n{se_name : <32} {results_list[-1]["message"]}'
+            msg = f'{msg}\n{se_name: <32} {results_list[-1]["message"]}'
 
     return RET(0, msg)
 
 
 def DO_xrd_config(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """XRootD get server properties"""
     if not args: args = ['-h']
     if not args or is_help(args):
         msg = ('Command format: xrd_config [-v | -verbose] fqdn[:port] | SE name | SE id\n'
@@ -322,7 +315,7 @@ def DO_xrd_config(wb: WebSocketClientProtocol, args: Optional[list] = None) -> R
 
 
 def DO_xrd_stats(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """XRootD get xrootd server metrics"""
     if args is None: args = []
     if not args or is_help(args):
         msg = ('Command format: xrd_stats [ -xml | -xmlraw | -compact  ]  fqdn[:port] | SE name | SE id\n'
@@ -373,11 +366,12 @@ def DO_xrd_stats(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RE
 
     results_dict = {'results': stats_list}
     msg_all = '\n'.join(msg_list)
-    exitcode = 1 if not results_dict else 0
-    return RET(exitcode, msg_all, '', results_dict)
+    _exitcode = 1 if not results_dict else 0
+    return RET(_exitcode, msg_all, '', results_dict)
 
 
 def DO_pfn(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Get PFNs list of LFN"""
     if args is None: args = []
     if is_help(args):
         msg = 'Command format : pfn [lfn]\nIt will print only the list of associated pfns (simplified form of whereis)'
@@ -389,7 +383,7 @@ def DO_pfn(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_pfnstatus(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """Get PFN status directly from server"""
     if args is None: args = []
     if not args or is_help(args):
         msg = ('Command format: pfn_status <pfn>|<lfn>\n'
@@ -439,6 +433,7 @@ def DO_pfnstatus(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RE
 
 
 def DO_getSE(wb: WebSocketClientProtocol, args: list = None) -> RET:
+    """Get SE information for specified label"""
     if not wb: return []
     if not args: args = []
     if is_help(args):
@@ -454,7 +449,7 @@ def DO_getSE(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if get_arg(args, '-srv'): arg_select = 'srv'
 
     if not args:
-        se_list = [f"{se['seNumber'] : <6}{se['seName'] : <32}{urlparse(se['endpointUrl']).netloc.strip()}" for se in ret_obj.ansdict["results"]]
+        se_list = [f"{se['seNumber']: <6}{se['seName']: <32}{urlparse(se['endpointUrl']).netloc.strip()}" for se in ret_obj.ansdict["results"]]
         return RET(0, '\n'.join(se_list), '', ret_obj.ansdict)
 
     def match_name(se: Optional[dict] = None, name: str = '') -> bool:
@@ -479,15 +474,16 @@ def DO_getSE(wb: WebSocketClientProtocol, args: list = None) -> RET:
             rez_list.append(se_info['seNumber'])
         else:
             if se_name.isdecimal():
-                rez_list.append(f"{se_info['seName'] : <32}{srv_name}")
+                rez_list.append(f"{se_info['seName']: <32}{srv_name}")
             else:
-                rez_list.append(f"{se_info['seNumber'] : <6}{se_info['seName'] : <32}{srv_name}")
+                rez_list.append(f"{se_info['seNumber']: <6}{se_info['seName']: <32}{srv_name}")
 
     if not rez_list: return RET(1, '', f"Empty result when searching for: {args[-1]}")
     return RET(0, '\n'.join(rez_list), '', {'results': se_list})
 
 
 def DO_getCE(wb: WebSocketClientProtocol, args: list = None) -> RET:
+    """Get CE list and CE information"""
     if not wb: return []
     if not args: args = []
     if is_help(args):
@@ -499,9 +495,9 @@ def DO_getCE(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if 'results' not in ret_obj.ansdict: return RET(1, '', 'Could not get the list of CEs')
     ce_list_dict = ret_obj.ansdict['results']
 
-    header = f'Name{" "*24}Host{" "*46}State{" "*3}Type{" "*6}R{" "*5}W{" "*5}TTL{" "*7}Partitions'
+    header = f'Name{" " * 24}Host{" " * 46}State{" " * 3}Type{" " * 6}R{" " * 5}W{" " * 5}TTL{" " * 7}Partitions'
     if not args:
-        ce_info = [f'{ce["ceName"].replace("ALICE::","") : <28}{ce["host"] : <50}{ce["status"] : <8}{ce["type"] : <10}{ce["maxRunning"] : <6}{ce["maxQueued"] : <6}{ce["TTL"] : <10}{ce["partitions"].strip(",")}' for ce in ce_list_dict]
+        ce_info = [f'{ce["ceName"].replace("ALICE::",""): <28}{ce["host"]: <50}{ce["status"]: <8}{ce["type"]: <10}{ce["maxRunning"]: <6}{ce["maxQueued"]: <6}{ce["TTL"]: <10}{ce["partitions"].strip(",")}' for ce in ce_list_dict]
         return RET(0, f"{header}\n{f'{os.linesep}'.join(ce_info)}", '', ce_list_dict)
 
     select_name = get_arg_value(args, '-name')
@@ -536,11 +532,12 @@ def DO_getCE(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if not select_list:
         return RET(0, 'Empty selection results')
 
-    ce_info = [f'{ce["ceName"].replace("ALICE::","") : <28}{ce["host"] : <50}{ce["status"] : <8}{ce["type"] : <10}{ce["maxRunning"] : <6}{ce["maxQueued"] : <6}{ce["TTL"] : <10}{ce["partitions"].strip(",")}' for ce in select_list]
+    ce_info = [f'{ce["ceName"].replace("ALICE::",""): <28}{ce["host"]: <50}{ce["status"]: <8}{ce["type"]: <10}{ce["maxRunning"]: <6}{ce["maxQueued"]: <6}{ce["TTL"]: <10}{ce["partitions"].strip(",")}' for ce in select_list]
     return RET(0, f"{header}\n{f'{os.linesep}'.join(ce_info)}", '', select_list)
 
 
 def DO_SEqos(wb: WebSocketClientProtocol, args: list = None) -> RET:
+    """Get QOS tags list of a given SE"""
     if not wb: return RET()
     if not args or is_help(args):
         msg = 'Command format: SEqos <SE name>\nReturn the QOS tags for the specified SE (ALICE:: can be omitted and capitalization does not matter)'
@@ -552,11 +549,12 @@ def DO_SEqos(wb: WebSocketClientProtocol, args: list = None) -> RET:
     if not sum_rez: return RET(1, '', f'No SE information found! -> {" ".join(args)}')
     msg = None
     for se in sum_rez:
-        msg = f'{msg if msg else ""}{se["seName"] : <32}{se["qos"]}\n'
+        msg = f'{msg if msg else ""}{se["seName"]: <32}{se["qos"]}\n'
     return RET(0, msg, '', {'results': sum_rez})
 
 
 def DO_siteJobs(wb: WebSocketClientProtocol, args: list = None) -> RET:
+    """Get job list for a given site"""
     if not wb: return RET()
     if not args or is_help(args):
         msg = '''Command format: siteJobs <SITE ID> [ -id ] [ -running ] [ -status string] [ -user string ]
@@ -604,12 +602,13 @@ def DO_siteJobs(wb: WebSocketClientProtocol, args: list = None) -> RET:
         id_list = [job['id '] for job in select_list]
         return RET(0, f'{os.linesep.join(id_list)}', '', select_list)
 
-    header = f'JobID{" "*8}MasterJobID{" "*2}Status{" "*6}User{" "*10}Name'
-    job_info = [f'{j["id"] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner"] : <14}{j["name"]}' for j in select_list]
+    header = f'JobID{" " * 8}MasterJobID{" " * 2}Status{" " * 6}User{" " * 10}Name'
+    job_info = [f'{j["id"]: <13}{j["split"]: <13}{j["status"]: <12}{j["owner"]: <14}{j["name"]}' for j in select_list]
     return RET(0, f"{header}\n{f'{os.linesep}'.join(job_info)}", '', select_list)
 
 
 def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
+    """Get job information"""
     if not wb: return RET()
     if not args or is_help(args):
         msg = '''Command format: jobInfo id1,id2,.. [ -trace ] [ -proc ] [ -jdl ]
@@ -632,7 +631,7 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
     job_info_list_dict = job_info_query.ansdict['results']
 
     job_list_messages = []
-    header = f'JobID{" "*8}MasterJobID{" "*2}Status{" "*6}User{" "*10}Name'
+    header = f'JobID{" " * 8}MasterJobID{" " * 2}Status{" " * 6}User{" " * 10}Name'
 
     job_processed_list = []
 
@@ -646,7 +645,7 @@ def DO_jobInfo(wb: WebSocketClientProtocol, args: list = None) -> RET:
             mod_jdl = json.dumps(new_j["jdl"], separators=(',', ':'))
             job_list_messages.append(f'{mod_jdl}\n')
         else:
-            job_info = f'##################################################################\n{header}\n{j["id"] : <13}{j["split"] : <13}{j["status"] : <12}{j["owner"] : <14}{j["name"]}\n\n'
+            job_info = f'##################################################################\n{header}\n{j["id"]: <13}{j["split"]: <13}{j["status"]: <12}{j["owner"]: <14}{j["name"]}\n\n'
             machine_info = f'Machine info:\nWorkerNode: {new_j["trace"]["wn"]}\nWorkdir: {new_j["trace"]["workdir"]}\nLocal queue info:\n{f"{os.linesep}".join(new_j["trace"]["queue"])}\n\n'
             state_info = f'State info:\n{f"{os.linesep}".join(new_j["trace"]["state"])}\n\n'
             trace_info = f'Trace info:\n{f"{os.linesep}".join(new_j["trace"]["trace"])}\n\n'
@@ -749,7 +748,7 @@ task name / detector name / [ / time [ / key = value]* ]
     if not ccdb_time:
         if run_nr:
             run_info = ccdb_runinfo(run_nr)
-            if not 'objects' in run_info or not run_info['objects']:
+            if 'objects' not in run_info or 'objects' not in run_info['objects']:
                 return RET(1, '', f'Could not obtain SOR time for specified run number {run_nr}')
             ccdb_time = run_info['objects'][0]['SOR']
         elif obj_time:
@@ -816,7 +815,7 @@ task name / detector name / [ / time [ / key = value]* ]
                 break
         return alien_lfn
 
-    header = f'Filename{" "*39}Type{" "*24}ValidFrom{" "*10}ValidUntil{" "*10}Lifetime(ms)'
+    header = f'Filename{" " * 39}Type{" " * 24}ValidFrom{" " * 10}ValidUntil{" " * 10}Lifetime(ms)'
     download_list = []
     dest_time_list = []
     msg_obj_list = []
@@ -872,9 +871,9 @@ task name / detector name / [ / time [ / key = value]* ]
                     f.write(f'{key}={v}\n')
 
         if not do_download or not do_mirror:
-            msg_obj_list.append(f'{q["filename"]}{" "*2}{q.get("ObjectType", "TYPE NOT FOUND")}{" "*2}'
-                                f'\"{q["Valid-From"] if do_unixtime else q["Valid-From-nice"]}\"{" "*2}'
-                                f'\"{q["Valid-Until"] if do_unixtime else q["Valid-Until-nice"]}\"{" "*2}'
+            msg_obj_list.append(f'{q["filename"]}{" " * 2}{q.get("ObjectType", "TYPE NOT FOUND")}{" " * 2}'
+                                f'\"{q["Valid-From"] if do_unixtime else q["Valid-From-nice"]}\"{" " * 2}'
+                                f'\"{q["Valid-Until"] if do_unixtime else q["Valid-Until-nice"]}\"{" " * 2}'
                                 f'{q["Lifetime"]}')
 
     if do_download or do_mirror:
@@ -898,6 +897,7 @@ task name / detector name / [ / time [ / key = value]* ]
 
 
 def DO_2xml(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run 2xml command"""
     if args is None: args = []
     if not args or is_help(args):
         central_help = SendMsg(wb, 'toXml', ['-h'], opts = 'nokeys')
@@ -996,7 +996,6 @@ def DO_2xml(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 def DO_queryML(args: Optional[list] = None) -> RET:
     """submit: process submit commands for local jdl cases"""
-    global AlienSessionInfo
     if args is None: args = []
     if is_help(args):
         msg_help = ('usage: queryML <ML node>\n'
@@ -1063,24 +1062,28 @@ def DO_ps(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_la(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run la command"""
     if args is None: args = []
     args[0:0] = ['-F', '-a']
     return SendMsg(wb, 'ls', args)
 
 
 def DO_ll(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run ll command"""
     if args is None: args = []
     args[0:0] = ['-F', '-l']
     return SendMsg(wb, 'ls', args)
 
 
 def DO_lla(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run lla command"""
     if args is None: args = []
     args[0:0] = ['-F', '-l', '-a']
     return SendMsg(wb, 'ls', args)
 
 
 def DO_pwd(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run pwd command"""
     if args is None: args = []
     if is_help(args):
         return RET(0, 'pwd : print/return the current work directory')
@@ -1115,6 +1118,7 @@ def DO_more(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_lfn2uri(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run lfn2uri command"""
     if not args: args = ['-h']
     if is_help(args):
         msg = '''Command format : lfn2uri <lfn> <local_file?> [meta] [write|upload] [strict] [http]
@@ -1152,6 +1156,7 @@ http : URIs will be for http end-points of enabled SEs
 
 
 def DO_token(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run token command"""
     if args is None: args = []
     msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments\n"
     ret_obj = SendMsg(wb, 'token', args, opts = 'nokeys')
@@ -1159,6 +1164,7 @@ def DO_token(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_token_init(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run token-init command"""
     if args is None: args = []
     if len(args) > 0 and is_help(args):
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
@@ -1205,16 +1211,24 @@ N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exis
     return RET(1, '', f'Error downloading {lfn}, editing could not be done.')
 
 
-def DO_mcedit(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET: return DO_edit(wb, args, editor = 'mcedit')
+def DO_mcedit(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run shell - mcedit"""
+    return DO_edit(wb, args, editor = 'mcedit')
 
 
-def DO_vi(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET: return DO_edit(wb, args, editor = 'vi')
+def DO_vi(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run shell - vi"""
+    return DO_edit(wb, args, editor = 'vi')
 
 
-def DO_vim(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET: return DO_edit(wb, args, editor = 'vim')
+def DO_vim(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run shell - vim"""
+    return DO_edit(wb, args, editor = 'vim')
 
 
-def DO_nano(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET: return DO_edit(wb, args, editor = 'nano')
+def DO_nano(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
+    """Run shell - nano"""
+    return DO_edit(wb, args, editor = 'nano')
 
 
 def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: bool = False) -> RET:
@@ -1281,7 +1295,6 @@ def DO_exec(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 def DO_syscmd(wb: WebSocketClientProtocol, cmd: str = '', args: Union[None, list, str] = None) -> RET:
     """run system command with all the arguments but all alien: specifications are downloaded to temporaries"""
-    global AlienSessionInfo
     if args is None: args = []
     if isinstance(args, str): args = args.split()
     if not cmd: return RET(1, '', 'No system command specified!')
@@ -1291,6 +1304,7 @@ def DO_syscmd(wb: WebSocketClientProtocol, cmd: str = '', args: Union[None, list
 
 
 def DO_gethome(wb: WebSocketClientProtocol, args: Union[None, list, str] = None) -> RET:
+    """Get user home"""
     if args is None: args = []
     if isinstance(args, str):
         args = args.split() if args else []
@@ -1300,6 +1314,7 @@ def DO_gethome(wb: WebSocketClientProtocol, args: Union[None, list, str] = None)
 
 
 def DO_find2(wb: WebSocketClientProtocol, args: Union[None, list, str] = None) -> RET:
+    """Run find2 client side customized command"""
     if args is None: args = []
     if isinstance(args, str):
         args = args.split() if args else []
@@ -1454,7 +1469,7 @@ Number of files :\t\t{files}/{files_max} --> {files_perc:.2f}%"""
 
 
 def DO_checkAddr(args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """run checkAddr command"""
     if is_help(args):
         msg = ('checkAddr [reference] fqdn/ip port\n'
                'defaults are: alice-jcentral.cern.ch 8097\n'
@@ -1481,7 +1496,7 @@ def get_help(wb: WebSocketClientProtocol, cmd: str = '') -> RET:
 
 
 def DO_help(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """Help command"""
     if not args: args = []
     if not args or is_help(args):
         msg = ('Special arguments for alien.py command:\n'
@@ -1512,7 +1527,7 @@ def DO_help(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_user(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
-    global AlienSessionInfo
+    """Run user command"""
     if args is None: args = []
     ret_obj = SendMsg(wb, 'user', args)
     if ret_obj.exitcode == 0 and 'homedir' in ret_obj.ansdict['results'][0]: AlienSessionInfo['alienHome'] = ret_obj.ansdict['results'][0]['homedir']
@@ -1521,7 +1536,6 @@ def DO_user(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 def DO_prompt(args: Optional[list] = None) -> RET:
     """Add local dir and date information to the alien.py shell prompt"""
-    global AlienSessionInfo
     if args is None: args = []
     if not args or is_help(args):
         msg = "Toggle the following in the command prompt : <date> for date information and <pwd> for local directory"
@@ -1559,6 +1573,7 @@ def DO_ping(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
 
 
 def DO_tokendestroy(args: Optional[list] = None) -> RET:
+    """Delete the token{cert,key}.pem files"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Delete the token{cert,key}.pem files")
     if os.path.exists(AlienSessionInfo['token_cert']): os.remove(AlienSessionInfo['token_cert'])
@@ -1567,42 +1582,49 @@ def DO_tokendestroy(args: Optional[list] = None) -> RET:
 
 
 def DO_certinfo(args: Optional[list] = None) -> RET:
+    """Print user certificate information"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print user certificate information", "")
     return CertInfo(AlienSessionInfo['user_cert'])
 
 
 def DO_tokeninfo(args: Optional[list] = None) -> RET:
+    """Print token certificate information"""
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
     return CertInfo(AlienSessionInfo['token_cert'])
 
 
 def DO_certverify(args: Optional[list] = None) -> RET:
+    """Verify the user cert against the found CA stores (file or directory)"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Verify the user cert against the found CA stores (file or directory)", "")
     return CertVerify(AlienSessionInfo['user_cert'])
 
 
 def DO_tokenverify(args: Optional[list] = None) -> RET:
+    """Print token certificate information"""
     if not args: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Print token certificate information", "")
     return CertVerify(AlienSessionInfo['token_cert'])
 
 
 def DO_certkeymatch(args: Optional[list] = None) -> RET:
+    """Check match of user cert with key cert"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user cert with key cert", "")
     return CertKeyMatch(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'])
 
 
 def DO_tokenkeymatch(args: Optional[list] = None) -> RET:
+    """Check match of user token with key token"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, "Check match of user token with key token", "")
     return CertKeyMatch(AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
 
 
 def DO_getCAcerts(args: Optional[list] = None) -> RET:
+    """Download CA certificates from ALICE alien-cas repository in ~/.globus/certificates"""
     if args is None: args = []
     if len(args) > 0 and is_help(args): return RET(0, """Download CA certificates from ALICE alien-cas repository in ~/.globus/certificates
 -h/-help : this help information
@@ -1684,12 +1706,11 @@ def make_func_map_client() -> None:
     AlienSessionInfo['cmd2func_map_client']['less'] = DO_less
     AlienSessionInfo['cmd2func_map_client']['more'] = DO_more
     AlienSessionInfo['cmd2func_map_client']['lfn2uri'] = DO_lfn2uri
-    AlienSessionInfo['cmd2func_map_client']['home'] = DO_gethome
     AlienSessionInfo['cmd2func_map_client']['ll'] = DO_ll
     AlienSessionInfo['cmd2func_map_client']['la'] = DO_la
     AlienSessionInfo['cmd2func_map_client']['lla'] = DO_lla
     AlienSessionInfo['cmd2func_map_client']['pwd'] = DO_pwd
-
+    AlienSessionInfo['cmd2func_map_client']['home'] = DO_gethome
 
 def constructCmdList() -> None:
     """Construct the command to function mappings and the command list"""
@@ -1721,7 +1742,6 @@ def constructCmdList() -> None:
 
 def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = None, shellcmd: Optional[str] = None) -> RET:
     """Process a command line within shell or from command line mode input"""
-    global AlienSessionInfo
     if not cmd: return RET(1, '', 'ProcessInput:: Empty input')
     if 'AlienSessionInfo' not in globals(): return RET(1, '', 'ProcessInput needs presence of global dict AlienSessionInfo')
     if args is None: args = []
@@ -1782,7 +1802,7 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
 
 def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[list, str, None] = None) -> int:
     """Process a chain of commands delimited by ; or new line"""
-    global AlienSessionInfo, ALIENPY_GLOBAL_WB
+    global ALIENPY_GLOBAL_WB
     if cmd_chain is None: cmd_chain = []
     if not cmd_chain:
         print_err('ProcessCommandChain:: missing command(s)')
@@ -1808,7 +1828,7 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
     cmdline_list = [str(cmd).strip() for cmd in cmds_split.split(cmd_string)]
 
     # for each command, save exitcode and RET of the command
-    exitcode = -1
+    _exitcode = -1
     for cmdline in cmdline_list:
         if not cmdline: continue
         if DEBUG: logging.info('>>> RUN COMMAND: %s', cmdline)
@@ -1818,8 +1838,8 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
             capture_out = '-noout' in cmdline
             if not capture_out: cmdline.replace(' -noout', '')
             ret_obj = runShellCMD(cmdline, captureout = capture_out, do_shell = True)
-            exitcode = retf_print(ret_obj, 'debug')
-            AlienSessionInfo['exitcode'] = exitcode
+            _exitcode = retf_print(ret_obj, 'debug')
+            AlienSessionInfo['exitcode'] = _exitcode
             continue
 
         # process the input and take care of pipe to shell
@@ -1862,19 +1882,19 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
             args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
-        exitcode = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
-        AlienSessionInfo['exitcode'] = exitcode
+        _exitcode = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
+        AlienSessionInfo['exitcode'] = _exitcode
 
         if cmd == 'cd': SessionSave()
 
         # reset JSON_OUT if it's not globally enabled (env var or argument to alien.py)
         if not JSON_OUT_GLOBAL and 'ALIENPY_JSON_OUT' in os.environ: del os.environ['ALIENPY_JSON_OUT']
-    return exitcode
+    return _exitcode
 
 
 def JAlien(commands: Union[list, str, None] = None) -> int:
     """Main entry-point for interaction with AliEn"""
-    global AlienSessionInfo, ALIENPY_GLOBAL_WB
+    global ALIENPY_GLOBAL_WB
     import_aliases()
 
     # Command mode interaction
@@ -1956,13 +1976,13 @@ make_func_map_nowb()  # GLOBAL!! add to the list of client-side no-connection im
 
 ###################################################
 def main() -> None:
+    """Main function"""
     global ALIENPY_EXECUTABLE, DEBUG, DEBUG_FILE
     signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(sig, signal.SIG_DFL)  # register the default signal handler usage for a sig signal
 
     ALIENPY_EXECUTABLE = sys.argv.pop(0)  # remove the name of the script
 
-    WB = None
     if sys.argv and (is_help(sys.argv[0]) or sys.argv[0] == 'help'):
         print('N.B. !!! This standalone help command will finish the execution of the process!\n')
         JAlien(['help'])
@@ -1990,7 +2010,7 @@ def main() -> None:
         logging.debug('%s\n', ret_obj.out)
 
     if len(sys.argv) > 0 and (sys.argv[0] == 'term' or sys.argv[0] == 'terminal' or sys.argv[0] == 'console'):
-        import code
+        import code  # pylint: disable=import-outside-toplevel
         term = code.InteractiveConsole(locals = globals())
         term.push('jalien = AliEn()')
         banner = 'Welcome to the ALICE GRID - Python interpreter shell\nsupport mail: adrian.sevcenco@cern.ch\nAliEn session object is >jalien< ; try jalien.help()'
@@ -2019,9 +2039,8 @@ def main() -> None:
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, sys.stdout.fileno())
         sys.exit(1)  # Python exits with error code 1 on EPIPE
-    except Exception:
-        logging.exception("\n\n>>>   EXCEPTION   <<<", exc_info = True)
-        logging.error("\n\n")
+    except Exception as e:
+        logging.exception(f'\n\n>>>   EXCEPTION   <<<\n{e}\n\n', stack_info = True)
         print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
 If the exception is reproducible including on lxplus, please create a detailed debug report this way:
@@ -2030,23 +2049,34 @@ ALIENPY_DEBUG=1 ALIENPY_DEBUG_FILE=log.txt your_command_line''')
 
 
 def _cmd(what: str) -> None:
+    """Run given cmd or main"""
     sys.argv = [sys.argv[0]] + [what] + sys.argv[1:]
     main()
 
 
-def cmd_home() -> None: _cmd('home')
+def cmd_home() -> None:
+    """Run cmd home"""
+    _cmd('home')
 
 
-def cmd_cert_info() -> None: _cmd('cert-info')
+def cmd_cert_info() -> None:
+    """Run cmd cert-info"""
+    _cmd('cert-info')
 
 
-def cmd_token_info() -> None: _cmd('token-info')
+def cmd_token_info() -> None:
+    """Run cmd token-info"""
+    _cmd('token-info')
 
 
-def cmd_token_destroy() -> None: _cmd('token-destroy')
+def cmd_token_destroy() -> None:
+    """Run cmd token-destroy"""
+    _cmd('token-destroy')
 
 
-def cmd_token_init() -> None: _cmd('token-init')
+def cmd_token_init() -> None:
+    """Run cmd token-init"""
+    _cmd('token-init')
 
 
 if __name__ == '__main__':

@@ -29,7 +29,7 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 
 
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
-from .data_structs import CertsInfo
+from .data_structs import CertsInfo, SSLctxException
 from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT, ALIENPY_ADDRESS_FAMILY
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import make_connection_ctx
@@ -155,12 +155,14 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
             return None
         return wb
 
-    ctx = make_connection_ctx(use_usercert)
-    if not ctx:
-        msg = f'SSL context invalid using cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}'
+    try:
+        ctx = make_connection_ctx(use_usercert)
+    except Exception as e:
+        msg = 'wb_async::wb_create:: Exception creating SSL context'
         logging.error(msg)
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-        return None
+        logging.exception(f'>>> wb_async::wb_create:: Exception creating SSL context\n{e}\n', stack_info = True)
+        raise SSLctxException('wb_async::wb_create SSL ctx not present!!!')
 
     socket_endpoint = await create_socket(host, port, path)
     if not socket_endpoint:

@@ -170,6 +170,10 @@ class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
     md5: str = ''
 
 
+class SSLctxException(Exception):
+    pass
+
+
 if __name__ == '__main__':
     print('This file should not be executed!', file = sys.stderr, flush = True)
     sys.exit(95)

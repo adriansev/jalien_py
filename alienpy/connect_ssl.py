@@ -23,7 +23,7 @@ except Exception:
 
 ##   GLOBALS
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
-from .data_structs import CertsInfo, RET
+from .data_structs import CertsInfo, RET, SSLctxException
 from .global_vars import AlienSessionInfo, COLORS, TOKENCERT_NAME, TOKENKEY_NAME, USERCERT_NAME, USERKEY_NAME, USER_HOME, I_AM_GRID_JOB
 from .tools_nowb import PrintColor, path_readable
 
@@ -37,7 +37,6 @@ def is_x509dir_valid(x509dir: str = '') -> bool:
 
 def get_ca_path() -> str:
     """Return either the CA path or file, priority given to X509_CERT_FILE and X509_CERT_DIR"""
-
     # Fast path, when some local CAs are explicitly requested - ALIENPY_USE_LOCAL_CAS case
     local_ca_certs_dir = f'{USER_HOME}/.globus/certificates'
     use_local_cas_dir = os.getenv('ALIENPY_USE_LOCAL_CAS', default = '')
@@ -52,11 +51,11 @@ def get_ca_path() -> str:
             logging.debug(f'CApath::LOCAL_CAS:: requested and set to {local_ca_certs_dir}')
             os.environ['X509_CERT_DIR'] = local_ca_certs_dir
             return local_ca_certs_dir
-        else:
-            msg = f'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found in {local_ca_certs_dir}!!!\nrun: "alien.py getCAcerts" first'
-            print_err(msg)
-            logging.error(msg)
-            sys.exit(2)
+
+        msg = f'usage of local CAs was requested by presence of ALIENPY_USE_LOCAL_CAS, but no certificates found in {local_ca_certs_dir}!!!\nrun: "alien.py getCAcerts" first'
+        print_err(msg)
+        logging.error(msg)
+        # do not exit, is fine to have empty CA path, to allow non-wb functions to work, including getCAcerts
 
     # Fast path 2, when some local CAs are explicitly requested - X509_CERT_DIR case
     x509dir = os.getenv('X509_CERT_DIR', default = '')
@@ -64,11 +63,11 @@ def get_ca_path() -> str:
         if is_x509dir_valid(x509dir):
             logging.debug(f'CApath::X509_CERT_DIR:: requested and set to {x509dir}')
             return x509dir
-        else:
-            msg = f'X509_CERT_DIR set by environment is invalid! Check content of {x509dir}'
-            print_err(msg)
-            logging.error(msg)
-            sys.exit(2)
+
+        msg = f'X509_CERT_DIR set by environment is invalid! Check content of {x509dir}'
+        print_err(msg)
+        logging.error(msg)
+        # do not exit, is fine to have empty CA path, to allow non-wb functions to work, including getCAcerts
 
     # X509_CERT_FILE case
     x509file = os.getenv('X509_CERT_FILE', default = '')
@@ -76,34 +75,34 @@ def get_ca_path() -> str:
         if os.path.isfile(x509file):
             logging.debug(f'CApath::X509_CERT_FILE:: requested and set to {x509file}')
             return x509file
-        else:
-            msg = f'X509_CERT_FILE set by environment but is missing! Check existence of {x509file}'
-            print_err(msg)
-            logging.error(msg)
-            sys.exit(2)
 
+        msg = f'X509_CERT_FILE set by environment but is missing! Check existence of {x509file}'
+        print_err(msg)
+        logging.error(msg)
+        # do not exit, is fine to have empty CA path, to allow non-wb functions to work, including getCAcerts
 
     system_ca_path = '/etc/grid-security/certificates'
     alice_cvmfs_ca_path_lx = '/cvmfs/alice.cern.ch/etc/grid-security/certificates'
     alice_cvmfs_ca_path_macos = f'/Users/Shared{alice_cvmfs_ca_path_lx}'
 
-    capath_default = None
+    capath_default = ''
 
     if is_x509dir_valid(alice_cvmfs_ca_path_lx):
         capath_default = alice_cvmfs_ca_path_lx
 
     if not capath_default and is_x509dir_valid(alice_cvmfs_ca_path_macos):
-            capath_default = alice_cvmfs_ca_path_macos
+        capath_default = alice_cvmfs_ca_path_macos
 
     if not capath_default and is_x509dir_valid(system_ca_path):
-            capath_default = system_ca_path
+        capath_default = system_ca_path
 
     if not capath_default:
         msg = "No CA locations found!!! Connection will not be possible!! Either set X509_CERT_DIR to a known good CApath or run:\nalien.py getCAcerts\nto download CAs to ~/.globus/certificates"
         print_err(msg)
         logging.error(msg)
-        sys.exit(2)
+        # do not exit, is fine to have empty CA path, to allow non-wb functions to work, including getCAcerts
 
+    if not capath_default: capath_default = 'empty_notvalid'
     os.environ['X509_CERT_DIR'] = capath_default
     logging.debug(f'CApath:: found and set to {capath_default}')
     return capath_default
@@ -222,7 +221,7 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         cert, key = token_cert, token_key
 
     if not cert or not key:
-        print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed, contact the developer if you see this!!!')
+        print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed')
         return None
 
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
@@ -262,36 +261,42 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
 
 
 def make_connection_ctx(use_usercert: bool = False) -> Optional[ssl.SSLContext]:
+    """Create SSL context using AlienSessionInfo information"""
     ctx = None
     # Check the content of AlienSessionInfo for values of cert and token files
     certs_info = None
+    user_cert = user_key = token_cert = token_key = ''
+
     if 'AlienSessionInfo' in globals() and AlienSessionInfo['token_cert'] and AlienSessionInfo['token_key'] and AlienSessionInfo['user_cert'] and AlienSessionInfo['user_key']:
-        certs_info = CertsInfo(AlienSessionInfo['user_cert'], AlienSessionInfo['user_key'], AlienSessionInfo['token_cert'], AlienSessionInfo['token_key'])
+        user_cert, user_key = AlienSessionInfo['user_cert'], AlienSessionInfo['user_key']
+        token_cert, token_key = AlienSessionInfo['token_cert'], AlienSessionInfo['token_key']
     else:
         certs_info = renewCredFilesInfo()
-            
+        user_cert, user_key = certs_info.user_cert, certs_info.user_key
+        token_cert, token_key = certs_info.token_cert, certs_info.token_key
+
     # Check the presence of user certs and bailout before anything else
-    if not certs_info.token_cert and not certs_info.user_cert:
+    if not token_cert and not user_cert:
         print_err(f'No valid user certificate or token found!! check {DEBUG_FILE} for further information and contact the developer if the information is not clear.')
         return None
-    
-    try:
-        ctx = create_ssl_context(use_usercert,
-                                    user_cert = certs_info.user_cert, user_key = certs_info.user_key,
-                                    token_cert = certs_info.token_cert, token_key = certs_info.token_key)
-    except Exception as e:
-        msg = f'Could NOT create SSL context with cert files:\n{certs_info.user_cert} ; {certs_info.user_key}\n{certs_info.token_cert} ; {certs_info.token_key}\n{e!r}'
-        logging.error(msg)
+
+    ctx = create_ssl_context(use_usercert, user_cert = user_cert, user_key = user_key, token_cert = token_cert, token_key = token_key)
+    if not ctx:
+        if not user_cert: user_cert = 'INVALID'
+        if not user_key: user_key = 'INVALID'
+        if not token_cert: token_cert = 'INVALID'
+        if not token_key: token_key = 'INVALID'
+        msg = f'Could NOT create SSL context with cert files:\n{user_cert} ; {user_key}\n{token_cert} ; {token_key}'
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-        return None
-    
+        raise SSLctxException('connect_ssl::make_connection_ctx SSL ctx not present!!!')
+
     return ctx
 
 
 def CertInfo(fname: str) -> RET:
     """Print certificate information (subject, issuer, notbefore, notafter)"""
     if not fname:
-        return RET(2, '', f'No certificate filename provided!')  # ENOENT /* No such file or directory */
+        return RET(2, '', 'No certificate filename provided!')  # ENOENT /* No such file or directory */
 
     cert_bytes = None
     try:

@@ -8,7 +8,7 @@ import shlex
 import logging
 import traceback
 from pathlib import Path
-from typing import Callable, Optional, TYPE_CHECKING, Union
+from typing import Callable, Optional, Union
 import time
 
 try:
@@ -16,9 +16,10 @@ try:
 except Exception:
     print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.exceptions as wb_exceptions'", file = sys.stderr, flush = True)
     sys.exit(1)
-from websockets import WebSocketClientProtocol
+# from websockets import WebSocketClientProtocol
+from websockets import ClientConnection as WebSocketClientProtocol
 
-from .data_structs import RET
+from .data_structs import RET, SSLctxException
 from .setup_logging import DEBUG, DEBUG_FILE, print_err, print_out
 from .global_vars import ALIENPY_GLOBAL_WB, AlienSessionInfo, DEBUG_TIMING, TIME_CONNECT, TMPDIR, get_certs_names, SET_SITE
 from .async_tools import syncify
@@ -45,8 +46,11 @@ def wb_create_tryout(host: str, port: Union[str, int], path: str = '/', use_user
 
         try:
             wb = wb_create(host, port, path, use_usercert, localConnect)
+        except SSLctxException:
+            logging.exception(f'>>>wb_api::wb_create_tryout:: try_nr {nr_tries} :: SSL context exception')
+            return None
         except Exception as e:
-            logging.exception(f'wb_create_tryout:: exception when wb_create; try_nr {nr_tries}')
+            logging.exception(f'n>>>wb_api::wb_create_tryout:: exception when wb_create; try_nr {nr_tries}\n{e}\n', stack_info = True)
 
         if not wb:
             if nr_tries >= connect_tries:
@@ -515,14 +519,17 @@ class Msg:
             self.args = args.copy()
 
     def add_arg(self, arg: Union[str, list, None]) -> None:
+        """Add args"""
         if not arg: return
         if isinstance(arg, str): self.args.extend(shlex.split(arg))
         if isinstance(arg, list): self.args.extend(arg)
 
     def msgdict(self) -> dict:
+        """Create message dict"""
         return CreateJsonCommand(self.cmd, self.args, self.opts, True)
 
     def msgstr(self) -> str:
+        """Create message str"""
         return CreateJsonCommand(self.cmd, self.args, self.opts)
 
     def __call__(self) -> tuple:

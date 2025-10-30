@@ -42,10 +42,11 @@ def setup_logging(debug: bool = False, debug_file:str = f'{USER_HOME}/alien_py.l
     logging.addLevelName(95, 'STDERR')
 
     MSG_LVL = logging.DEBUG if debug else logging.INFO
-    line_fmt = '%(levelname)s:%(asctime)s %(message)s'
+    line_fmt = '%(levelname)s:%(name)s:%(asctime)s %(message)s'
+    date_fmt = '%Y%m%d%H%M%S'
     file_mode = 'a' if os.getenv('ALIENPY_DEBUG_APPEND', '') else 'w'
     try:
-        logging.basicConfig(format = line_fmt, filename = debug_file, filemode = file_mode, level = MSG_LVL)
+        logging.basicConfig(format = line_fmt, datefmt = date_fmt, filename = debug_file, filemode = file_mode, level = MSG_LVL)
     except Exception:
         print_err(f'Could not write the log file {debug_file}; falling back to detected tmp dir')
         debug_file = f'{TMPDIR}/{os.path.basename(debug_file)}'

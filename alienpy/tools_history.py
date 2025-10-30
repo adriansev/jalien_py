@@ -7,7 +7,6 @@ from pathlib import Path
 from .global_vars import AlienSessionInfo
 from .wb_api import lfn_list  # nosec PYL-W0614
 
-
 HAS_READLINE = False
 
 __platform = sys.platform.lower()
@@ -27,6 +26,7 @@ else:
 
 def setupHistory(wb) -> None:
     """Setup up history mechanics for readline module"""
+    if os.getenv('ALIENPY_NO_HISTORY'): return
     if not HAS_READLINE or 'AlienSessionInfo' not in globals() or not wb: return
 
     histfile = os.path.join(os.path.expanduser("~"), ".alienpy_history")
