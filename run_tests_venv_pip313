@@ -7,8 +7,9 @@ mkdir -p "${VENV_DIR}"
 python3.13 -m venv "${VENV_DIR}" || { echo "error"; exit 1; }
 
 source "${VENV_DIR}/bin/activate"
-pip install --upgrade pip
-pip install --upgrade alienpy
+pip install --no-cache-dir --upgrade pip
+pip install --no-cache-dir --upgrade setuptools[core] wheel distutils
+pip install --no-cache-dir --upgrade alienpy
 
 cd tests
 ./run_tests
