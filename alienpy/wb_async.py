@@ -167,6 +167,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     socket_endpoint = await create_socket(host, port, path)
     if not socket_endpoint:
         return None
+    socket_endpoint_addr, socket_endpoint_port = socket_endpoint.getpeername()
 
     # Compression settings given by https://docs.python.org/3/library/zlib.html#zlib.compressobj
     # client_max_window_bits = 12,  # tomcat endpoint does not allow anything other than 15, so let's just choose a mem default towards speed
