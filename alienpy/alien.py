@@ -232,6 +232,9 @@ def DO_xrd_ping(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET
                'It will use the XRootD connect/ping option to connect and return a RTT')
         return RET(0, msg)
 
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present!!')
+
     count_arg = get_arg_value(args, '-c')
     count = int(count_arg) if count_arg else 3
 
@@ -273,6 +276,10 @@ def DO_xrd_config(wb: WebSocketClientProtocol, args: Optional[list] = None) -> R
                'It will use the XRootD query config to get the current server properties\n'
                'verbose mode will print more about the server configuration')
         return RET(0, msg)
+
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present!!')
+
     verbose = get_arg(args, '-v') or get_arg(args, '-verbose')
     all_alice_sites = get_arg(args, '-a') or get_arg(args, '-all')
 
@@ -324,6 +331,10 @@ def DO_xrd_stats(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RE
                '-xmlraw : print rawxml output without any indentation\n'
                '-compact : print the most compact version of the output, with minimal white space\n')
         return RET(0, msg)
+
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present!!')
+
     compact = get_arg(args, '-compact')
     xml_out = get_arg(args, '-xml')
     xml_raw = get_arg(args, '-xmlraw')
@@ -390,6 +401,10 @@ def DO_pfnstatus(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RE
                'It will return all flags reported by the xrootd server - this is direct access to server\n'
                'pfn is identified by prefix root://; if missing the argument will be taken to be a lfn')
         return RET(0, msg)
+
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present!!')
+
     verbose = get_arg(args, '-v') or get_arg(args, '-verbose')
     pfn_list = []
     # create a list of all pfns to be queried
@@ -1181,6 +1196,10 @@ def DO_edit(wb: WebSocketClientProtocol, args: Optional[list] = None, editor: st
 -datebck : the backup filename will be date based
 N.B. EDITOR env var must be set or fallback will be mcedit (not checking if exists)"""
         return RET(0, msg)
+
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present!!')
+
     if not editor:
         editor = os.getenv('EDITOR')
         if not editor:
@@ -1236,36 +1255,35 @@ def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: b
     if args is None: args = []
     if not args: return RET(1, '', 'No shell command specified')
     if is_help(args) or len(args) == 1:
-        msg_last = ('Command format: shell_command arguments lfn\n'
-                    'N.B.!! the lfn must be the last element of the command!!\n'
-                    'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
-                    'for working within application use <edit> or -noout argument\n'
-                    'additional arguments recognized independent of the shell command:\n'
-                    '-force : will re-download the lfn even if already present\n'
-                    '-noout : will not capture output, the actual application can be used')
-
+        external_msg = ' run' if external else ''
+        msg = (f'Command format:{external_msg} shell_command arguments lfn\n'
+                'N.B.!! the lfn must be the last element of the command!!\n'
+                'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
+                'for working within application use <edit> or -noout argument\n'
+                'additional arguments recognized independent of the shell command:\n'
+                '-force : will re-download the lfn even if already present\n'
+                '-noout : will not capture output, the actual application can be used')
         if external:
             ret_obj = runShellCMD(f'{args[0]} -h', captureout = True, do_shell = True)
             return ret_obj._replace(out = f'{ret_obj.out}\n{msg_last}')
-        msg = ('Command format: run shell_command arguments lfn\n'
-               'the lfn must be the last element of the command\n'
-               'N.B.! The output and error streams will be captured and printed at the end of execution!\n'
-               'for working within application use <edit>\n'
-               'additional arguments recognized independent of the shell command:\n'
-               '-force : will re-download the lfn even if already present\n'
-               '-noout : will not capture output, the actual application can be used')
         return RET(0, msg)
+
+    if not HAS_XROOTD:
+        return RET(1, '', 'XRootD module not present, this command will not work!!')
 
     overwrite = get_arg(args, '-force')
     capture_out = get_arg(args, '-noout')
 
+    # args will be a mix of command arguments and lfns; let's select lfns
     list_of_lfns = [arg for arg in args if 'alien:' in arg]
-    if not list_of_lfns: list_of_lfns = [args.pop(-1)]
 
-    tmp_list = [download_tmp(wb, lfn, overwrite, verbose = True) for lfn in list_of_lfns]  # list of temporary downloads
+    # is no alien: preffixed arguments then just take the last token as argument
+    if not list_of_lfns: list_of_lfns = [args.pop(-1)]
     new_args = [arg for arg in args if arg not in list_of_lfns]  # command arguments without the files
     args = list(new_args)
     cmd = " ".join(args)
+
+    tmp_list = [download_tmp(wb, lfn, overwrite, verbose = True) for lfn in list_of_lfns]  # list of temporary downloads
     files = " ".join(tmp_list)
     if tmp_list and all(os.path.isfile(tmp) for tmp in tmp_list):
         return runShellCMD(f'{cmd} {files}', capture_out, do_shell = True)

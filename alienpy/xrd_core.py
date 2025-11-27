@@ -127,6 +127,7 @@ try:
     # XRDCP_CMD = shutil.which('xrdcp')
     HAS_XROOTD = True
 except Exception:
+    xrd_client = QueryCode = OpenFlags = AccessMode = StatInfoFlags = AccessType = None
     print("XRootD module could not be imported! Not fatal, but XRootD transfers will not work (or any kind of file access)\n Make sure you can do:\npython3 -c 'from XRootD import client as xrd_client'", file = sys.stderr, flush = True)
 
 
