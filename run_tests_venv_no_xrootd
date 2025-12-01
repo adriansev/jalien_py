@@ -11,4 +11,10 @@ source "${VENV_DIR}/bin/activate"
 ALIBUILD=1 pip install -e .
 
 alien.py version
+ECODE="${?}"
+echo "version Exit code = ${ECODE}"
+
+alien-token-info >& /dev/null
+ECODE="${?}"
+echo "alien-token-info Exit code = ${ECODE}"
 
