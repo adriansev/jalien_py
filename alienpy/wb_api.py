@@ -199,13 +199,17 @@ def SendMsg(wb: WebSocketClientProtocol, cmdline: str, args: Optional[list] = No
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')
 
-    time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
-
-    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:  # if jsout output was requested, then make sure we get the full answer
+    # if jsout output was requested or debug is enabled, then make sure we get the full answer
+    if JSON_OUT_GLOBAL or JSON_OUT or DEBUG:
         opts = opts.replace('-nokeys', '').replace('-nomsg', '').replace('nokeys', '').replace('nomsg', '')
 
-    json_signature = ['{"command":', '"options":']
+    if 'showkeys' in opts:
+        opts = opts.replace('-nokeys', '').replace('nokeys', '').opts.replace('-showkeys', '').replace('showkeys', '')
+    if 'showmsg' in opts:
+        opts.replace('-nomsg', '').replace('nomsg', '').opts.replace('-showmsg', '').replace('showmsg', '')
+
     # if already json format just use it as is; nomsg/nokeys will be passed to CreateJsonCommand
+    json_signature = ['{"command":', '"options":']
     jsonmsg = cmdline if all(x in cmdline for x in json_signature) else CreateJsonCommand(cmdline, args, opts)
 
     if not jsonmsg:
@@ -217,6 +221,7 @@ def SendMsg(wb: WebSocketClientProtocol, cmdline: str, args: Optional[list] = No
 
     nr_tries = int(1)
     result = None
+    time_begin = time.perf_counter() if DEBUG or DEBUG_TIMING else None
     while result is None:
         if nr_tries > 3: break
         nr_tries += 1
@@ -226,10 +231,10 @@ def SendMsg(wb: WebSocketClientProtocol, cmdline: str, args: Optional[list] = No
             logging.exception('SendMsg:: Error sending: %s\nBecause of %s', jsonmsg, e.__cause__)
             wb = AlienConnect(wb)
         if result is None: time.sleep(0.2)
-
     if time_begin: logging.debug('SendMsg::Result received: %s ms', deltat_ms_perf(time_begin))
+
     if not result:
-        msg = f"SendMsg:: could not send command: {jsonmsg}\nCheck {DEBUG_FILE}"
+        msg = f"SendMsg:: Empty result received from server from jsoncmd:\n{jsonmsg}\nCheck {DEBUG_FILE}"
         print_err(msg)
         logging.error(msg)
         return RET(70, '', 'SendMsg:: Empty result received from server')  # type: ignore [call-arg]  # ECOMM

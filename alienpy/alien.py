@@ -1773,6 +1773,12 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
         return RET(1, '', msg)
 
     opts = ''  # let's process special server args
+    if get_arg(args, '-allkeys') or get_arg(args, 'allkeys'):
+        get_arg(args, '-nokeys')
+        get_arg(args, 'nokeys')
+        get_arg(args, '-nomsg')
+        get_arg(args, 'nomsg')
+        opts = f'{opts} showmsg showkeys'
     if get_arg(args, '-nokeys') or get_arg(args, 'nokeys'): opts = f'{opts} nokeys'
     if get_arg(args, '-nomsg') or get_arg(args, 'nomsg'): opts = f'{opts} nomsg'
     if get_arg(args, '-showkeys') or get_arg(args, 'showkeys'): opts = f'{opts} showkeys'
@@ -1897,7 +1903,8 @@ def ProcessCommandChain(wb: Optional[WebSocketClientProtocol], cmd_chain: Union[
                 # If not prezent init connection and if command is token-init (without help being invoked) then use usercert
                 wb = InitConnection(wb, args if cmd == 'token-init' else [], use_usercert = (cmd == 'token-init' and not is_help(args)), cmdlist_func = constructCmdList)
                 ALIENPY_GLOBAL_WB = wb
-            args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
+            if not '-allkeys' in args or not 'allkeys' in args:
+                args.append('-nokeys')  # Disable return of the keys. ProcessCommandChain is used for user-based communication so json keys are not needed
             ret_obj = ProcessInput(wb, cmd, args, pipe_to_shell_cmd)
 
         _exitcode = retf_print(ret_obj, print_opts)  # save exitcode for easy retrieval
