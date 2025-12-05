@@ -1265,7 +1265,7 @@ def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: b
                 '-noout : will not capture output, the actual application can be used')
         if external:
             ret_obj = runShellCMD(f'{args[0]} -h', captureout = True, do_shell = True)
-            return ret_obj._replace(out = f'{ret_obj.out}\n{msg_last}')
+            return ret_obj._replace(out = f'{ret_obj.out}\n{msg}')
         return RET(0, msg)
 
     if not HAS_XROOTD:
