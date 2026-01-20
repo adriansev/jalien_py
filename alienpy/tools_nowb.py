@@ -262,9 +262,16 @@ def get_lfn_key(lfn_obj: dict) -> str:
     return ''
 
 
+def get_pids_list() -> list:
+    """Return a list with all pids in system"""
+    return [int(f.name) for f in os.scandir('/proc') if f.is_dir() and os.path.basename(f).isdecimal()]
+
+
 def pid_uid(pid: int) -> int:
     """Return username of UID of process pid"""
     uid = int(-1)
+    pid_list = get_pids_list()
+    if pid not in pid_list: return uid
     try:
         with open(f'/proc/{pid}/status', encoding="ascii", errors="replace") as proc_status:
             for line in proc_status:
