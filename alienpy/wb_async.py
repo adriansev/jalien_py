@@ -149,18 +149,19 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
                                        open_timeout = OPEN_TIMEOUT, close_timeout = CLOSE_TIMEOUT,
                                        user_agent_header = USER_AGENT, extra_headers = headers_list)
         except Exception as e:
-            msg = f'Could NOT establish connection (local socket) to {socket_filename}\n{sys.exc_info()}'
+            msg = f'Could NOT establish connection (local socket) to {socket_filename}\nCheck the logfile: {DEBUG_FILE}'
             logging.error(msg)
-            print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+            print_err(msg)
+            logging.exception(f'>>> wb_async::wb_create:: Exception connecting to localhost\n{e}\n', stack_info = True)
             return None
         return wb
 
     try:
         ctx = make_connection_ctx(use_usercert)
     except Exception as e:
-        msg = 'wb_async::wb_create:: Exception creating SSL context'
+        msg = f'wb_async::wb_create:: Exception creating SSL context\nCheck the logfile: {DEBUG_FILE}'
         logging.error(msg)
-        print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+        print_err(msg)
         logging.exception(f'>>> wb_async::wb_create:: Exception creating SSL context\n{e}\n', stack_info = True)
         raise SSLctxException('wb_async::wb_create SSL ctx not present!!!')
 
