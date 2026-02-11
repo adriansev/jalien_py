@@ -51,7 +51,7 @@ from .version import ALIENPY_VERSION_DATE, ALIENPY_VERSION_HASH, ALIENPY_VERSION
 ##   ASYNCIO MECHANICS
 from .wb_api import InitConnection, SendMsg, cd, get_help_srv, retf_print, token_regen, wb_ping
 ##   SSL RELATED VARIABLES: TOKEN AND CERT NAMES
-from .connect_ssl import CertInfo, CertKeyMatch, CertVerify
+from .connect_ssl import CertInfo, CertKeyMatch, CertVerify, CA_PATH
 ##   General misc functions library
 from .tools_nowb import (GetHumanReadableSize, PrintColor, ccdb_json_cleanup, check_port, convert_jdl2dict, convert_time, convert_trace2dict,
                          deltat_ms_perf, dequote, exit_message, exitcode, file2file_dict, file2list, getCAcerts,
@@ -740,6 +740,12 @@ task name / detector name / [ / time [ / key = value]* ]
     if not ccdb.endswith('/'): ccdb = f'{ccdb}/'
     if not ccdb.startswith('http://') and not ccdb.startswith('https://'): ccdb = f'http://{ccdb}'
 
+    # if https requested, use only token-cert as request does not allow encrypted keys
+    cert, key = AlienSessionInfo['token_cert'], AlienSessionInfo['token_key']
+    requests_ssl_args = {}
+    if ccdb.startswith('https://'):
+        requests_ssl_args = { 'cert': (cert, key), 'verify': CA_PATH }
+
     query_str = args[0]  # after removal of args assume the rest is the query
     query_str = query_str.replace('.*', '').replace('*', '')
 
@@ -786,7 +792,7 @@ task name / detector name / [ / time [ / key = value]* ]
         k, _, v = h_el.partition(':')
         headers[k.strip()] = v.strip()
 
-    ccdb_query = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5)
+    ccdb_query = requests.get(f'{ccdb}{listing_type}{query_str}', headers = headers, timeout = 5, **requests_ssl_args)
     if ccdb_query.status_code != 200:
         return RET(1, '', f'Invalid answer (code {ccdb_query.status_code}) from query:\n{ccdb}{listing_type}{query_str}')
     q_dict = ccdb_query.json()
