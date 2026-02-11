@@ -787,11 +787,7 @@ if HAS_XROOTD:
                     size = replica_info['size']
                     md5 = replica_info['md5']
                     ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
-                    attr_list = []
-                    attr_list.append(('guid', guid))
-                    attr_list.append(('lfn', lfn))
-                    attr_list.append(('size', size))
-                    attr_list.append(('md5', md5))
+                    attr_list = [('guid', guid), ('lfn', lfn), ('size', size), ('md5', md5)]
                     attr_list.append(('ts_r', ts))  # timestamp for read  (when read by tool - avoid lack of access time of the filesystem)
                     attr_list.append(('ts_w', ts))  # timestamp for write (when downloaded)
 
@@ -1108,16 +1104,10 @@ def sync_attr_from_alien(wb, lfn: str, filename: str) -> bool:
     alien_stat = alien_stat_query.ansdict['results'][0]
 
     if on_disk_md5 != alien_stat['md5'] : return False
-
-    attr_list_2update = []
-    attr_list_2update.append(('md5', alien_stat['md5']))
-    attr_list_2update.append(('guid', alien_stat['guid']))
-    attr_list_2update.append(('lfn', alien_stat['lfn']))
-    attr_list_2update.append(('size', alien_stat['size']))
-
     ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
-    attr_list_2update.append(('ts_r', ts))
-    attr_list_2update.append(('ts_w', ts))
+
+    attr_list_2update = [('guid', alien_stat['guid']), ('lfn', alien_stat['lfn']), ('size', alien_stat['size']), ('md5', alien_stat['md5']),
+                         ('ts_r', ts), ('ts_w', ts)]
 
     res_list = set_xattr_list(filename, attr_list_2update)
     return all(res_list)
