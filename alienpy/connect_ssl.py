@@ -61,8 +61,8 @@ def get_ca_path() -> str:
 
     # Fast path 2, when some local CAs are explicitly requested - X509_CERT_DIR case
     x509dir = os.getenv('X509_CERT_DIR', default = '')
-    x509dir = os.path.abspath(os.path.expanduser(x509dir))
     if x509dir:
+        x509dir = os.path.abspath(os.path.expanduser(x509dir))
         if is_x509dir_valid(x509dir):
             logging.debug(f'CApath::X509_CERT_DIR:: requested and set to {x509dir}')
             return x509dir
@@ -74,8 +74,8 @@ def get_ca_path() -> str:
 
     # X509_CERT_FILE case
     x509file = os.getenv('X509_CERT_FILE', default = '')
-    x509file = os.path.abspath(os.path.expanduser(x509file))
     if x509file:
+        x509file = os.path.abspath(os.path.expanduser(x509file))
         if os.path.isfile(x509file):
             logging.debug(f'CApath::X509_CERT_FILE:: requested and set to {x509file}')
             return x509file
