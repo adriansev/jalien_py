@@ -30,8 +30,9 @@ from .tools_nowb import PrintColor, path_readable
 
 def is_x509dir_valid(x509dir: str = '') -> bool:
     """Determine validity of X509_CERT_DIR"""
-    if not os.path.isdir(x509dir): return False
-    pem_files_in_dir = [f for f in os.listdir(x509dir) if os.path.isfile(f'{x509dir}/{f}') and f.endswith('.pem')]
+    path = os.path.abspath(os.path.expanduser(x509dir))
+    if not os.path.isdir(path): return False
+    pem_files_in_dir = [f for f in os.listdir(path) if os.path.isfile(f'{path}/{f}') and f.endswith('.pem')]
     return len(pem_files_in_dir) > 0
 
 
@@ -42,6 +43,7 @@ def get_ca_path() -> str:
     use_local_cas_dir = os.getenv('ALIENPY_USE_LOCAL_CAS', default = '')
 
     if use_local_cas_dir:  # explicit requested by env var, so top priority
+        use_local_cas_dir = os.path.abspath(os.path.expanduser(use_local_cas_dir))
         # if ALIENPY_USE_LOCAL_CAS is set to a directory that is present we can assume that is the CAs location
         if os.path.isdir(use_local_cas_dir):
             local_ca_certs_dir = use_local_cas_dir
@@ -59,6 +61,7 @@ def get_ca_path() -> str:
 
     # Fast path 2, when some local CAs are explicitly requested - X509_CERT_DIR case
     x509dir = os.getenv('X509_CERT_DIR', default = '')
+    x509dir = os.path.abspath(os.path.expanduser(x509dir))
     if x509dir:
         if is_x509dir_valid(x509dir):
             logging.debug(f'CApath::X509_CERT_DIR:: requested and set to {x509dir}')
@@ -71,6 +74,7 @@ def get_ca_path() -> str:
 
     # X509_CERT_FILE case
     x509file = os.getenv('X509_CERT_FILE', default = '')
+    x509file = os.path.abspath(os.path.expanduser(x509file))
     if x509file:
         if os.path.isfile(x509file):
             logging.debug(f'CApath::X509_CERT_FILE:: requested and set to {x509file}')
@@ -224,28 +228,31 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         print_err('create_ssl_context:: no certificate to be used for SSL context. This message should not be printed')
         return None
 
-    if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
-    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
-    ctx = ssl.SSLContext(ssl_protocol)
-    ctx.options |= ssl.OP_NO_SSLv3
-    ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
-    ctx.check_hostname = False
-
-    # ca_verify_location = get_ca_path()
     cafile = capath = None
     if os.path.isfile(CA_PATH):
         cafile = CA_PATH
     else:
         capath = CA_PATH
 
-    logging.info('SSL context:: Loading verify location:\n%s', CA_PATH)
-    try:
-        ctx.load_verify_locations(cafile = cafile, capath = capath)
-    except Exception as e:
-        logging.error(f'Could not load verify location {CA_PATH}!!!\n')
-        if DEBUG: logging.exception(e)
-        print_err(f'Verify location could not be loaded!!! check content of >>> {CA_PATH} <<< and the log')
-        return None  # EIO /* I/O error */
+    if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
+    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
+    ctx = ssl.SSLContext(ssl_protocol)
+    ctx.options |= ssl.OP_NO_SSLv3
+    ctx.check_hostname = False
+
+    # do not do CA verificattion for token, only for usercert
+    if not 'token' in cert:
+        ctx.verify_mode = ssl.CERT_REQUIRED  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+        logging.info('SSL context:: Loading verify location:\n%s', CA_PATH)
+        try:
+            ctx.load_verify_locations(cafile = cafile, capath = capath)
+        except Exception as e:
+           logging.error(f'Could not load verify location {CA_PATH}!!!\n')
+           if DEBUG: logging.exception(e)
+           print_err(f'Verify location could not be loaded!!! check content of >>> {CA_PATH} <<< and the log')
+           return None  # EIO /* I/O error */
+    else:
+        ctx.verify_mode = ssl.CERT_NONE  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
 
     if DEBUG: logging.debug('SSL context:: Loading cert,key pair:\n%s\n%s', cert, key)
     try:
