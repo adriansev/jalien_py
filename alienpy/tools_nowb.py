@@ -451,13 +451,13 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
     return any(ip[-1] for ip in result_list)
 
 
-def exitcode(args: Optional[list] = None) -> None:  # pylint: disable=unused-argument
+def exitcode(args: Union[list, None] = None) -> None:  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     if 'AlienSessionInfo' not in globals(): return RET()
     return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
 
 
-def valid_regex(regex_str: str) -> Optional[REGEX_PATTERN_TYPE]:
+def valid_regex(regex_str: str):
     """Validate a regex string and return a re.Pattern if valid"""
     regex = None
     try:
@@ -693,7 +693,7 @@ def set_xattr(path: str, attr_arg: str, value_arg: str) -> bool:
     '''Set an xattr to a local file'''
     if not path or not attr_arg or not value_arg or not os.path.isfile(path): return False
     attr = f'user.{attr_arg}'.encode()
-    value = value_arg.encode()
+    value = str(value_arg).encode()
     try:
         os.setxattr(path, attr, value, flags = os.XATTR_CREATE, follow_symlinks = True)
     except Exception:
@@ -709,7 +709,7 @@ def set_xattr_list(path: str, attr_kv_list: list) -> list:
     '''Set a list of xattrs to a local file'''
     if not path or not attr_kv_list: return False
     result_list = []
-    for k, v in attr_kv_list:
+    for k, v in (attr_kv_list.items() if isinstance(attr_kv_list, dict) else enumerate(attr_kv_list)):
         result = set_xattr(path, k, v)
         result_list.append(result)
         if not result: break  # if any error while setting xattr just stop any other processing
@@ -1192,6 +1192,8 @@ def ccdb_json_cleanup(item_dict: dict) -> None:
     item_dict.pop('fileName', None)  # replaced by Content-Disposition
     item_dict.pop('contentType', None)
     item_dict.pop('size', None)  # replaced by Content-Length
+    if 'ETag' in item_dict:
+        item_dict['ETag'] = item_dict.pop('ETag').strip('\"')
     # get and create the filename
     if not 'fileName' in item_dict:
         content_disposition = item_dict.pop('Content-Disposition', '')
