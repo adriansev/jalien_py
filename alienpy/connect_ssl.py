@@ -9,6 +9,8 @@ import tempfile
 import ssl
 from typing import Optional
 
+from httplib2 import CA_CERTS
+
 try:
     from cryptography import x509
 except Exception:
@@ -108,7 +110,7 @@ def get_ca_path() -> str:
 
     if not capath_default: capath_default = 'empty_notvalid'
     os.environ['X509_CERT_DIR'] = capath_default
-    logging.debug(f'CApath:: found and set to {capath_default}')
+    logging.debug('CApath:: found and set to %s', capath_default)
     return capath_default
 
 
@@ -252,9 +254,8 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         try:
             ctx.load_verify_locations(cafile = cafile, capath = capath)
         except Exception as e:
-           logging.error(f'Could not load verify location {CA_PATH}!!!\n')
-           if DEBUG: logging.exception(e)
            print_err(f'Verify location could not be loaded!!! check content of >>> {CA_PATH} <<< and the log')
+           logging.exception("SSL context:: Could not load verify location %s", CA_PATH, stack_info = True)
            return None  # EIO /* I/O error */
     else:
         ctx.verify_mode = ssl.CERT_NONE  # CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
@@ -263,9 +264,8 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
     try:
         ctx.load_cert_chain(certfile = cert, keyfile = key)
     except Exception as e:
-        logging.error(f'Could not load cert/key pair:\nCert: {cert}\nKey: {key}\n')
-        if DEBUG: logging.exception(e)
         print_err(f'Error loading certificate pair!! Check the content of {DEBUG_FILE}')
+        logging.exception("SSL context:: Could not load cert/key pair:\nCert: %s\nKey: %s", cert, key, stack_info = True)  
         return None  # EIO /* I/O error */
 
     logging.info('\n... SSL context done.')

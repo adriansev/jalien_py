@@ -174,7 +174,7 @@ def lfnIsValid(wb, lfn: str, local_file: str, shallow_check: bool = False, remov
 
     if int(local_file_stat.st_size) != int(lfn_stat.size):
         if removeTarget:
-            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            _ = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
             msg = f'{lfn} : Removed (invalid size)'
         else:
             msg = f'{lfn} : Mismatched size'
@@ -302,7 +302,7 @@ def commitFileList(wb, lfnInfo_list: list) -> list:  # returns list of RET
     return commit_results
 
 
-def list_files_grid(wb, search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: Union[str, list, None] = None) -> RET:
+def list_files_grid(wb, search_dir: str, pattern: Union[re.Pattern[str], str, None] = None, is_regex: bool = False, find_args: Union[str, list, None] = None) -> RET:
     """Return a list of files(lfn/grid files) that match pattern found in search_dir
     Returns a RET object (from find), and takes: wb, directory, pattern, is_regex, find_args
     """

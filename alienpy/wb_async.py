@@ -188,15 +188,15 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
     except wb_exceptions.InvalidStatus as e:
         msg = f'Invalid status code {e.response.status_code} connecting to {socket_endpoint_addr}:{socket_endpoint_port}'
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
-        logging.error(f'{msg}\n{e!r}')
+        logging.exception("%s", msg, stack_info = True)
         if int(e.response.status_code) == 401:
             print_err('The status code indicate that your certificate is not authorized!!!\nCheck the certificate registration into ALICE VO')
             sys.exit(129)
         return None
     except Exception as e:
         msg = f'Could NOT establish connection (WebSocket) to {socket_endpoint_addr}:{socket_endpoint_port}\n{e!r}'
-        logging.error(msg)
         print_err(f'{msg}\nCheck the logfile: {DEBUG_FILE}')
+        logging.exception("%s", msg, stack_info = True)
         return None
 
     if wb:

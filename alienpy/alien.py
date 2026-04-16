@@ -2091,7 +2091,7 @@ def main() -> None:
         os.dup2(devnull, sys.stdout.fileno())
         sys.exit(1)  # Python exits with error code 1 on EPIPE
     except Exception as e:
-        logging.exception(f'\n\n>>>   EXCEPTION   <<<\n\n', stack_info = True)
+        logging.exception('\n\n>>>   EXCEPTION  <<<\n\n', stack_info = True)
         print_err(f'''{PrintColor(COLORS.BIRed)}Exception encountered{PrintColor(COLORS.ColorReset)}! it will be logged to {DEBUG_FILE}
 Please report the error and send the log file and "alien.py version" output to Adrian.Sevcenco@cern.ch
 If the exception is reproducible including on lxplus, please create a detailed debug report this way:
