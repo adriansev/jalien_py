@@ -1839,7 +1839,7 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
         ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms')
 
     # client side commands will not have metadata so neither 'timing_ms'
-    if 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
+    if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
         ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
 
     if shellcmd and ret_obj.out:

@@ -814,7 +814,7 @@ def path_local_stat(path: str, do_md5: bool = False) -> STAT_FILEPATH:
     return STAT_FILEPATH(norm_path, filetype, perm, uid, gid, ctime, mtime, guid, size, md5hash)
 
 
-def list_files_local(search_dir: str, pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, is_regex: bool = False, find_args: str = '') -> RET:
+def list_files_local(search_dir: str, pattern: Union[re.Pattern[str], str, None] = None, is_regex: bool = False, find_args: str = '') -> RET:
     """Return a list of files(local)(N.B! ONLY FILES) that match pattern found in dir"""
     if not search_dir: return RET(2, "", "No search directory specified")
 
@@ -908,10 +908,10 @@ def file2file_dict(fn: str) -> dict:
     except Exception:
         return {}
     if file_name.is_dir(): return {}
-
-    return {'file': file_name.as_posix(), 'lfn': file_name.as_posix(), 'size': str(file_name.stat().st_size),
-            'mtime': str(int(file_name.stat().st_mtime * 1000)), 'md5': md5(file_name.as_posix()),
-            'owner': pwd.getpwuid(file_name.stat().st_uid).pw_name, 'gowner': gid2name(file_name.stat().st_gid)}
+    file_stat = file_name.stat()
+    return {'file': file_name.as_posix(), 'lfn': file_name.as_posix(), 'size': str(file_stat.st_size),
+            'mtime': str(int(file_stat.st_mtime * 1000)), 'md5': md5(file_name.as_posix()),
+            'owner': pwd.getpwuid(file_stat.st_uid).pw_name, 'gowner': gid2name(file_stat.st_gid)}
 
 
 def filter_file_prop(f_obj: dict, base_dir: str, find_opts: Union[str, list, None], compiled_regex_list: Optional[list] = None) -> bool:

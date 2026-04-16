@@ -85,7 +85,7 @@ class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
     src: str = ''
     dst: str = ''
     isUpload: bool = False
-    token_request: dict = {}
+    token_request: dict = None
     lfn: str = ''
 
 
@@ -127,7 +127,7 @@ class RET(NamedTuple):  # pylint: disable=inherit-non-class
     exitcode: int = -1
     out: str = ''
     err: str = ''
-    ansdict: dict = {}
+    ansdict: dict = None
 
     def __bool__(self) -> bool:
         return self.exitcode == 0
