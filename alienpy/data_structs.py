@@ -1,14 +1,15 @@
 """alienpy:: Definitions of data structures"""
 
 import sys
-from typing import NamedTuple
-
+from dataclasses import dataclass, field
+from typing import Dict, Any, NamedTuple, List, Optional
 
 ##############################################
 ##   Start of data structures definitions
 ##############################################
 
-class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class COLORS_COLL():
     """Collection of colors for terminal printing"""
     ColorReset = '\033[00m'     # Text Reset
     Black = '\033[0;30m'        # Black
@@ -69,7 +70,8 @@ class COLORS_COLL(NamedTuple):  # pylint: disable=inherit-non-class
     On_IWhite = '\033[0;107m'   # High Intensity backgrounds White
 
 
-class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class XrdCpArgs():
     """Structure to keep the set of xrootd flags used for xrootd copy process"""
     overwrite: bool = True
     batch: int = 8
@@ -80,16 +82,18 @@ class XrdCpArgs(NamedTuple):  # pylint: disable=inherit-non-class
     rate: int = 0
 
 
-class CopyFile(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class CopyFile():
     """Structure to keep a generic copy task"""
     src: str = ''
     dst: str = ''
     isUpload: bool = False
-    token_request: dict = None
+    token_request: dict[str, Any] = field(default_factory=dict)
     lfn: str = ''
 
 
-class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class CommitInfo():
     """Structure for commit of successful xrootd write to file catalogue"""
     envelope: str = ''
     size: str = ''
@@ -102,19 +106,22 @@ class CommitInfo(NamedTuple):  # pylint: disable=inherit-non-class
     md5: str = ''
 
 
-class lfn2file(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class lfn2file():
     """Map a lfn to file (and reverse)"""
     lfn: str = ''
     file: str = ''
 
 
-class KV(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class KV():
     """Assign a value to a key"""
     key: str = ''
     val: str = ''
 
 
-class CertsInfo(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class CertsInfo():
     """Store name information on certificates used for SSL context"""
     user_cert: str = ''
     user_key: str = ''
@@ -122,18 +129,23 @@ class CertsInfo(NamedTuple):  # pylint: disable=inherit-non-class
     token_key: str = ''
 
 
-class RET(NamedTuple):  # pylint: disable=inherit-non-class
-    """Structure for POSIX like function return: exitcode, stdout, stderr, dictionary of server reply"""
+# main return structure from commands
+@dataclass(frozen=True)
+class RET:
+    """Structure for POSIX-like return:
+    exitcode, stdout, stderr, dictionary of server reply
+    """
     exitcode: int = -1
     out: str = ''
     err: str = ''
-    ansdict: dict = None
+    ansdict: dict[str, Any] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
         return self.exitcode == 0
 
 
-class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class ALIEN_COLLECTION_EL():
     """AliEn style xml collection element structure"""
     name: str = ''
     aclId: str = ''
@@ -156,7 +168,8 @@ class ALIEN_COLLECTION_EL(NamedTuple):  # pylint: disable=inherit-non-class
     type: str = ''  # noqa: A003
 
 
-class STAT_FILEPATH(NamedTuple):  # pylint: disable=inherit-non-class
+@dataclass(frozen=True)
+class STAT_FILEPATH():
     """Stat attributes of a lfn"""
     path: str = ''
     type: str = ''  # noqa: A003
