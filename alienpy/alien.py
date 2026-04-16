@@ -105,7 +105,7 @@ def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, l
     if not cmd: return RET(1)  # type: ignore [call-arg]
     if args is None: args = []
     arg_list = args.split() if isinstance(args, str) else args
-    do_not_cd = get_arg(args, '-n')
+    do_not_cd = get_arg(arg_list, '-n')
     msg = ''
 
     # if (cmd != 'dirs' and len(arg_list) > 1) or (cmd == 'dirs' and len(arg_list) > 2) or is_help(arg_list):
@@ -119,14 +119,18 @@ def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, l
     sign = None
     position = None
     pos = None
+    to_remove = []
     for arg in arg_list:
-        if arg[0] == '+' or arg[0] == '-':
+        if arg and (arg[0] == '+' or arg[0] == '-'):
             sign = arg[0]
             position = arg[1:]
             if not position.isdecimal(): continue
             position = int(position)
-            arg_list.remove(arg)
-            pos = int(arg)
+            pos = position if sign == '+' else -position
+            to_remove.append(arg)
+            break  # only one positional offset is meaningful
+    for item in to_remove:
+        arg_list.remove(item)
 
     if cmd == "dirs":
         if '-c' in arg_list:
@@ -213,7 +217,7 @@ def DO_exit(args: Optional[list] = None) -> Optional[RET]:
     msg = ''
     if len(args) > 0:
         if args[0].isdecimal(): code = args.pop(0)
-        if args[0] == 'stderr' or args[0] == 'err':
+        if args and (args[0] == 'stderr' or args[0] == 'err'):
             args.pop(0)
         if args: msg = ' '.join(args).strip()
         if msg:
@@ -221,7 +225,7 @@ def DO_exit(args: Optional[list] = None) -> Optional[RET]:
                 print_out(msg)
             else:
                 print_err(msg)
-    return sys.exit(int(code))
+    sys.exit(int(code))
 
 
 def DO_xrd_ping(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
