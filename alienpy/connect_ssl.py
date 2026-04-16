@@ -9,8 +9,6 @@ import tempfile
 import ssl
 from typing import Optional
 
-from httplib2 import CA_CERTS
-
 try:
     from cryptography import x509
 except Exception:
