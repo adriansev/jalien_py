@@ -23,8 +23,8 @@ from .data_structs import CommitInfo, CopyFile, RET, XrdCpArgs, lfn2file
 from .global_vars import AlienSessionInfo, COLORS, REGEX_PATTERN_TYPE, specs_split
 from .wb_api import SendMsg, retf_print
 from .tools_nowb import (GetHumanReadableSize, PrintColor, common_path, create_metafile, deltat_ms_perf,
-                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_url_meta, get_lfn_key, get_lfn_name, get_size_meta,
-                         metaf2dict, set_xattr_list, get_xattr_dict, set_xattr, is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
+                         fileIsValid, fileline2list, format_dst_fn, get_arg, get_arg_value, get_arg_value_multiple, get_hash_meta, get_lfn_key, get_lfn_name, get_size_meta,
+                         set_xattr_list, is_help, is_int, list_files_local, make_tmp_fn, md5, name2regex, now_str, path_local_stat, path_writable_any, valid_regex)
 from .xrd_tools import commitFileList, expand_path_grid, extract_glob_pattern, lfn2fileTokens, list_files_grid, path_grid_stat, path_type, pathtype_grid, xrdcp_help, lfnIsValid
 
 HAS_XROOTD = False

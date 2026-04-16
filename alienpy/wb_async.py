@@ -29,8 +29,8 @@ if not os.getenv('ALIENPY_NO_STAGGER'):
 
 
 from .setup_logging import DEBUG, DEBUG_FILE, print_err
-from .data_structs import CertsInfo, SSLctxException
-from .global_vars import DEBUG_TIMING, TMPDIR, AlienSessionInfo, USER_AGENT, ALIENPY_ADDRESS_FAMILY
+from .data_structs import SSLctxException
+from .global_vars import DEBUG_TIMING, TMPDIR, USER_AGENT, ALIENPY_ADDRESS_FAMILY
 from .tools_nowb import deltat_ms_perf
 from .connect_ssl import make_connection_ctx
 from .async_tools import start_asyncio, syncify

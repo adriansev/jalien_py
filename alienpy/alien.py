@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
-from dataclasses import dataclass
-import dataclasses
 import sys
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 9):
     print("This packages requires a minimum of Python version 3.9", file = sys.stderr, flush = True)
@@ -13,6 +11,7 @@ try:
 except Exception:
     pass
 import os
+import dataclasses
 import collections
 import datetime
 import difflib
