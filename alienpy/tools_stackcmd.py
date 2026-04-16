@@ -7,7 +7,7 @@ from .global_vars import AlienSessionInfo
 
 
 def push2stack(path: str) -> None:
-    if not str or 'AlienSessionInfo' not in globals(): return
+    if not path or 'AlienSessionInfo' not in globals(): return
     home = ''
     if AlienSessionInfo['alienHome']: home = AlienSessionInfo['alienHome'][:-1]
     if home and home in path: path = path.replace(home, '~')
