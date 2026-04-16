@@ -136,7 +136,7 @@ xrd_config_init()
 
 
 def makelist_lfn(wb, arg_source: str, arg_target: str, find_args: Optional[list] = None, copy_list: Optional[list] = None,
-                 pattern: Union[None, REGEX_PATTERN_TYPE, str] = None, parent: int = 0, truncate_basepath: int = 0,
+                 pattern: Union[re.Pattern[str], str, None] = None, parent: int = 0, truncate_basepath: int = 0,
                  overwrite: bool = False, is_regex: bool = False, strictspec: bool = False, httpurl: bool = False) -> RET:  # pylint: disable=unused-argument
     """Process a source and destination copy arguments and make a list of individual lfns to be copied"""
     isSrcDir = isSrcLocal = isDownload = specs = None  # make sure we set these to valid values later
@@ -905,17 +905,16 @@ def xrdfs_q_config(fqdn_port: str) -> dict:
     endpoint = xrd_client.FileSystem(f'{fqdn_port}/?xrd.wantprot=unix')
 
     config_args_list = ['bind_max', 'chksum', 'pio_max', 'readv_ior_max', 'readv_iov_max', 'tpc', 'wan_port', 'wan_window', 'window', 'cms', 'role', 'sitename', 'version']
+    all_keys = ' '.join(config_args_list)
     config_dict = {}
-    for cfg in config_args_list:
-        q_status, response = endpoint.query(7, cfg, timeout = 5)  # get the config metrics
-        status = xrd_response2dict(q_status)
-        if status['ok']:
-            response = response.decode('ascii').strip()
-            val = 'NOT_SET' if cfg == response else response
+    q_status, response = endpoint.query(7, all_keys, timeout = 5)
+    status = xrd_response2dict(q_status)
+    if status['ok']:
+        response_list = response.decode('ascii').strip().splitlines()
+        for cfg, val in zip(config_args_list, response_list):
             config_dict[cfg] = val
-        else:
-            print_err(f'Query error for {fqdn_port} : {status["message"]}')
-            break
+    else:
+        print_err(f'Query error for {fqdn_port} : {status["message"]}')
     return config_dict
 
 

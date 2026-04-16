@@ -294,7 +294,7 @@ def DO_xrd_config(wb: WebSocketClientProtocol, args: Optional[list] = None) -> R
     else:
         for se_name in args:
             ret_obj = DO_getSE(wb, ['-srv', se_name])
-            if 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
+            if ret_obj.ansdict and 'results' in ret_obj.ansdict: sum_rez.extend(ret_obj.ansdict['results'])
 
     # maybe user want to ping servers outside of ALICE redirectors list
     if not sum_rez:
@@ -497,7 +497,7 @@ def DO_getSE(wb: WebSocketClientProtocol, args: list = None) -> RET:
             else:
                 rez_list.append(f"{se_info['seNumber']: <6}{se_info['seName']: <32}{srv_name}")
 
-    if not rez_list: return RET(1, '', f"Empty result when searching for: {args[-1]}")
+    if not rez_list: return RET(exitcode=1, out='', err=f"Empty result when searching for: {args[-1]}", ansdict={})
     return RET(0, '\n'.join(rez_list), '', {'results': se_list})
 
 
