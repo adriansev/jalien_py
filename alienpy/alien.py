@@ -56,7 +56,7 @@ from .connect_ssl import CertInfo, CertKeyMatch, CertVerify, CA_PATH
 from .tools_nowb import (GetHumanReadableSize, PrintColor, ccdb_json_cleanup, check_port, convert_jdl2dict, convert_time, convert_trace2dict,
                          deltat_ms_perf, dequote, exit_message, exitcode, file2file_dict, file2list, getCAcerts,
                          get_arg, get_arg_multiple, get_arg_value, get_lfn_key, import_aliases, is_help, list_remove_item,
-                         md5, mk_xml_local, name2regex, queryML, signal_handler, unixtime2local)
+                         md5, mk_xml_local, name2regex, queryML, signal_handler, unixtime2local, set_xattr_list)
 # commands stack tools
 from .tools_stackcmd import deque_pop_pos, push2stack
 # shell related tools
@@ -699,6 +699,7 @@ task name / detector name / [ / time [ / key = value]* ]
 -unixtime        : print the unixtime instead of human time
 -header "STRING" : add header declarations/filters to the requests sent to CCDB server
 -get             : download the specified object/objects - full path will be kept
+-http            : use http based replicas fo get/mirror downloads
 -dst DST_DIR     : set a specific destination for download
 -mirror          : create CCDB snapshot as per specifications of CCDB server
 -report          : Give a report of object sizes for a given path
@@ -710,6 +711,7 @@ task name / detector name / [ / time [ / key = value]* ]
     host_arg = get_arg_value(args, '-host')
     do_unixtime = get_arg(args, '-unixtime')
     do_download = get_arg(args, '-get')
+    do_http = get_arg(args, '-http')
     do_mirror = get_arg(args, '-mirror')
     do_report = get_arg(args, '-report')
     do_history = get_arg(args, '-history')
@@ -820,52 +822,37 @@ task name / detector name / [ / time [ / key = value]* ]
         msg = f'{msg}\n{"TOTAL":^40}{"-":>12}{"-":>12}{total_obj:>12}{GetHumanReadableSize(total_size, 3):>14}'
         return RET(0, msg, '', q_dict)
 
-    # clean up redundant entries from object description
-    # list(map(ccdb_json_cleanup, q_dict['objects']))
-    for q in q_dict['objects']: ccdb_json_cleanup(q)
-
     dir_list = [f'{d}/' for d in q_dict['subfolders']]
     msg_dirs = f'{os.linesep}'.join(dir_list) if dir_list else ''
 
-    def get_alien_endpoint(obj: dict) -> str:
-        if 'replicas' not in obj: return ''
-        alien_lfn = ''
-        for i in obj['replicas']:
-            if i.startswith('alien'):
-                alien_lfn = i
-                break
-        return alien_lfn
-
     header = f'Filename{" " * 39}Type{" " * 24}ValidFrom{" " * 10}ValidUntil{" " * 10}Lifetime(ms)'
+
+    # list of src,dst tuples for download
     download_list = []
-    dest_time_list = []
+
+    # list of objects for message output in case of no download or mirror
     msg_obj_list = []
 
-    # identify if the destination names are unique or must be customized with ETag
-    dest_list_uniq_names = set()
-    for obj in q_dict['objects']:
-        dest_list_uniq_names.add(f'file:{dest_arg}{obj["path"]}/{obj["filename"]}')
-    are_unique_names = (len(dest_list_uniq_names) == len(q_dict['objects']))
-
     for q in q_dict['objects']:
-        download_list.append(get_alien_endpoint(q))
+        # clean up redundant entries from object description
+        # list(map(ccdb_json_cleanup, q_dict['objects']))
+        ccdb_json_cleanup(q)
 
         if do_mirror:
             filename = f'{q["Valid-From"]}/{dequote(q["ETag"])}'
         else:
             filename = q["filename"]
             name, _, ext = filename.rpartition('.')
-            if not are_unique_names and len(q_dict['objects']) > 1:
-                etag = dequote(q["ETag"])
-                filename = f'{name}_{etag}.{ext}'
-
-        dst_filepath = f'{dest_arg}{q["path"]}/{filename}'
-        dest_time_list.append( (f'file:{dst_filepath}', float(q['Valid-Until']) / 1000) )
+            etag = dequote(q["ETag"])
+            filename = f"{name}_{etag}{'.' + ext if ext else ''}"
 
         q['Last-Modified-nice'] = unixtime2local(q['Last-Modified'])
         q['Valid-From-nice'] = unixtime2local(q['Valid-From'])
         q['Valid-Until-nice'] = unixtime2local(q['Valid-Until'])
         q['Lifetime'] = int(q['Valid-Until']) - int(q['Valid-From'])  # milliseconds
+
+        # destination filename
+        dst_filepath = f'{dest_arg}{q["path"]}/{filename}'
 
         # create properties file
         if do_mirror:
@@ -897,24 +884,52 @@ task name / detector name / [ / time [ / key = value]* ]
                                 f'\"{q["Valid-Until"] if do_unixtime else q["Valid-Until-nice"]}\"{" " * 2}'
                                 f'{q["Lifetime"]}')
 
-    if do_download or do_mirror:
-        if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
-        dest_list = [i[0] for i in dest_time_list]
-        if DEBUG: logging.info('CCDB download:\n%s\n%s\n', download_list, dest_list)
-        xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = download_list, api_dst = dest_list)
+        # create list of src,dst pairs to be downloaded
+        if 'replicas' in q:
+            for i in q['replicas']:
+                if do_http:
+                    src = i if i.startswith('http') else f'{ccdb}/{i}'
+                    download_list.append((src,dst_filepath,q))
+                else:
+                    if i.startswith('alien'):
+                        download_list.append((i,f'file:{dst_filepath}',q))
 
-        # set the time for the ccdb files
-        # if do_mirror:
-            # for dst_file, valid_until in dest_time_list:
-                # ccdb_file = dst_file.replace('file:', '')
-                # if os.path.exists(ccdb_file): os.utime(ccdb_file, times = (valid_until, valid_until))
-        return xrdcp_ret  # noqa: R504
 
-    msg_obj = f'{os.linesep}'.join(msg_obj_list)
-    if msg_obj: msg_obj = f'{header}\n{msg_obj}'
-    msg = f'{msg_dirs}\n{msg_obj}'
+    if (do_download or do_mirror) and len(download_list) > 0:
+        if do_http:
+            for src, dst, q in download_list:
+                if DEBUG: logging.info('CCDB HTTP download:\n%s\n%s\n', src, dst)
+                response = requests.get(src, stream = True)
+                if response.status_code == 200:
+                    Path(os.path.dirname(dst)).mkdir(parents = True, exist_ok = True)
+                    with open(dst, mode = "wb") as f:
+                        for chunk in response.iter_content(chunk_size = 8192):
+                            f.write(chunk)
+            ret_obj = RET(exitcode=0, out=f'{len(download_list)} files downloaded via http', err='', ansdict = q_dict)
+        else:
+            if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
+            if DEBUG: logging.info('CCDB XRootD download:\n%s\n%s\n', src, dst)
+            src_list = [src for src, _, _ in download_list]
+            dst_list = [dst for _, dst, _ in download_list]
+            xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = src_list, api_dst = dst_list)
+            ret_obj = xrdcp_ret._replace(ansdict = q_dict)  # noqa: R504
 
-    return RET(0, msg, '', q_dict)
+        # set xattr attributes for downloaded files
+        for _, dst, q in download_list:
+            list_of_key_to_remove = ["Content-Type", "UploadedBy", "UploadedFrom", "replicas"]
+            local_dst = dst.removeprefix('file:')
+            if os.path.exists(local_dst):
+                q_clean = {key: value for key, value in q.items() if key not in list_of_key_to_remove}
+                output_list = set_xattr_list(local_dst, q_clean)
+
+        return ret_obj
+
+    msg = None
+    if msg_obj_list:
+        msg_obj = f'{os.linesep}'.join(msg_obj_list)
+        if msg_obj: msg_obj = f'{header}\n{msg_obj}'
+        msg = f'{msg_dirs}\n{msg_obj}'
+    return RET(exitcode = 0, out = msg, err = '', ansdict = q_dict)
 
 
 def DO_2xml(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
