@@ -787,9 +787,9 @@ if HAS_XROOTD:
                     size = replica_info['size']
                     md5 = replica_info['md5']
                     ts = str(int(datetime.datetime.utcnow().timestamp() * 1000))
-                    attr_list = [('guid', guid), ('lfn', lfn), ('size', size), ('md5', md5)]
-                    attr_list.append(('ts_r', ts))  # timestamp for read  (when read by tool - avoid lack of access time of the filesystem)
-                    attr_list.append(('ts_w', ts))  # timestamp for write (when downloaded)
+                    # ts_r - timestamp for read  (when read by tool - avoid lack of access time of the filesystem)
+                    # ts_wtimestamp for write (when downloaded)
+                    attr_list = [('guid', guid), ('lfn', lfn), ('size', size), ('md5', md5), ('ts_r', ts), ('ts_w', ts)]
 
                     # NOXRDZIP was requested
                     if 'ALIENPY_NOXRDZIP' in os.environ and os.path.isfile(xrdjob.dst) and zipfile.is_zipfile(xrdjob.dst):
