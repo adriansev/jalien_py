@@ -369,7 +369,6 @@ def get_arg_2values(target: list, item: str) -> tuple:
 
 def get_arg_multiple(target: list, item: str) -> list:
     """Return list of all values for a given arg"""
-    val = None
     values_list = []
     idx_to_be_removed = []
     arg_list_size = len(target)
@@ -377,7 +376,7 @@ def get_arg_multiple(target: list, item: str) -> list:
     for idx, x in enumerate(target):
         if x == item:
             # if current index (starts at 0) is greater then len - 1, just return
-            if idx + 1 + 1 > arg_list_size: return val
+            if idx + 1 + 1 > arg_list_size: return values_list
             values_list.append(target[idx + 1])
             idx_to_be_removed.append(idx + 1)
 
