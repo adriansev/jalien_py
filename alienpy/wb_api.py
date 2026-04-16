@@ -204,9 +204,9 @@ def SendMsg(wb: WebSocketClientProtocol, cmdline: str, args: Optional[list] = No
         opts = opts.replace('-nokeys', '').replace('-nomsg', '').replace('nokeys', '').replace('nomsg', '')
 
     if 'showkeys' in opts:
-        opts = opts.replace('-nokeys', '').replace('nokeys', '').opts.replace('-showkeys', '').replace('showkeys', '')
+        opts = opts.replace('-nokeys', '').replace('nokeys', '').replace('-showkeys', '').replace('showkeys', '')
     if 'showmsg' in opts:
-        opts.replace('-nomsg', '').replace('nomsg', '').opts.replace('-showmsg', '').replace('showmsg', '')
+        opts = opts.replace('-nomsg', '').replace('nomsg', '').replace('-showmsg', '').replace('showmsg', '')
 
     # if already json format just use it as is; nomsg/nokeys will be passed to CreateJsonCommand
     json_signature = ['{"command":', '"options":']
