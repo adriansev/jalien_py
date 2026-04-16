@@ -1,5 +1,6 @@
 """alienpy:: XRootD related tooling/helpers"""
 
+import dataclasses
 import os
 import re
 import subprocess
@@ -43,7 +44,7 @@ def lfnAccessUrl(wb, lfn: str, local_file: str = '', specs: Union[None, list, st
     if strictspec: get_envelope_arg_list.insert(0, '-f')
     ret_obj = SendMsg(wb, 'access', get_envelope_arg_list, opts = 'nomsg')
     if ret_obj.exitcode != 0 or 'results' not in ret_obj.ansdict:
-        ret_obj = ret_obj._replace(err = f'No token for {lfn} :: errno {ret_obj.exitcode} -> {ret_obj.err}')
+        ret_obj = dataclasses.replace(ret_obj, err = f'No token for {lfn} :: errno {ret_obj.exitcode} -> {ret_obj.err}')
         retf_print(ret_obj, opts = 'err noprint')
         return {}
     return ret_obj.ansdict

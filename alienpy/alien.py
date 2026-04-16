@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Executable/module for interaction with GRID services of ALICE experiment"""
 
+from dataclasses import dataclass
+import dataclasses
 import sys
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 9):
     print("This packages requires a minimum of Python version 3.9", file = sys.stderr, flush = True)
@@ -394,7 +396,7 @@ def DO_pfn(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     args.insert(0, '-r')
     ret_obj = SendMsg(wb, 'whereis', args, opts = 'nomsg')
     msg = '\n'.join(str(item['pfn']) for item in ret_obj.ansdict['results'] if 'pfn' in item).strip()
-    return ret_obj._replace(out = msg)
+    return dataclasses.replace(ret_obj, out = msg)
 
 
 def DO_pfnstatus(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
@@ -916,7 +918,7 @@ task name / detector name / [ / time [ / key = value]* ]
             src_list = [src for src, _, _ in download_list]
             dst_list = [dst for _, dst, _ in download_list]
             xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = src_list, api_dst = dst_list)
-            ret_obj = xrdcp_ret._replace(ansdict = q_dict)  # noqa: R504
+            ret_obj = dataclasses.replace(xrdcp_ret, xrdcp_retansdict = q_dict)  # noqa: R504
 
         # set xattr attributes for downloaded files
         for _, dst, q in download_list:
@@ -924,7 +926,7 @@ task name / detector name / [ / time [ / key = value]* ]
             local_dst = dst.removeprefix('file:')
             if os.path.exists(local_dst):
                 q_clean = {key: value for key, value in q.items() if key not in list_of_key_to_remove}
-                output_list = set_xattr_list(local_dst, q_clean)
+                _ = set_xattr_list(local_dst, q_clean)
 
         return ret_obj
 
@@ -1097,7 +1099,7 @@ def DO_ps(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     ret_obj = SendMsg(wb, 'ps', args)
     if '-trace' in args:
         nice_lines = [convert_time(str(msgline)) for item in ret_obj.ansdict['results'] for msgline in item['message'].split('\n')]
-        return ret_obj._replace(out = '\n'.join(nice_lines))
+        return dataclasses.replace(ret_obj, out = '\n'.join(nice_lines))
     return ret_obj
 
 
@@ -1200,7 +1202,7 @@ def DO_token(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
     if args is None: args = []
     msg = "Print only command!!! Use >token-init< for token (re)generation, see below the arguments\n"
     ret_obj = SendMsg(wb, 'token', args, opts = 'nokeys')
-    return ret_obj._replace(out = f'{msg}{ret_obj.out}')
+    return dataclasses.replace(ret_obj, out = f'{msg}{ret_obj.out}')
 
 
 def DO_token_init(wb: WebSocketClientProtocol, args: Optional[list] = None) -> RET:
@@ -1208,7 +1210,7 @@ def DO_token_init(wb: WebSocketClientProtocol, args: Optional[list] = None) -> R
     if args is None: args = []
     if len(args) > 0 and is_help(args):
         ret_obj = SendMsg(wb, 'token', ['-h'], opts = 'nokeys')
-        return ret_obj._replace(out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
+        return dataclasses.replace(ret_obj, out = ret_obj.out.replace('usage: token', 'INFO: token is automatically created, use this for token customization\nusage: token-init'))
     wb = token_regen(wb, args)
     return CertInfo(TOKENCERT_NAME)
 
@@ -1290,11 +1292,11 @@ def DO_run(wb: WebSocketClientProtocol, args: Optional[list] = None, external: b
                 '-noout : will not capture output, the actual application can be used')
         if external:
             ret_obj = runShellCMD(f'{args[0]} -h', captureout = True, do_shell = True)
-            return ret_obj._replace(out = f'{ret_obj.out}\n{msg}')
-        return RET(0, msg)
+            return dataclasses.replace(ret_obj, out = f'{ret_obj.out}\n{msg}')
+        return RET(exitcode = 0, out = msg, err = '', ansdict={})
 
     if not HAS_XROOTD:
-        return RET(1, '', 'XRootD module not present, this command will not work!!')
+        return RET(exitcode=1, out='', err = 'XRootD module not present, this command will not work!!')
 
     overwrite = get_arg(args, '-force')
     capture_out = get_arg(args, '-noout')
@@ -1829,22 +1831,22 @@ def ProcessInput(wb: WebSocketClientProtocol, cmd: str, args: Optional[list] = N
         ret_obj = AlienSessionInfo['cmd2func_map_client'][cmd](wb, args)
     elif cmd in AlienSessionInfo['cmd2func_map_srv']:  # lookup in server-side list
         ret_obj = AlienSessionInfo['cmd2func_map_srv'][cmd](wb, cmd, args, opts)
-    if ret_obj is None: return RET(1, '', 'ProcessInput:: there was no return object!! Invalid state, contact developer!')
+    if ret_obj is None: return RET(exitcode=1, out='', err='ProcessInput:: there was no return object!! Invalid state, contact developer!', ansdict={})
 
     # make the assumption that only valid output (exitcode == 0) have a reason to be processed by a shell command
     if ret_obj.exitcode != 0: return ret_obj
 
     # exit code == 0; move along
     if time_begin:
-        ret_obj = ret_obj._replace(out = f'{ret_obj.out}\n>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms')
+        ret_obj = dataclasses.replace(ret_obj, out = f'{ret_obj.out}\n>>>ProcessInput time: {deltat_ms_perf(time_begin)} ms')
 
     # client side commands will not have metadata so neither 'timing_ms'
     if ret_obj.ansdict and 'metadata' in ret_obj.ansdict and 'timing_ms' in ret_obj.ansdict['metadata']:
-        ret_obj = ret_obj._replace(out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
+        ret_obj = dataclasses.replace(ret_obj, out = f"{ret_obj.out}\ntiming_ms = {ret_obj.ansdict['metadata']['timing_ms']}")
 
     if shellcmd and ret_obj.out:
         shell_run = subprocess.run(shellcmd, stdout = subprocess.PIPE, stderr = subprocess.PIPE, input = f'{ret_obj.out}\n', encoding = 'ascii', shell = True)  # pylint: disable=subprocess-run-check # env=os.environ default is already the process env  # nosec
-        return RET(shell_run.returncode, shell_run.stdout, shell_run.stderr, ret_obj.ansdict)
+        return RET(exitcode = shell_run.returncode, out = shell_run.stdout, err = shell_run.stderr, ansdict = ret_obj.ansdict)
 
     return ret_obj
 
