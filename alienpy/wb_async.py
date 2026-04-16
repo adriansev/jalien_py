@@ -17,7 +17,7 @@ try:
 except Exception:
     print("websockets module could not be imported! Make sure you can do:\npython3 -c 'import websockets.client as wb_client'", file = sys.stderr, flush = True)
     sys.exit(1)
-from websockets import WebSocketClientProtocol
+from websockets import ClientConnection
 
 ASYNC_STAGGER_PRESENT = False
 if not os.getenv('ALIENPY_NO_STAGGER'):
@@ -109,7 +109,7 @@ async def create_socket(host: str = 'localhost', port: Union[str, int] = '8097',
 
 
 @syncify
-async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Optional[WebSocketClientProtocol]:
+async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', path: str = '/', use_usercert: bool = False, localConnect: bool = False) -> Optional[ClientConnection]:
     """Create a websocket to wss://host:port/path (it is implied a SSL context)"""
     if not host:
         msg = 'wb_create:: provided host argument is empty'
@@ -208,7 +208,7 @@ async def wb_create(host: str = 'localhost', port: Union[str, int] = '8097', pat
 
 
 @syncify
-async def IsWbConnected(wb: WebSocketClientProtocol) -> bool:
+async def IsWbConnected(wb: ClientConnection) -> bool:
     '''Check if websocket is connected with the protocol ping/pong'''
     time_begin = time.perf_counter() if DEBUG_TIMING else None
     if DEBUG:
@@ -224,7 +224,7 @@ async def IsWbConnected(wb: WebSocketClientProtocol) -> bool:
 
 
 @syncify
-async def wb_close(wb: WebSocketClientProtocol, code, reason):
+async def wb_close(wb: ClientConnection, code, reason):
     '''Send close to websocket'''
     try:
         await wb.close(code = code, reason = reason)
@@ -233,7 +233,7 @@ async def wb_close(wb: WebSocketClientProtocol, code, reason):
 
 
 @syncify
-async def wb_sendmsg(wb: WebSocketClientProtocol, jsonmsg: str) -> str:
+async def wb_sendmsg(wb: ClientConnection, jsonmsg: str) -> str:
     """The low level async function for send/receive"""
     time_begin = time.perf_counter() if DEBUG_TIMING else None
     await wb.send(jsonmsg)
@@ -243,7 +243,7 @@ async def wb_sendmsg(wb: WebSocketClientProtocol, jsonmsg: str) -> str:
 
 
 @syncify
-async def wb_sendmsg_multi(wb: WebSocketClientProtocol, jsonmsg_list: list) -> list:
+async def wb_sendmsg_multi(wb: ClientConnection, jsonmsg_list: list) -> list:
     """The low level async function for send/receive multiple messages once"""
     if not jsonmsg_list: return []
     result_list = []
