@@ -647,7 +647,7 @@ def metaf2dict(meta_fn: str) -> dict:
     if not os.path.isfile(meta_fn): return {}
     xml_content = None
     try:
-        with open(meta_fn,'r') as f: xml_content = f.read()
+        with open(meta_fn,'r', encoding='utf-8', errors='replace') as f: xml_content = f.read()
     except Exception:
         return {}
     xml_dict = xmltodict.parse(xml_content, process_namespaces = False)
@@ -663,14 +663,14 @@ def get_lfn_meta(meta_fn: str) -> str:
 def get_size_meta(meta_fn: str) -> int:
     """Extract size value from metafile"""
     metaf_info = metaf2dict(meta_fn)
-    if not metaf_info: return ''
+    if not metaf_info: return 0
     return metaf_info['metalink']['file']['size']
 
 
 def get_hash_meta(meta_fn: str) -> tuple:
     """Extract hash value from metafile"""
     metaf_info = metaf2dict(meta_fn)
-    if not metaf_info: return ''
+    if not metaf_info: return ('', '')
     return ( metaf_info['metalink']['file']['hash']['@type'], metaf_info['metalink']['file']['hash']['#text'] )
 
 

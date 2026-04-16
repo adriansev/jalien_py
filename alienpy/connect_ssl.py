@@ -235,7 +235,12 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         capath = CA_PATH
 
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
-    ssl_protocol = ssl.PROTOCOL_TLS if sys.version_info[1] < 10 else ssl.PROTOCOL_TLS_CLIENT
+    ssl_protocol = None
+    if sys.version_info[1] < 10:
+        ssl_protocol = ssl.PROTOCOL_TLS
+    else:
+        ssl_protocol = ssl.PROTOCOL_TLS_CLIENT
+
     ctx = ssl.SSLContext(ssl_protocol)
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.check_hostname = False
