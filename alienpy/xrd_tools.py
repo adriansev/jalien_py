@@ -178,28 +178,28 @@ def lfnIsValid(wb, lfn: str, local_file: str, shallow_check: bool = False, remov
             msg = f'{lfn} : Removed (invalid size)'
         else:
             msg = f'{lfn} : Mismatched size'
-        return RET(9, '', msg)
+        return RET(exitcode=9, out='', err=msg)
 
     if int(local_file_stat.st_mtime * 1000) > int(lfn_stat.mtime):  # higher mtime --> newer file; if local_file(source) is newer than lfn(destination) then remove destination
         if removeTarget:
-            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            _ = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
             msg = f'{lfn} : Removed (source/local_file newer than destination/lfn)'
         else:
             msg = f'{lfn} : source/local_file newer than destination/lfn'
-        return RET(9, '', msg)
+        return RET(exitcode=9, out='', err=msg)
 
     if shallow_check:
-        return RET(0, f'{lfn} --> TARGET VALID (size match, source/local_file older than destination/lfn)')
+        return RET(exitcode=0, out=f'{lfn} --> TARGET VALID (size match, source/local_file older than destination/lfn)')
 
     if md5(local_file) != lfn_stat.md5:
         if removeTarget:
-            ret_obj = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
+            _ = SendMsg(wb, 'rm', ['-f', lfn], opts = 'nomsg')
             msg = f'{lfn} : Removed (invalid md5)'
         else:
             msg = f'{lfn} : Older than local file'
-        return RET(9, '', msg)
+        return RET(exitcode=9, out='', err=msg)
 
-    return RET(0, f'{lfn} --> TARGET VALID (md5 match)')
+    return RET(exitcode=0, out=f'{lfn} --> TARGET VALID (md5 match)')
 
 
 def xrdcp_help() -> str:
