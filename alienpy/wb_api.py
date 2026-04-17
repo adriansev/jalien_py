@@ -250,7 +250,7 @@ def SendMsgMulti(wb: WebSocketClientProtocol, cmds_list: list, opts: str = '') -
     if not wb:
         msg = "SendMsg:: websocket not initialized"
         logging.info(msg)
-        return RET(1, '', msg)  # type: ignore [call-arg]
+        return [RET(1, '', msg)]  # type: ignore [call-arg]
     if not cmds_list: return []
     JSON_OUT_GLOBAL = os.getenv('ALIENPY_JSON_OUT_GLOBAL')
     JSON_OUT = os.getenv('ALIENPY_JSON_OUT')

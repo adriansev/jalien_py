@@ -449,10 +449,10 @@ def isReachable(address: str = 'alice-jcentral.cern.ch', port: Union[str, int] =
     return any(ip[-1] for ip in result_list)
 
 
-def exitcode(args: Union[list, None] = None) -> None:  # pylint: disable=unused-argument
+def exitcode(args: Union[list, None] = None) -> RET:  # pylint: disable=unused-argument
     """Return the latest global recorded exitcode"""
     if 'AlienSessionInfo' not in globals(): return RET()
-    return RET(0, f"{AlienSessionInfo['exitcode']}", '')  # type: ignore [call-arg]
+    return RET(exitcode=AlienSessionInfo['exitcode'], out=f"{AlienSessionInfo['exitcode']}", err='')  # type: ignore [call-arg]
 
 
 def valid_regex(regex_str: str):

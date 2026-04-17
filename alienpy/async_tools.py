@@ -32,17 +32,19 @@ def _cancel_all_tasks(loop_to_cancel):
 def _run(mainasync, *, debug = False):
     global _alienpy_global_asyncio_loop
 
-    if asyncio.events._get_running_loop() is not None:
-        asyncio_err_msg = 'asyncio.run() cannot be called from a running event loop'
-        raise RuntimeError(asyncio_err_msg)  # pylint: disable=protected-access
+    running = True
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        running = False
+    if running:
+        raise RuntimeError('asyncio.run() cannot be called from a running event loop')
 
     if not asyncio.coroutines.iscoroutine(mainasync):
-        no_coroutine_err_msg = f'a coroutine was expected, got {mainasync!r}'
-        raise ValueError(no_coroutine_err_msg)
+        raise ValueError('a coroutine was expected, got %s', mainasync)
 
     if _alienpy_global_asyncio_loop is not None:
-        loop_already_started = 'asyncio event loop already started'
-        raise RuntimeError(loop_already_started)
+        raise RuntimeError('asyncio event loop already started')
 
     _alienpy_global_asyncio_loop = asyncio.events.new_event_loop()
     try:
@@ -59,9 +61,7 @@ def _run(mainasync, *, debug = False):
 
 
 async def _wait_forever():
-    # global _thread_event
     _thread_event.set()
-    #await asyncio.get_event_loop().create_future()
     await asyncio.get_running_loop().create_future()
 
 
@@ -77,7 +77,7 @@ def syncify(fn):
     """DECORATOR FOR SYNCIFY FUNCTIONS:: the magic for un-async functions"""
     def syncfn(*args, **kwds):
         # submit the original coroutine to the event loop and wait for the result
-        conc_future = asyncio.run_coroutine_threadsafe(fn(*args, **kwds), _alienpy_global_asyncio_loop)
+        conc_future = asyncio.run_coroutine_threadsafe(coro = fn(*args, **kwds), loop = _alienpy_global_asyncio_loop)
         return conc_future.result()
     syncfn.as_async = fn
     return syncfn

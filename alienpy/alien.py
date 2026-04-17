@@ -917,7 +917,7 @@ task name / detector name / [ / time [ / key = value]* ]
             src_list = [src for src, _, _ in download_list]
             dst_list = [dst for _, dst, _ in download_list]
             xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = src_list, api_dst = dst_list)
-            ret_obj = dataclasses.replace(xrdcp_ret, xrdcp_retansdict = q_dict)  # noqa: R504
+            ret_obj = dataclasses.replace(xrdcp_ret, ansdict = q_dict)  # noqa: R504
 
         # set xattr attributes for downloaded files
         for _, dst, q in download_list:
