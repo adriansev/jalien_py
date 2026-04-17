@@ -235,13 +235,8 @@ def create_ssl_context(use_usercert: bool = False, user_cert: str = '', user_key
         capath = CA_PATH
 
     if DEBUG: logging.debug('\nCert = %s\nKey = %s\nCreating SSL context .. ', cert, key)
-    ssl_protocol = None
-    if sys.version_info[1] < 10:
-        ssl_protocol = ssl.PROTOCOL_TLS
-    else:
-        ssl_protocol = ssl.PROTOCOL_TLS_CLIENT
 
-    ctx = ssl.SSLContext(ssl_protocol)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.options |= ssl.OP_NO_SSLv3
     ctx.check_hostname = False
 
@@ -403,7 +398,7 @@ def CertKeyMatch(cert_fname: str, key_fname: str) -> RET:
         if DEBUG: logging.exception(e)
         return RET(5, "", f'Could not load key >>>{key_fname}<<<')  # EIO /* I/O error */
 
-    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)  # skipcq: PTC-W6001
+    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLS_METHOD)  # skipcq: PTC-W6001
     ctx.verify_mode = ssl.CERT_REQUIRED
     ctx.use_privatekey(x509key)
     ctx.use_certificate(x509cert)

@@ -31,8 +31,7 @@ from .setup_logging import DEBUG, print_err, print_out
 from .tools_shell import is_cmd, runShellCMD
 
 
-NCPU = int(mp.cpu_count() * 0.8)  # use at most 80% of host CPUs
-
+NCPU = max(1, int((mp.cpu_count() or 1) * 0.8))  # use at most 80% of host CPUs
 
 def PrintColor(color: str) -> str:
     """Disable color if the terminal does not have capability"""
@@ -706,9 +705,9 @@ def set_xattr(path: str, attr_arg: str, value_arg: str) -> bool:
 
 def set_xattr_list(path: str, attr_kv_list: list) -> list:
     '''Set a list of xattrs to a local file'''
-    if not path or not attr_kv_list: return False
+    if not path or not attr_kv_list: return []
     result_list = []
-    for k, v in (attr_kv_list.items() if isinstance(attr_kv_list, dict) else enumerate(attr_kv_list)):
+    for k, v in (attr_kv_list.items() if isinstance(attr_kv_list, dict) else attr_kv_list):
         result = set_xattr(path, k, v)
         result_list.append(result)
         if not result: break  # if any error while setting xattr just stop any other processing

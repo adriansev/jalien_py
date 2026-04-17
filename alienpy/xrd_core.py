@@ -60,61 +60,61 @@ def xrd_config_init(do_xrd_env_set: bool = True) -> None:
     app_str = f'alien.py/{ALIENPY_VERSION_STR}'
     if HAS_XROOTD: app_str = f'{app_str} xrootd/{xrd_client.__version__}'
 
-    XRD_EnvPut('AppName', app_str)
+    if do_xrd_env_set: XRD_EnvPut('AppName', app_str)
     os.environ['XRD_APPNAME'] = app_str
 
     # Resolution for the timeout events. Ie. timeout events will be processed only every XRD_TIMEOUTRESOLUTION seconds.
     timeout_resolution = os.getenv('XRD_TIMEOUTRESOLUTION', '1')  # let's check the status every 1s; default 15
     os.environ['XRD_TIMEOUTRESOLUTION'] = timeout_resolution
-    XRD_EnvPut('TimeoutResolution', int(timeout_resolution))
+    if do_xrd_env_set: XRD_EnvPut('TimeoutResolution', int(timeout_resolution))
 
     # Number of connection attempts that should be made (number of available connection windows) before declaring a permanent failure.
     con_retry = os.getenv('XRD_CONNECTIONRETRY', '3')  # default 5
     os.environ['XRD_CONNECTIONRETRY'] = con_retry
-    XRD_EnvPut('ConnectionRetry', int(con_retry))
+    if do_xrd_env_set: XRD_EnvPut('ConnectionRetry', int(con_retry))
 
     # A time window for the connection establishment. A connection failure is declared if the connection is not established within the time window.
     # N.B.!!. If a connection failure happens earlier then another connection attempt will only be made at the beginning of the next window
     con_window = os.getenv('XRD_CONNECTIONWINDOW', '10')  # default 120
     os.environ['XRD_CONNECTIONWINDOW'] = con_window
-    XRD_EnvPut('ConnectionWindow', int(con_window))
+    if do_xrd_env_set: XRD_EnvPut('ConnectionWindow', int(con_window))
 
     # Default value for the time after which an error is declared if it was impossible to get a response to a request.
     # N.B.!!. This is the total time for the initialization dialogue!! see https://xrootd.slac.stanford.edu/doc/xrdcl-docs/www/xrdcldocs.html#x1-580004.3.6
     req_timeout = os.getenv('XRD_REQUESTTIMEOUT', '1200')  # default 1800; 1200s = 20min, 20 GB for 1MB/s
     os.environ['XRD_REQUESTTIMEOUT'] = req_timeout
-    XRD_EnvPut('RequestTimeout', int(req_timeout))
+    if do_xrd_env_set: XRD_EnvPut('RequestTimeout', int(req_timeout))
 
     # Default value for the time after which a connection error is declared (and a recovery attempted) if there are unfulfilled requests and there is no socket activity or a registered wait timeout.
     # N.B.!!. we actually want this timeout for failure on onverloaded/unresponsive server. see https://github.com/xrootd/xrootd/issues/1597#issuecomment-1064081574
     stream_timeout = os.getenv('XRD_STREAMTIMEOUT', '60')  # default 60
     os.environ['XRD_STREAMTIMEOUT'] = stream_timeout
-    XRD_EnvPut('StreamTimeout', int(stream_timeout))
+    if do_xrd_env_set: XRD_EnvPut('StreamTimeout', int(stream_timeout))
 
     # Maximum time allowed for the copy process to initialize, ie. open the source and destination files.
     cpinit_timeout = os.getenv('XRD_CPINITTIMEOUT', '90')  # default 600
     os.environ['XRD_CPINITTIMEOUT'] = cpinit_timeout
-    XRD_EnvPut('CPInitTimeout', int(cpinit_timeout))
+    if do_xrd_env_set: XRD_EnvPut('CPInitTimeout', int(cpinit_timeout))
 
     # Time period after which an idle connection to a data server should be closed.
     datasrv_ttl = os.getenv('XRD_DATASERVERTTL', '20')  # we have no reasons to keep idle connections
     os.environ['XRD_DATASERVERTTL'] = datasrv_ttl
-    XRD_EnvPut('DataServerTTL', int(datasrv_ttl))
+    if do_xrd_env_set: XRD_EnvPut('DataServerTTL', int(datasrv_ttl))
 
     # Time period after which an idle connection to a manager or a load balancer should be closed.
     loadbl_ttl = os.getenv('XRD_LOADBALANCERTTL', '30')  # we have no reasons to keep idle connections
     os.environ['XRD_LOADBALANCERTTL'] = loadbl_ttl
-    XRD_EnvPut('LoadBalancerTTL', int(loadbl_ttl))
+    if do_xrd_env_set: XRD_EnvPut('LoadBalancerTTL', int(loadbl_ttl))
 
     # https://github.com/xrootd/xrootd/blob/v5.6.3/docs/man/xrdcp.1#L592
     # If set to 1, use the checksum available in a metalink file even if a file is being extracted from a ZIP archive.
     zip_mt_cksum = os.getenv('XRD_ZIPMTLNCKSUM', '1')
     os.environ['XRD_ZIPMTLNCKSUM'] = zip_mt_cksum
-    XRD_EnvPut('ZipMtlnCksum', int(zip_mt_cksum))
+    if do_xrd_env_set: XRD_EnvPut('ZipMtlnCksum', int(zip_mt_cksum))
 
     cp_retry_policy = os.getenv('XRD_CPRETRYPOLICY', 'force')
     os.environ['XRD_CPRETRYPOLICY'] = cp_retry_policy
-    XRD_EnvPut('CpRetryPolicy', cp_retry_policy)
+    if do_xrd_env_set: XRD_EnvPut('CpRetryPolicy', cp_retry_policy)
 
     # XRD_PRESERVEXATTRS Preserve xattrs by default - enabled by default
     # XRD_EnvPut('PreserveXAttr', int(1))

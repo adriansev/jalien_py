@@ -11,6 +11,7 @@ import tempfile
 from collections import deque
 from pathlib import Path
 import uuid
+from importlib.metadata import version as _meta_version
 
 from .version import ALIENPY_VERSION_STR
 from .data_structs import COLORS_COLL, CertsInfo
@@ -25,12 +26,7 @@ except Exception:
     print("rich module could not be imported! Make sure you can do:\npython3 -c 'from rich.pretty import pprint'", file = sys.stderr, flush = True)
     sys.exit(1)
 
-try:
-    from websockets.version import version as wb_version
-except Exception:
-    print("websockets.version module could not be imported! Make sure you can do:\npython3 -c 'from websockets.version import version as wb_version'", file = sys.stderr, flush = True)
-    sys.exit(1)
-
+wb_version = _meta_version('websockets')
 
 TMPDIR = tempfile.gettempdir()
 
