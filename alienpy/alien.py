@@ -16,6 +16,7 @@ import collections
 import datetime
 import difflib
 import json
+import math
 import signal
 from pathlib import Path
 import subprocess  # nosec
@@ -892,19 +893,29 @@ task name / detector name / [ / time [ / key = value]* ]
         # create list of src,dst pairs to be downloaded
         if 'replicas' in q:
             for i in q['replicas']:
-                if do_http:
-                    src = i if i.startswith('http') else f'{ccdb}/{i}'
-                    download_list.append((src,dst_filepath,q))
+                src = ''
+                if do_http:  # http source was requested
+                    if i.startswith('http'):
+                        src = i
+                    elif i.startswith('/') or i.startswith('download'):
+                        src = f'{ccdb}/{i}'
                 else:
                     if i.startswith('alien'):
-                        download_list.append((i,f'file:{dst_filepath}',q))
-
+                        src = i
+                        dst_filepath = f'file:{dst_filepath}'
+                if src: download_list.append((src, dst_filepath, q))
 
     if (do_download or do_mirror) and len(download_list) > 0:
         if do_http:
             for src, dst, q in download_list:
+                timeout = 10
+                if 'Content-Length' in q:
+                    size = q['Content-Length']
+                    timeout_estimated = float(size)/float(102400)  # expect at least 100 KiB/s
+                    if timeout_estimated > timeout:
+                        timeout = math.ceil(timeout_estimated)
                 if DEBUG: logging.info('CCDB HTTP download:\n%s\n%s\n', src, dst)
-                response = requests.get(src, stream = True)
+                response = requests.get(src, timeout = timeout, stream = True)
                 if response.status_code == 200:
                     Path(os.path.dirname(dst)).mkdir(parents = True, exist_ok = True)
                     with open(dst, mode = "wb") as f:
