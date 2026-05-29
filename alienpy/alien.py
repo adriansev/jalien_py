@@ -924,7 +924,7 @@ task name / detector name / [ / time [ / key = value]* ]
             ret_obj = RET(exitcode=0, out=f'{len(download_list)} files downloaded via http', err='', ansdict = q_dict)
         else:
             if not ALIENPY_GLOBAL_WB: ALIENPY_GLOBAL_WB = InitConnection(cmdlist_func = constructCmdList)
-            if DEBUG: logging.info('CCDB XRootD download:\n%s\n%s\n', src, dst)
+            if DEBUG: logging.info('CCDB XRootD download:\n%s\n', '\n'.join(download_list))
             src_list = [src for src, _, _ in download_list]
             dst_list = [dst for _, dst, _ in download_list]
             xrdcp_ret = DO_XrootdCp(ALIENPY_GLOBAL_WB, xrd_copy_command = ['-parent', '99', '-retry', '2'], api_src = src_list, api_dst = dst_list)
