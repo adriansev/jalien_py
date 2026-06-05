@@ -87,22 +87,22 @@ except Exception as e:
 #   START FUNCTIONS DEFINITIONS
 ##################################
 
-def DO_dirs(wb: WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_dirs(wb: WebSocketClientProtocol, args: Optional[Union[str, list[str]]] = None) -> RET:
     """dirs"""
     return DO_path_stack(wb, 'dirs', args)
 
 
-def DO_popd(wb: WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_popd(wb: WebSocketClientProtocol, args: Optional[Union[str, list[str]]] = None) -> RET:
     """popd"""
     return DO_path_stack(wb, 'popd', args)
 
 
-def DO_pushd(wb: WebSocketClientProtocol, args: Union[str, list, None] = None) -> RET:
+def DO_pushd(wb: WebSocketClientProtocol, args: Optional[Union[str, list[str]]] = None) -> RET:
     """pushd"""
     return DO_path_stack(wb, 'pushd', args)
 
 
-def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Union[str, list, None] = None) -> RET:
+def DO_path_stack(wb: WebSocketClientProtocol, cmd: str = '', args: Optional[Union[str, list[str]]] = None) -> RET:
     """Implement dirs/popd/pushd for directory stack manipulation"""
     if not cmd: return RET(1)  # type: ignore [call-arg]
     if args is None: args = []
