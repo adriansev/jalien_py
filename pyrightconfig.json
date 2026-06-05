@@ -19,6 +19,7 @@
   "pythonVersion": "3.9",
   "pythonPlatform": "Linux",
 
-  "reportMissingImports": false
+  "reportMissingImports": false,
+  "reportUnknownVariableType": "none"
 
 }
