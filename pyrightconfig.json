@@ -9,17 +9,15 @@
 
   "ignore": [ "attic" ],
 
-  "strict": [ "alienpy" ],
+  "typeCheckingMode": "strict",
 
   "defineConstant": { },
 
-  "reportMissingImports": true,
+  "reportMissingImports": false,
   "reportMissingTypeStubs": false,
+  "reportUnknownVariableType": "none",
 
   "pythonVersion": "3.9",
-  "pythonPlatform": "Linux",
-
-  "reportMissingImports": false,
-  "reportUnknownVariableType": "none"
+  "pythonPlatform": "Linux"
 
 }
